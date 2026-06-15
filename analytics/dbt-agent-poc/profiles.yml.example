@@ -1,0 +1,7 @@
+dbt_agent_poc:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ./target/agent_poc.duckdb
+      threads: 4

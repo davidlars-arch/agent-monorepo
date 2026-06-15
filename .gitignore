@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+dist
+coverage
+.turbo
+.env
+.env.local
+.DS_Store
+target
+dbt_packages
+logs
+*.tsbuildinfo
+
+# Unity generated local state
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+MemoryCaptures/

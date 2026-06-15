@@ -1,0 +1,21 @@
+{
+  "name": "agent-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Agentic terminal monorepo with a sci-fi repo graph UI and analytics engineering POC.",
+  "workspaces": [
+    "apps/*",
+    "games/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @agent/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dbt:debug": "dbt debug --project-dir analytics/dbt-agent-poc --profiles-dir analytics/dbt-agent-poc"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

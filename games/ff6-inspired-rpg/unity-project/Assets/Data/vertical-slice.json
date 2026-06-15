@@ -1,0 +1,36 @@
+{
+  "hero": {
+    "id": "aster",
+    "name": "Aster",
+    "level": 1,
+    "maxHp": 42,
+    "maxMp": 12,
+    "attack": 8,
+    "defense": 4,
+    "spells": ["spark"]
+  },
+  "npc": {
+    "id": "mira",
+    "name": "Mira",
+    "lines": [
+      "The old observatory woke up again.",
+      "Every lens is pointing at the same impossible star.",
+      "If the engine below is singing, something ancient is listening.",
+      "Take this spark and go carefully. It likes courage, not panic."
+    ]
+  },
+  "enemy": {
+    "id": "clockwork_imp",
+    "name": "Clockwork Imp",
+    "maxHp": 28,
+    "attack": 6,
+    "defense": 2
+  },
+  "spell": {
+    "id": "spark",
+    "name": "Spark",
+    "mpCost": 3,
+    "power": 14,
+    "focusBonus": 4
+  }
+}

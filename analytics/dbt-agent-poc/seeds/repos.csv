@@ -1,0 +1,5 @@
+repo_id,repo_name,repo_kind,owner,status
+web,apps/web,app,interface,scaffolded
+ui,packages/ui,package,interface,scaffolded
+repo_graph,packages/repo-graph,package,platform,scaffolded
+dbt,analytics/dbt-agent-poc,analytics,data,poc

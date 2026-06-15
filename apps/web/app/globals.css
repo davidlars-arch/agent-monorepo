@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #16131f;
+  background: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(236, 231, 248, 0.55) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(236, 231, 248, 0.55) 1px, transparent 1px),
+    #ffffff;
+  background-size: 44px 44px;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.orb-matrix {
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.96), transparent 0 16%, rgba(255, 255, 255, 0.24) 28%, transparent 42%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 12px),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 12px),
+    linear-gradient(135deg, #d9c4ff 0%, #8b5cf6 36%, #5b21b6 70%, #251152 100%);
+}
+
+.orb-matrix::before,
+.orb-matrix::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+.orb-matrix::before {
+  background:
+    linear-gradient(90deg, transparent 0 22%, rgba(255, 255, 255, 0.35) 22% 23%, transparent 23% 56%, rgba(255, 255, 255, 0.2) 56% 57%, transparent 57%),
+    linear-gradient(0deg, transparent 0 35%, rgba(255, 255, 255, 0.28) 35% 36%, transparent 36% 74%, rgba(255, 255, 255, 0.18) 74% 75%, transparent 75%);
+  mask-image: radial-gradient(circle, black 0 66%, transparent 72%);
+}
+
+.orb-matrix::after {
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow:
+    inset 0 0 32px rgba(255, 255, 255, 0.34),
+    0 0 36px rgba(168, 85, 247, 0.36);
+}

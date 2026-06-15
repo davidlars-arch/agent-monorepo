@@ -1,0 +1,5 @@
+run_id,repo_id,run_type,status,duration_seconds
+1,web,typecheck,planned,0
+2,web,build,planned,0
+3,dbt,dbt_seed,planned,0
+4,dbt,dbt_run,planned,0
