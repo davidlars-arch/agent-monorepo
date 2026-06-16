@@ -1,7 +1,7 @@
 "use client";
 
 import { repoNodes } from "@agent/repo-graph";
-import { Gamepad2, RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Gamepad2, RotateCcw, X, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -596,9 +596,6 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           </div>
         </div>
         <div className="earth-controls">
-          <button type="button" aria-label="Zoom in" onClick={() => zoomBy(-0.34)}>
-            <ZoomIn size={18} />
-          </button>
           <button type="button" aria-label="Zoom out" onClick={() => zoomBy(0.34)}>
             <ZoomOut size={18} />
           </button>
