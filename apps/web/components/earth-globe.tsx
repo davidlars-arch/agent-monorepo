@@ -1,7 +1,7 @@
 "use client";
 
 import { repoNodes } from "@agent/repo-graph";
-import { Gamepad2, RotateCcw, X, ZoomOut } from "lucide-react";
+import { ExternalLink, Gamepad2, RotateCcw, X, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -256,6 +256,10 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     },
     [focusProject]
   );
+
+  const openCryptoTax = useCallback(() => {
+    window.location.href = `${window.location.protocol}//${window.location.hostname}:3001/`;
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -767,6 +771,12 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
                 Open RPG
               </button>
             ) : null}
+            {activeProject.id === "crypto-tax" ? (
+              <button type="button" className="project-popover__action" onClick={openCryptoTax}>
+                <ExternalLink size={16} />
+                Explore
+              </button>
+            ) : null}
           </div>
         </aside>
       ) : null}
@@ -875,6 +885,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         link.className = "project-popover__action";
         link.href = "/unity-rpg";
         link.textContent = "Open RPG";
+        body.append(link);
+      }
+
+      if (project.id === "crypto-tax") {
+        const link = document.createElement("a");
+        link.className = "project-popover__action";
+        link.href = window.location.protocol + "//" + window.location.hostname + ":3001/";
+        link.textContent = "Explore";
         body.append(link);
       }
 

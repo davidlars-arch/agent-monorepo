@@ -26,6 +26,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -186,6 +187,132 @@ h2 {
   color: #253348;
   padding: 0 12px;
   font-weight: 700;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.profile-panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.4fr) minmax(220px, 0.7fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.profile-card,
+.wallet-panel,
+.profile-status {
+  border: 1px solid #dfe4ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.profile-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+
+.profile-card__icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #e8f5f3;
+  color: #0f766e;
+}
+
+.profile-card label {
+  display: grid;
+  gap: 6px;
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-card input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cfd7e4;
+  border-radius: 8px;
+  color: #162033;
+  padding: 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.profile-card div:last-child {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid #edf0f5;
+  padding-top: 12px;
+}
+
+.profile-card span,
+.profile-status span {
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-card strong,
+.profile-status strong {
+  color: #0f766e;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.profile-card p,
+.profile-status p {
+  margin: 0;
+  color: #66758a;
+  font-size: 13px;
+}
+
+.section-heading--compact {
+  padding: 12px 14px;
+}
+
+.wallet-panel__body {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 14px 0;
+  color: #0f766e;
+}
+
+.wallet-panel textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid #cfd7e4;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #162033;
+  padding: 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.profile-status {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 16px;
 }
 
 .summary-grid {
@@ -399,6 +526,7 @@ tbody tr:last-child td {
 
   .side-nav,
   .summary-grid,
+  .profile-panel,
   .main-grid,
   .bottom-grid {
     grid-template-columns: 1fr 1fr;
@@ -423,6 +551,7 @@ tbody tr:last-child td {
   }
 
   .summary-grid,
+  .profile-panel,
   .main-grid,
   .bottom-grid,
   .side-nav {

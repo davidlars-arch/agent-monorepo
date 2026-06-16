@@ -6,11 +6,14 @@ import {
   Calculator,
   CheckCircle2,
   FileSpreadsheet,
+  FileUp,
+  KeyRound,
   Landmark,
   RefreshCcw,
-  ShieldCheck
+  ShieldCheck,
+  UserRound
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   calculateSwedishCryptoTax,
   parseTransactions,
@@ -31,9 +34,32 @@ const quantityFormatter = new Intl.NumberFormat("sv-SE", {
 
 export function TaxWorkbench() {
   const [csv, setCsv] = useState(sampleCsv);
+  const [profileName, setProfileName] = useState("David");
+  const [publicKeys, setPublicKeys] = useState(
+    "bc1q-example-watch-only-wallet\n0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const parsed = useMemo(() => parseTransactions(csv), [csv]);
   const report = useMemo(() => calculateSwedishCryptoTax(parsed.transactions), [parsed.transactions]);
   const taxImpactLabel = report.totals.estimatedTaxSek >= 0 ? "Estimated tax" : "Estimated tax reduction";
+  const watchedWallets = useMemo(
+    () => publicKeys.split(/\r?\n/).map((key) => key.trim()).filter(Boolean),
+    [publicKeys]
+  );
+  const profileStatus =
+    parsed.errors.length + report.reviewItems.length === 0 ? "Ready for review" : "Needs cleanup before filing";
+
+  function handleCsvUpload(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      setCsv(String(reader.result ?? ""));
+    });
+    reader.readAsText(file);
+  }
 
   return (
     <main className="tax-shell">
@@ -79,6 +105,10 @@ export function TaxWorkbench() {
             <h1>Crypto tax workbench for Sweden</h1>
           </div>
           <div className="header-actions">
+            <button type="button" onClick={() => fileInputRef.current?.click()}>
+              <FileUp size={16} />
+              Upload CSV
+            </button>
             <button type="button" onClick={() => setCsv(sampleCsv)}>
               <RefreshCcw size={16} />
               Sample
@@ -87,8 +117,62 @@ export function TaxWorkbench() {
               <ArrowDownToLine size={16} />
               Export later
             </button>
+            <input
+              ref={fileInputRef}
+              className="visually-hidden"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => handleCsvUpload(event.target.files?.[0])}
+              aria-label="Upload CSV transactions"
+            />
           </div>
         </header>
+
+        <section className="profile-panel" aria-label="Tax profile">
+          <div className="profile-card">
+            <div className="profile-card__icon">
+              <UserRound size={18} />
+            </div>
+            <label>
+              Profile
+              <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
+            </label>
+            <div>
+              <span>Current tax fee estimate</span>
+              <strong>{formatSek(Math.abs(report.totals.estimatedTaxSek))}</strong>
+              <p>{taxImpactLabel} for {profileName || "this profile"}</p>
+            </div>
+          </div>
+
+          <div className="wallet-panel">
+            <div className="section-heading section-heading--compact">
+              <div>
+                <p className="eyebrow">Public keys</p>
+                <h2>Watched wallets</h2>
+              </div>
+              <span>{watchedWallets.length} watched</span>
+            </div>
+            <div className="wallet-panel__body">
+              <KeyRound size={18} />
+              <textarea
+                value={publicKeys}
+                spellCheck={false}
+                onChange={(event) => setPublicKeys(event.target.value)}
+                aria-label="Public wallet keys"
+              />
+            </div>
+            <p className="helper-text">
+              Paste one public address per line. Chain fetching is still a stub; CSV import remains the source of tax
+              calculations for now.
+            </p>
+          </div>
+
+          <div className="profile-status">
+            <span>{profileStatus}</span>
+            <strong>{parsed.transactions.length}</strong>
+            <p>transactions loaded into this profile</p>
+          </div>
+        </section>
 
         <section className="summary-grid" aria-label="Tax summary">
           <Metric label="Disposals" value={String(report.disposals.length)} detail="Sales and crypto-to-crypto trades" />
