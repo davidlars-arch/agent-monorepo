@@ -38,6 +38,34 @@ const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color
 
 const legacyTinyPhoneMediaQuery = "(max-width: 340px) and (max-height: 620px)";
 
+const atmosphereVertexShader = `
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+  }
+`;
+
+const atmosphereFragmentShader = `
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+
+  void main() {
+    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+    float edge = 1.0 - max(dot(normalize(vWorldNormal), viewDirection), 0.0);
+    float rim = smoothstep(0.28, 0.96, pow(edge, 1.45));
+    float feather = smoothstep(0.12, 0.44, edge);
+    float alpha = rim * feather * 0.44;
+    vec3 color = mix(vec3(0.42, 0.82, 1.0), vec3(0.84, 0.52, 1.0), rim);
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
 const projectDetails: Record<string, ProjectDetail> = {
   web: {
     eyebrow: "Next.js app",
@@ -212,20 +240,21 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         roughness: 0.68,
         metalness: 0.08,
         emissive: "#12051f",
-        emissiveIntensity: 0.32
+        emissiveIntensity: 0.4
       })
     );
     earth.rotation.y = -0.34;
     scene.add(earth);
 
     const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1.025, 96, 96),
-      new THREE.MeshBasicMaterial({
-        color: "#c084fc",
+      new THREE.SphereGeometry(1.022, 96, 96),
+      new THREE.ShaderMaterial({
+        vertexShader: atmosphereVertexShader,
+        fragmentShader: atmosphereFragmentShader,
         transparent: true,
-        opacity: 0.1,
         blending: THREE.AdditiveBlending,
-        side: THREE.BackSide
+        depthWrite: false,
+        side: THREE.FrontSide
       })
     );
     scene.add(atmosphere);
@@ -830,8 +859,8 @@ function createPurplePlanetTexture() {
     width * 0.62
   );
   vignette.addColorStop(0, "rgba(255,255,255,0)");
-  vignette.addColorStop(0.68, "rgba(50,12,90,0.22)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.64)");
+  vignette.addColorStop(0.68, "rgba(50,12,90,0.14)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.32)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
 
