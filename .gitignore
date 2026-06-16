@@ -12,6 +12,10 @@ dbt_packages
 logs
 *.tsbuildinfo
 
+# Agent loop generated state/reports
+loops/**/STATE.md
+loops/**/latest-report.md
+
 # Unity generated local state
 Library/
 Temp/

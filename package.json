@@ -1,8 +1,8 @@
 {
-  "name": "agent-monorepo",
+  "name": "project-sphere",
   "private": true,
   "version": "0.1.0",
-  "description": "Agentic terminal monorepo with a sci-fi repo graph UI and analytics engineering POC.",
+  "description": "OpenClaw project atlas with a 3D repo globe, Unity RPG slice, analytics POC, and repo health loop.",
   "workspaces": [
     "apps/*",
     "games/*",
@@ -13,6 +13,8 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "loop:repo-health": "node scripts/repo-health-loop.mjs",
+    "sync:unity-webgl": "node scripts/sync-unity-webgl.mjs",
     "dbt:debug": "dbt debug --project-dir analytics/dbt-agent-poc --profiles-dir analytics/dbt-agent-poc"
   },
   "engines": {
