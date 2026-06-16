@@ -261,6 +261,10 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     window.location.href = `${window.location.protocol}//${window.location.hostname}:3001/`;
   }, []);
 
+  const openCryptoTrader = useCallback(() => {
+    window.location.href = `${window.location.protocol}//${window.location.hostname}:3002/`;
+  }, []);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -777,6 +781,12 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
                 Explore
               </button>
             ) : null}
+            {activeProject.id === "crypto-trader" ? (
+              <button type="button" className="project-popover__action" onClick={openCryptoTrader}>
+                <ExternalLink size={16} />
+                Explore
+              </button>
+            ) : null}
           </div>
         </aside>
       ) : null}
@@ -892,6 +902,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         const link = document.createElement("a");
         link.className = "project-popover__action";
         link.href = window.location.protocol + "//" + window.location.hostname + ":3001/";
+        link.textContent = "Explore";
+        body.append(link);
+      }
+
+      if (project.id === "crypto-trader") {
+        const link = document.createElement("a");
+        link.className = "project-popover__action";
+        link.href = window.location.protocol + "//" + window.location.hostname + ":3002/";
         link.textContent = "Explore";
         body.append(link);
       }

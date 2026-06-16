@@ -15,6 +15,7 @@ This is not financial advice, and it is not a magic money machine. It scans Krak
 ## Commands
 
 ```bash
+npm run dev -w @agent/crypto-trader-test
 npm run scan -w @agent/crypto-trader-test
 npm run tick:dry -w @agent/crypto-trader-test
 ```
@@ -23,6 +24,18 @@ Live trading, after setting env vars:
 
 ```bash
 KRAKEN_LIVE_TRADING=true npm run tick:live -w @agent/crypto-trader-test
+```
+
+## Dashboard
+
+The Next.js dashboard shows current dry-run/live positions, transaction revenue, and a D3 portfolio value / cumulative
+P&L chart. It reads `state/trader-state.json` when present and falls back to sample dry-run trade data so the interface
+does not boot into an empty void.
+
+For the local atlas setup, run it on port `3002`:
+
+```bash
+npm exec -w @agent/crypto-trader-test next -- start -H 0.0.0.0 -p 3002
 ```
 
 ## Environment
