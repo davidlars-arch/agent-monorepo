@@ -632,7 +632,7 @@ textarea {
   }
 }
 
-@media (max-width: 374px) {
+@media (max-width: 340px) {
   .earth-shell {
     min-height: 100vh;
     min-height: 100dvh;

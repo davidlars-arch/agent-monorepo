@@ -36,6 +36,8 @@ const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color
   docs: { lat: -33.8688, lon: 151.2093, color: "#f8fafc" }
 };
 
+const tinyPhoneMediaQuery = "(max-width: 340px)";
+
 const projectDetails: Record<string, ProjectDetail> = {
   web: {
     eyebrow: "Next.js app",
@@ -168,7 +170,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       return;
     }
 
-    if (window.matchMedia("(max-width: 374px)").matches) {
+    if (window.matchMedia(tinyPhoneMediaQuery).matches) {
       hasRenderedFrameRef.current = false;
       return;
     }
