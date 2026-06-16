@@ -283,6 +283,24 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     );
     scene.add(atmosphere);
 
+    const andromedaTexture = createAndromedaBackdropTexture();
+    andromedaTexture.colorSpace = THREE.SRGBColorSpace;
+    const andromeda = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: andromedaTexture,
+        color: "#c7d2fe",
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    andromeda.position.set(2.85, 1.05, -8.5);
+    andromeda.scale.set(5.4, 2.45, 1);
+    andromeda.material.rotation = -0.22;
+    scene.add(andromeda);
+
     const stars = createStarField();
     scene.add(stars);
 
@@ -531,6 +549,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
 
       earth.rotation.y += 0.00055;
       atmosphere.rotation.y += 0.00055;
+      andromeda.material.rotation += 0.000012;
       controls.update();
       renderer.render(scene, camera);
 
@@ -581,7 +600,9 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       disposeMaterial(stars.material);
       disposeMaterial(earth.material);
       disposeMaterial(atmosphere.material);
+      disposeMaterial(andromeda.material);
       planetTexture.dispose();
+      andromedaTexture.dispose();
       markers.clear();
       hasRenderedFrameRef.current = false;
       renderer.domElement.remove();
@@ -843,6 +864,75 @@ function createStarField() {
     opacity: 0.72
   });
   return new THREE.Points(geometry, material);
+}
+
+function createAndromedaBackdropTexture() {
+  const random = seededRandom(4242);
+  const canvas = document.createElement("canvas");
+  const width = 1024;
+  const height = 512;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Could not create galaxy texture.");
+  }
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate(-0.18);
+  ctx.scale(1, 0.36);
+
+  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, 260);
+  core.addColorStop(0, "rgba(255, 244, 214, 0.62)");
+  core.addColorStop(0.16, "rgba(196, 181, 253, 0.34)");
+  core.addColorStop(0.42, "rgba(96, 165, 250, 0.14)");
+  core.addColorStop(1, "rgba(2, 3, 10, 0)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(0, 0, 300, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalCompositeOperation = "screen";
+  for (let arm = 0; arm < 4; arm += 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = arm % 2 === 0 ? "rgba(186, 230, 253, 0.18)" : "rgba(216, 180, 254, 0.16)";
+    ctx.lineWidth = 18 - arm * 2;
+    ctx.lineCap = "round";
+    for (let step = 0; step < 180; step += 1) {
+      const progress = step / 179;
+      const angle = progress * Math.PI * 2.15 + arm * Math.PI * 0.5;
+      const radius = 28 + progress * 370;
+      const wobble = Math.sin(progress * 22 + arm) * 18;
+      const x = Math.cos(angle) * (radius + wobble);
+      const y = Math.sin(angle) * (radius * 0.56 + wobble * 0.35);
+      if (step === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  for (let index = 0; index < 190; index += 1) {
+    const angle = random() * Math.PI * 2;
+    const radius = Math.pow(random(), 0.58) * 440;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius * 0.5;
+    const alpha = 0.12 + random() * 0.34;
+    const size = 0.7 + random() * 1.8;
+    ctx.fillStyle = `rgba(226, 232, 240, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
 }
 
 function createPurplePlanetTexture() {
