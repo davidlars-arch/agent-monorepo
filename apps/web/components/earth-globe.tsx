@@ -131,6 +131,26 @@ const projectDetails: Record<string, ProjectDetail> = {
   }
 };
 
+const getDefaultCameraPosition = () => {
+  if (typeof window === "undefined") {
+    return new THREE.Vector3(0, 0.35, 3.45);
+  }
+
+  const isClassicSeViewport = window.matchMedia(
+    "(width: 320px) and (height: 568px) and (-webkit-device-pixel-ratio: 2), (width: 320px) and (height: 568px) and (resolution: 2dppx), (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)"
+  ).matches;
+
+  if (isClassicSeViewport) {
+    return new THREE.Vector3(0, 0.2, 4.65);
+  }
+
+  if (window.matchMedia("(max-width: 380px) and (max-height: 700px)").matches) {
+    return new THREE.Vector3(0, 0.24, 4.35);
+  }
+
+  return new THREE.Vector3(0, 0.35, 3.45);
+};
+
 export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: string }) {
   const initialProjectId =
     initialOpenProjectId && projectLocations[initialOpenProjectId] ? initialOpenProjectId : "web";
@@ -204,7 +224,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     scene.background = new THREE.Color("#02030a");
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    camera.position.set(0, 0.35, 3.45);
+    camera.position.copy(getDefaultCameraPosition());
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -573,7 +593,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   };
 
   const resetView = () => {
-    targetCameraRef.current = new THREE.Vector3(0, 0.35, 3.45);
+    targetCameraRef.current = getDefaultCameraPosition();
     targetLookAtRef.current = new THREE.Vector3(0, 0, 0);
     setActiveProjectId("web");
     setIsRpgOpen(false);
