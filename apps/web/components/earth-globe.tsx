@@ -68,7 +68,7 @@ const atmosphereFragmentShader = `
 const projectDetails: Record<string, ProjectDetail> = {
   web: {
     eyebrow: "Next.js app",
-    title: "Project Sphere web surface",
+    title: "OpenClaw Atlas web surface",
     preview: "web",
     lastBuilt: "2026-06-16 workspace build",
     commit: "52394b5 · 2026-06-15",
@@ -619,15 +619,15 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       <div
         ref={containerRef}
         className={`earth-canvas ${isCanvasReady ? "earth-canvas--ready" : ""}`}
-        aria-label="Interactive 3D project sphere"
+        aria-label="Interactive 3D OpenClaw Atlas"
       />
       <div className="earth-topbar">
         <div>
-          <p>OpenClaw Monorepo</p>
-          <h1>Project Sphere</h1>
+          <p>Monorepo built by OpenClaw</p>
+          <h1>OpenClaw Atlas</h1>
           <div className="repo-count" aria-label={`${projects.length} repos indexed`}>
             <strong>{projects.length}</strong>
-            <span>repos indexed on the purple planet</span>
+            <span>repos mapped on the purple planet</span>
           </div>
         </div>
         <div className="earth-controls">

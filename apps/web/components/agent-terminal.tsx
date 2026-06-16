@@ -48,7 +48,7 @@ export function AgentTerminal() {
         <header className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Project Sphere
+              OpenClaw Atlas
             </p>
             <h1 className="mt-2 text-3xl font-semibold sm:text-5xl">Repo command surface</h1>
           </div>
