@@ -141,6 +141,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const targetCameraRef = useRef<THREE.Vector3 | null>(null);
   const targetLookAtRef = useRef<THREE.Vector3 | null>(null);
+  const cameraSpinVelocityRef = useRef(new THREE.Vector2());
   const markerRefs = useRef(new Map<string, THREE.Mesh>());
   const hasRenderedFrameRef = useRef(false);
   const [activeProjectId, setActiveProjectId] = useState(initialProjectId);
@@ -179,6 +180,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     }
 
     setActiveProjectId(projectId);
+    cameraSpinVelocityRef.current.set(0, 0);
     const surface = marker.position.clone().normalize();
     targetCameraRef.current = surface.clone().multiplyScalar(1.72);
     targetLookAtRef.current = new THREE.Vector3(0, 0, 0);
@@ -297,11 +299,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const cameraSpinVelocity = cameraSpinVelocityRef.current;
     const activeTouchPointers = new Map<number, THREE.Vector2>();
     const touchStart = new THREE.Vector2();
     const touchCurrent = new THREE.Vector2();
     let hasTouchDrag = false;
     let lastPinchDistance: number | null = null;
+    let lastTouchMoveTime: number | null = null;
+    let previousFrameTime = performance.now();
 
     const clearTargetCamera = () => {
       targetCameraRef.current = null;
@@ -327,13 +332,16 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       }
     };
 
-    const rotateCamera = (deltaX: number, deltaY: number) => {
-      clearTargetCamera();
+    const applyCameraRotation = (thetaDelta: number, phiDelta: number, clearTarget = true) => {
+      if (clearTarget) {
+        clearTargetCamera();
+      }
+
       const target = controls.target.clone();
       const offset = camera.position.clone().sub(target);
       const spherical = new THREE.Spherical().setFromVector3(offset);
-      spherical.theta -= deltaX * 0.006;
-      spherical.phi -= deltaY * 0.006;
+      spherical.theta += thetaDelta;
+      spherical.phi += phiDelta;
       spherical.phi = THREE.MathUtils.clamp(spherical.phi, 0.22, Math.PI - 0.22);
       spherical.makeSafe();
       camera.position.copy(target.clone().add(new THREE.Vector3().setFromSpherical(spherical)));
@@ -341,8 +349,26 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       controls.update();
     };
 
+    const rotateCamera = (deltaX: number, deltaY: number, eventTime: number) => {
+      const thetaDelta = -deltaX * 0.006;
+      const phiDelta = -deltaY * 0.006;
+      applyCameraRotation(thetaDelta, phiDelta);
+
+      if (lastTouchMoveTime !== null) {
+        const deltaSeconds = THREE.MathUtils.clamp((eventTime - lastTouchMoveTime) / 1000, 0.008, 0.08);
+        const nextThetaVelocity = thetaDelta / deltaSeconds;
+        const nextPhiVelocity = phiDelta / deltaSeconds;
+        cameraSpinVelocity.x = THREE.MathUtils.lerp(cameraSpinVelocity.x, nextThetaVelocity, 0.42);
+        cameraSpinVelocity.y = THREE.MathUtils.lerp(cameraSpinVelocity.y, nextPhiVelocity, 0.42);
+        cameraSpinVelocity.clampLength(0, 4.6);
+      }
+
+      lastTouchMoveTime = eventTime;
+    };
+
     const zoomCamera = (amount: number) => {
       clearTargetCamera();
+      cameraSpinVelocity.set(0, 0);
       const direction = camera.position.clone().sub(controls.target).normalize();
       const distance = camera.position.distanceTo(controls.target);
       const nextDistance = THREE.MathUtils.clamp(distance + amount, controls.minDistance, controls.maxDistance);
@@ -366,10 +392,12 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       event.preventDefault();
       event.stopImmediatePropagation();
       clearTargetCamera();
+      cameraSpinVelocity.set(0, 0);
       controls.enabled = false;
       touchStart.set(event.clientX, event.clientY);
       touchCurrent.copy(touchStart);
       hasTouchDrag = false;
+      lastTouchMoveTime = event.timeStamp;
       activeTouchPointers.set(event.pointerId, new THREE.Vector2(event.clientX, event.clientY));
       try {
         renderer.domElement.setPointerCapture(event.pointerId);
@@ -403,13 +431,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           hasTouchDrag = true;
         }
         lastPinchDistance = nextPinchDistance;
+        lastTouchMoveTime = event.timeStamp;
         return;
       }
 
       if (Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 4) {
         hasTouchDrag = true;
       }
-      rotateCamera(deltaX, deltaY);
+      rotateCamera(deltaX, deltaY, event.timeStamp);
     };
 
     const handleTouchPointerEnd = (event: PointerEvent) => {
@@ -431,11 +460,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       if (activeTouchPointers.size === 0) {
         controls.enabled = true;
         lastPinchDistance = null;
+        lastTouchMoveTime = null;
         if (!hasTouchDrag) {
+          cameraSpinVelocity.set(0, 0);
           selectMarkerAt(touchCurrent.x, touchCurrent.y);
         }
       } else {
         lastPinchDistance = getTouchPointerDistance();
+        lastTouchMoveTime = event.timeStamp;
       }
     };
 
@@ -445,6 +477,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       }
 
       clearTargetCamera();
+      cameraSpinVelocity.set(0, 0);
       selectMarkerAt(event.clientX, event.clientY);
     };
 
@@ -453,6 +486,9 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     };
 
     const animate = () => {
+      const now = performance.now();
+      const deltaSeconds = THREE.MathUtils.clamp((now - previousFrameTime) / 1000, 0.001, 0.05);
+      previousFrameTime = now;
       const targetCamera = targetCameraRef.current;
       const targetLookAt = targetLookAtRef.current;
       if (targetCamera && targetLookAt) {
@@ -461,6 +497,13 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         if (camera.position.distanceTo(targetCamera) < 0.01) {
           targetCameraRef.current = null;
           targetLookAtRef.current = null;
+        }
+      } else if (cameraSpinVelocity.lengthSq() > 0.000001) {
+        applyCameraRotation(cameraSpinVelocity.x * deltaSeconds, cameraSpinVelocity.y * deltaSeconds, false);
+        const damping = Math.pow(0.955, deltaSeconds * 60);
+        cameraSpinVelocity.multiplyScalar(damping);
+        if (cameraSpinVelocity.lengthSq() < 0.00001) {
+          cameraSpinVelocity.set(0, 0);
         }
       }
 
