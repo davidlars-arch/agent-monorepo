@@ -36,8 +36,6 @@ const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color
   docs: { lat: -33.8688, lon: 151.2093, color: "#f8fafc" }
 };
 
-const legacyTinyPhoneMediaQuery = "(max-width: 340px) and (max-height: 620px)";
-
 const atmosphereVertexShader = `
   varying vec3 vWorldNormal;
   varying vec3 vWorldPosition;
@@ -197,11 +195,6 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
-      return;
-    }
-
-    if (window.matchMedia(legacyTinyPhoneMediaQuery).matches) {
-      hasRenderedFrameRef.current = false;
       return;
     }
 

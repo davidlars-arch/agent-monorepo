@@ -656,10 +656,6 @@ textarea {
     min-width: 280px;
   }
 
-  .earth-canvas canvas {
-    display: none;
-  }
-
   .earth-topbar {
     left: 14px;
     right: 14px;
