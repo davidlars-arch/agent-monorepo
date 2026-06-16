@@ -880,9 +880,11 @@ function createPurplePlanetTexture() {
     ctx.beginPath();
     ctx.strokeStyle = band % 3 === 0 ? "rgba(125, 211, 252, 0.18)" : "rgba(216, 180, 254, 0.13)";
     ctx.lineWidth = 2 + random() * 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     const y = (band / 18) * height + Math.sin(band) * 24;
-    ctx.moveTo(0, y);
-    for (let x = 0; x <= width; x += 32) {
+    ctx.moveTo(-48, y);
+    for (let x = -48; x <= width + 48; x += 24) {
       const theta = (x / width) * Math.PI * 2;
       const wave =
         Math.sin(theta * 2 + band) * (13 + band * 0.5) +
@@ -908,7 +910,8 @@ function createPurplePlanetTexture() {
   ctx.fillRect(0, 0, width, height);
 
   ctx.globalCompositeOperation = "source-over";
-  ctx.putImageData(ctx.getImageData(0, 0, 8, height), width - 8, 0);
+  const leftEdge = ctx.getImageData(0, 0, 1, height);
+  ctx.putImageData(leftEdge, width - 1, 0);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
