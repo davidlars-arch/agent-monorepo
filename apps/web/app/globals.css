@@ -57,54 +57,6 @@ textarea {
   -webkit-user-select: none;
 }
 
-.earth-canvas::before,
-.earth-canvas::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 53%;
-  transform: translate(-50%, -50%);
-  border-radius: 9999px;
-  pointer-events: none;
-  transition: opacity 260ms ease;
-}
-
-.earth-canvas::before {
-  width: min(64vw, 620px);
-  aspect-ratio: 1;
-  background:
-    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.28), transparent 0 13%),
-    radial-gradient(circle at 64% 42%, rgba(103, 232, 249, 0.24), transparent 0 18%),
-    radial-gradient(circle at 44% 58%, rgba(192, 132, 252, 0.28), transparent 0 28%),
-    repeating-linear-gradient(
-      176deg,
-      rgba(216, 180, 254, 0.2) 0 2px,
-      transparent 2px 34px
-    ),
-    linear-gradient(135deg, #160821 0%, #38156f 42%, #5b21b6 68%, #12051f 100%);
-  box-shadow:
-    inset -58px -44px 90px rgba(0, 0, 0, 0.52),
-    inset 30px 20px 48px rgba(255, 255, 255, 0.08),
-    0 0 72px rgba(168, 85, 247, 0.42),
-    0 0 140px rgba(14, 165, 233, 0.14);
-  opacity: 0.98;
-}
-
-.earth-canvas::after {
-  width: min(72vw, 700px);
-  aspect-ratio: 1;
-  border: 1px solid rgba(216, 180, 254, 0.18);
-  background:
-    radial-gradient(circle, transparent 0 58%, rgba(192, 132, 252, 0.1) 59%, transparent 68%),
-    radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.1), transparent 0 64%);
-  opacity: 0.86;
-}
-
-.earth-canvas--ready::before,
-.earth-canvas--ready::after {
-  opacity: 0;
-}
-
 .earth-canvas canvas {
   position: relative;
   z-index: 1;
@@ -550,16 +502,6 @@ textarea {
     min-height: 100svh;
   }
 
-  .earth-canvas::before {
-    top: 56%;
-    width: min(88vw, 420px);
-  }
-
-  .earth-canvas::after {
-    top: 56%;
-    width: min(96vw, 460px);
-  }
-
   .earth-topbar {
     align-items: flex-start;
     left: 20px;
@@ -642,18 +584,6 @@ textarea {
   .earth-shell {
     min-height: 100vh;
     min-height: 100dvh;
-  }
-
-  .earth-canvas::before {
-    top: 47%;
-    width: 76vw;
-    min-width: 238px;
-  }
-
-  .earth-canvas::after {
-    top: 47%;
-    width: 88vw;
-    min-width: 280px;
   }
 
   .earth-topbar {
