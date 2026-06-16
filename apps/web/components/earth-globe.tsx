@@ -168,7 +168,11 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       return;
     }
 
-    setIsCanvasReady(false);
+    if (window.matchMedia("(max-width: 374px)").matches) {
+      hasRenderedFrameRef.current = false;
+      return;
+    }
+
     hasRenderedFrameRef.current = false;
 
     const scene = new THREE.Scene();

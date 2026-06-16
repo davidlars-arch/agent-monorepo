@@ -632,6 +632,150 @@ textarea {
   }
 }
 
+@media (max-width: 374px) {
+  .earth-shell {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .earth-canvas::before {
+    top: 47%;
+    width: 76vw;
+    min-width: 238px;
+  }
+
+  .earth-canvas::after {
+    top: 47%;
+    width: 88vw;
+    min-width: 280px;
+  }
+
+  .earth-canvas canvas {
+    display: none;
+  }
+
+  .earth-topbar {
+    left: 14px;
+    right: 14px;
+    top: 14px;
+    gap: 8px;
+  }
+
+  .earth-topbar p {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+
+  .earth-topbar h1 {
+    margin-top: 5px;
+    max-width: 10ch;
+    font-size: 32px;
+    line-height: 0.96;
+  }
+
+  .earth-controls {
+    gap: 6px;
+  }
+
+  .earth-controls button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .repo-count {
+    max-width: 196px;
+    gap: 7px;
+    margin-top: 8px;
+    padding: 7px 8px;
+  }
+
+  .repo-count strong {
+    font-size: 18px;
+  }
+
+  .repo-count span {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+
+  .project-popover {
+    top: 150px;
+    right: 8px;
+    bottom: 58px;
+    left: 8px;
+    max-height: none;
+  }
+
+  .project-picture {
+    min-height: 96px;
+  }
+
+  .project-picture::before {
+    inset: 14px 18px;
+  }
+
+  .project-picture::after {
+    right: 22px;
+    bottom: 20px;
+    left: 22px;
+    height: 28px;
+  }
+
+  .project-picture span {
+    left: 34px;
+    top: 30px;
+    width: 62px;
+    height: 42px;
+    box-shadow: 92px 8px 0 rgba(125, 211, 252, 0.48);
+  }
+
+  .project-picture i {
+    right: 38px;
+    top: 30px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .project-popover__body {
+    padding: 12px;
+  }
+
+  .project-popover h2 {
+    margin-right: 38px;
+    font-size: 18px;
+  }
+
+  .project-popover p {
+    font-size: 12px;
+    line-height: 1.42;
+  }
+
+  .project-build {
+    gap: 7px;
+    margin-top: 10px;
+  }
+
+  .project-build div {
+    padding: 8px;
+  }
+
+  .project-build dd {
+    font-size: 12px;
+  }
+
+  .project-strip {
+    bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 0 12px 3px;
+  }
+
+  .project-strip button {
+    min-height: 34px;
+    gap: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+}
+
 .graph-stage::before {
   content: "";
   position: absolute;
