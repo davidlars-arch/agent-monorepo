@@ -268,6 +268,16 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const activeTouchPointers = new Map<number, THREE.Vector2>();
+    const touchStart = new THREE.Vector2();
+    const touchCurrent = new THREE.Vector2();
+    let hasTouchDrag = false;
+    let lastPinchDistance: number | null = null;
+
+    const clearTargetCamera = () => {
+      targetCameraRef.current = null;
+      targetLookAtRef.current = null;
+    };
 
     const resize = () => {
       const { width, height } = container.getBoundingClientRect();
@@ -276,16 +286,141 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       camera.updateProjectionMatrix();
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const selectMarkerAt = (clientX: number, clientY: number) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects([...markers.values()]);
       const hit = hits[0]?.object;
       if (hit?.userData.projectId) {
         selectProject(hit.userData.projectId as string);
       }
+    };
+
+    const rotateCamera = (deltaX: number, deltaY: number) => {
+      clearTargetCamera();
+      const target = controls.target.clone();
+      const offset = camera.position.clone().sub(target);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta -= deltaX * 0.006;
+      spherical.phi -= deltaY * 0.006;
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi, 0.22, Math.PI - 0.22);
+      spherical.makeSafe();
+      camera.position.copy(target.clone().add(new THREE.Vector3().setFromSpherical(spherical)));
+      camera.lookAt(target);
+      controls.update();
+    };
+
+    const zoomCamera = (amount: number) => {
+      clearTargetCamera();
+      const direction = camera.position.clone().sub(controls.target).normalize();
+      const distance = camera.position.distanceTo(controls.target);
+      const nextDistance = THREE.MathUtils.clamp(distance + amount, controls.minDistance, controls.maxDistance);
+      camera.position.copy(controls.target.clone().add(direction.multiplyScalar(nextDistance)));
+      controls.update();
+    };
+
+    const getTouchPointerDistance = () => {
+      const points = [...activeTouchPointers.values()];
+      if (points.length < 2) {
+        return null;
+      }
+      return points[0].distanceTo(points[1]);
+    };
+
+    const handleTouchPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      clearTargetCamera();
+      controls.enabled = false;
+      touchStart.set(event.clientX, event.clientY);
+      touchCurrent.copy(touchStart);
+      hasTouchDrag = false;
+      activeTouchPointers.set(event.pointerId, new THREE.Vector2(event.clientX, event.clientY));
+      try {
+        renderer.domElement.setPointerCapture(event.pointerId);
+      } catch {
+        // Synthetic and older mobile browser events can reject capture; window-level handlers still keep drag alive.
+      }
+      lastPinchDistance = getTouchPointerDistance();
+    };
+
+    const handleTouchPointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !activeTouchPointers.has(event.pointerId)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const previous = activeTouchPointers.get(event.pointerId);
+      if (!previous) {
+        return;
+      }
+
+      const deltaX = event.clientX - previous.x;
+      const deltaY = event.clientY - previous.y;
+      previous.set(event.clientX, event.clientY);
+      touchCurrent.set(event.clientX, event.clientY);
+
+      if (activeTouchPointers.size > 1) {
+        const nextPinchDistance = getTouchPointerDistance();
+        if (lastPinchDistance !== null && nextPinchDistance !== null) {
+          zoomCamera((lastPinchDistance - nextPinchDistance) * 0.006);
+          hasTouchDrag = true;
+        }
+        lastPinchDistance = nextPinchDistance;
+        return;
+      }
+
+      if (Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 4) {
+        hasTouchDrag = true;
+      }
+      rotateCamera(deltaX, deltaY);
+    };
+
+    const handleTouchPointerEnd = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !activeTouchPointers.has(event.pointerId)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      activeTouchPointers.delete(event.pointerId);
+      try {
+        if (renderer.domElement.hasPointerCapture?.(event.pointerId)) {
+          renderer.domElement.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Capture may already be gone if Safari cancelled the touch.
+      }
+
+      if (activeTouchPointers.size === 0) {
+        controls.enabled = true;
+        lastPinchDistance = null;
+        if (!hasTouchDrag) {
+          selectMarkerAt(touchCurrent.x, touchCurrent.y);
+        }
+      } else {
+        lastPinchDistance = getTouchPointerDistance();
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch") {
+        return;
+      }
+
+      clearTargetCamera();
+      selectMarkerAt(event.clientX, event.clientY);
+    };
+
+    const preventSafariTouchScroll = (event: TouchEvent) => {
+      event.preventDefault();
     };
 
     const animate = () => {
@@ -314,12 +449,30 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     renderer.setAnimationLoop(animate);
     resize();
     window.addEventListener("resize", resize);
+    renderer.domElement.addEventListener("pointerdown", handleTouchPointerDown, { capture: true });
+    renderer.domElement.addEventListener("pointermove", handleTouchPointerMove, { capture: true });
+    renderer.domElement.addEventListener("pointerup", handleTouchPointerEnd, { capture: true });
+    renderer.domElement.addEventListener("pointercancel", handleTouchPointerEnd, { capture: true });
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointermove", handleTouchPointerMove, { capture: true });
+    window.addEventListener("pointerup", handleTouchPointerEnd, { capture: true });
+    window.addEventListener("pointercancel", handleTouchPointerEnd, { capture: true });
+    renderer.domElement.addEventListener("touchstart", preventSafariTouchScroll, { passive: false });
+    renderer.domElement.addEventListener("touchmove", preventSafariTouchScroll, { passive: false });
 
     return () => {
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", resize);
+      renderer.domElement.removeEventListener("pointerdown", handleTouchPointerDown, { capture: true });
+      renderer.domElement.removeEventListener("pointermove", handleTouchPointerMove, { capture: true });
+      renderer.domElement.removeEventListener("pointerup", handleTouchPointerEnd, { capture: true });
+      renderer.domElement.removeEventListener("pointercancel", handleTouchPointerEnd, { capture: true });
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handleTouchPointerMove, { capture: true });
+      window.removeEventListener("pointerup", handleTouchPointerEnd, { capture: true });
+      window.removeEventListener("pointercancel", handleTouchPointerEnd, { capture: true });
+      renderer.domElement.removeEventListener("touchstart", preventSafariTouchScroll);
+      renderer.domElement.removeEventListener("touchmove", preventSafariTouchScroll);
       controls.dispose();
       renderer.dispose();
       earth.geometry.dispose();
