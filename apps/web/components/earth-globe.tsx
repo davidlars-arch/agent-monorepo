@@ -26,14 +26,14 @@ type ProjectDetail = {
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
-  web: { lat: 37.7749, lon: -122.4194, color: "#9f7aea" },
-  "crypto-trader": { lat: 40.7128, lon: -74.006, color: "#22c55e" },
-  ui: { lat: 51.5072, lon: -0.1276, color: "#67e8f9" },
-  "repo-graph": { lat: 35.6762, lon: 139.6503, color: "#facc15" },
-  "unity-rpg": { lat: 34.0522, lon: -118.2437, color: "#fb7185" },
-  dbt: { lat: 59.3293, lon: 18.0686, color: "#34d399" },
-  seeds: { lat: 1.3521, lon: 103.8198, color: "#2dd4bf" },
-  docs: { lat: -33.8688, lon: 151.2093, color: "#f8fafc" }
+  web: { lat: 8, lon: -72, color: "#9f7aea" },
+  "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
+  ui: { lat: 24, lon: 42, color: "#67e8f9" },
+  "repo-graph": { lat: -12, lon: 116, color: "#facc15" },
+  "unity-rpg": { lat: -42, lon: -66, color: "#fb7185" },
+  dbt: { lat: -18, lon: 10, color: "#34d399" },
+  seeds: { lat: -50, lon: 76, color: "#2dd4bf" },
+  docs: { lat: 54, lon: 138, color: "#f8fafc" }
 };
 
 const atmosphereVertexShader = `
