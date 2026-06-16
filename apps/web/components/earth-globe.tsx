@@ -560,7 +560,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         camera.position.copy(cameraMove.startCamera).lerp(cameraMove.targetCamera, easedProgress);
         controls.target.copy(cameraMove.startLookAt).lerp(cameraMove.targetLookAt, easedProgress);
 
-        if (cameraMove.revealProjectId && !cameraMove.hasRevealedDetail && progress >= 0.5) {
+        if (cameraMove.revealProjectId && !cameraMove.hasRevealedDetail && progress >= 1) {
           cameraMove.hasRevealedDetail = true;
           setDetailProjectId(cameraMove.revealProjectId);
         }
