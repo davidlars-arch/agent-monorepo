@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agentic Terminal",
-  description: "Sci-fi repo graph and analytics engineering control surface."
+  title: "Project Sphere",
+  description: "OpenClaw project atlas with a 3D repo globe and runnable project surfaces."
 };
 
 export default function RootLayout({

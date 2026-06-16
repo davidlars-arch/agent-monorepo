@@ -1,5 +1,10 @@
-import { AgentTerminal } from "@/components/agent-terminal";
+import { EarthGlobe } from "@/components/earth-globe";
 
-export default function Home() {
-  return <AgentTerminal />;
+export default async function Home({
+  searchParams
+}: {
+  searchParams: Promise<{ open?: string }>;
+}) {
+  const params = await searchParams;
+  return <EarthGlobe initialOpenProjectId={params.open} />;
 }

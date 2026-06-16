@@ -3,18 +3,9 @@
 import { repoEdges, repoNodes, type RepoNode } from "@agent/repo-graph";
 import { IconButton, Panel } from "@agent/ui";
 import { motion } from "framer-motion";
-import { Braces, Database, Gamepad2, GitBranch, Radar, Rocket, Search, Terminal } from "lucide-react";
+import { Database, Gamepad2, Radar, Terminal } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-
-const kindStyles: Record<RepoNode["kind"], string> = {
-  app: "border-signal bg-violet-50 text-violet-900",
-  package: "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900",
-  analytics: "border-cyan-300 bg-cyan-50 text-cyan-900",
-  data: "border-emerald-300 bg-emerald-50 text-emerald-900",
-  docs: "border-zinc-300 bg-zinc-50 text-zinc-900",
-  game: "border-rose-300 bg-rose-50 text-rose-950"
-};
+import { type CSSProperties, useMemo, useState } from "react";
 
 const commandLines = [
   "scan monorepo --graph",
@@ -22,6 +13,19 @@ const commandLines = [
   "inspect analytics/dbt-agent-poc",
   "materialize mart_repo_health",
   "render lineage --target web"
+];
+
+const matrixColumns = [
+  "0101 RUN",
+  "AI SYS 7",
+  "NODE 13",
+  "LOAD 42",
+  "0xFF00",
+  "SCAN OK",
+  "DATA IO",
+  "VOID 01",
+  "ROOT 9",
+  "SYNC ++"
 ];
 
 function nodeById(id: string) {
@@ -44,7 +48,7 @@ export function AgentTerminal() {
         <header className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Agentic Terminal
+              Project Sphere
             </p>
             <h1 className="mt-2 text-3xl font-semibold sm:text-5xl">Repo command surface</h1>
           </div>
@@ -52,54 +56,88 @@ export function AgentTerminal() {
             <IconButton aria-label="Scan repos">
               <Radar size={18} />
             </IconButton>
-            <IconButton aria-label="Open terminal">
+            <IconButton aria-label="Open command surface">
               <Terminal size={18} />
             </IconButton>
           </div>
         </header>
 
-        <section className="grid flex-1 gap-5 lg:grid-cols-[1fr_360px]">
+        <section className="grid flex-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div
-            className="relative min-h-[560px] overflow-hidden rounded-lg border border-soft-grid bg-white"
+            className="graph-stage relative h-[calc(100vh-170px)] min-h-[580px] max-h-[760px] overflow-hidden rounded-lg border border-soft-grid bg-white"
             onMouseEnter={() => setExpanded(true)}
             onMouseLeave={() => setExpanded(false)}
           >
-            <RepoGraph activeNode={activeNode} expanded={expanded} onSelect={setActiveNode} />
+            <div className="pointer-events-none absolute left-5 top-5 z-30 max-w-[280px]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                Live Repo Map
+              </p>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">
+                Click a node to inspect folders, dependencies, and runnable surfaces.
+              </p>
+            </div>
 
-            <motion.button
-              type="button"
-              aria-label="Reveal repository graph"
-              className="orb-matrix absolute left-1/2 top-1/2 z-20 h-44 w-44 rounded-full shadow-orb-core outline-none ring-1 ring-white/60 sm:h-56 sm:w-56"
-              animate={{
-                x: "-50%",
-                y: "-50%",
-                scale: expanded ? 0.78 : 1,
-                rotate: expanded ? 8 : 0
-              }}
-              transition={{ type: "spring", stiffness: 170, damping: 18 }}
-              onFocus={() => setExpanded(true)}
-              onBlur={() => setExpanded(false)}
-            >
-              <span className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 bg-white/20 text-white backdrop-blur">
-                <Rocket size={24} />
-              </span>
-            </motion.button>
+            <div className="absolute left-1/2 top-[56%] z-20 h-[min(58vh,54vw,560px)] w-[min(58vh,54vw,560px)] -translate-x-1/2 -translate-y-1/2 max-sm:h-[min(70vw,360px)] max-sm:w-[min(70vw,360px)]">
+              <motion.div
+                role="group"
+                aria-label="Monorepo folder planet"
+                tabIndex={0}
+                className="orb-matrix h-full w-full overflow-hidden rounded-full shadow-orb-core outline-none"
+                animate={{
+                  scale: expanded ? 1.035 : 1,
+                  rotate: expanded ? 2 : 0
+                }}
+                transition={{ type: "spring", stiffness: 170, damping: 18 }}
+                onFocus={() => setExpanded(true)}
+                onBlur={() => setExpanded(false)}
+              >
+                <span className="matrix-rain" aria-hidden="true">
+                  {matrixColumns.map((column, index) => (
+                    <span
+                      key={`${column}-${index}`}
+                      className="matrix-rain__column"
+                      style={
+                        {
+                          "--column-index": index,
+                          "--column-delay": `${index * -0.37}s`,
+                          "--column-speed": `${3.8 + (index % 4) * 0.42}s`
+                        } as CSSProperties
+                      }
+                    >
+                      {column}
+                      <br />
+                      101001
+                      <br />
+                      {index % 2 ? "EXEC" : "LINK"}
+                      <br />
+                      001101
+                      <br />
+                      {index % 3 ? "CORE" : "ECHO"}
+                    </span>
+                  ))}
+                </span>
+                <PlanetLandmarks activeNode={activeNode} onSelect={setActiveNode} />
+              </motion.div>
+            </div>
 
             <div className="pointer-events-none absolute bottom-5 left-5 z-30 rounded-md border border-zinc-200 bg-white/86 px-3 py-2 text-xs text-zinc-600 shadow-sm backdrop-blur">
-              Hover the sphere to unfold the monorepo graph.
+              Folder landmarks are live. Click a dot to change the selected folder.
             </div>
           </div>
 
-          <aside className="flex flex-col gap-5">
+          <aside className="pointer-events-auto z-40 flex flex-col gap-5">
             <Panel className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
-                    Selected Node
+                    Selected Folder
                   </p>
                   <h2 className="mt-2 text-xl font-semibold">{activeNode.label}</h2>
+                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-violet-500">
+                    {activeNode.group}
+                  </p>
                 </div>
-                <span className="rounded-md border border-zinc-200 px-2 py-1 text-xs uppercase text-zinc-500">
+                <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs uppercase text-violet-700">
                   {activeNode.status}
                 </span>
               </div>
@@ -149,7 +187,7 @@ export function AgentTerminal() {
 
             <Panel className="p-5">
               <div className="flex items-center gap-2">
-                <Gamepad2 size={18} className="text-rose-600" />
+                <Gamepad2 size={18} className="text-violet-700" />
                 <h2 className="text-base font-semibold">Unity RPG Slot</h2>
               </div>
               <p className="mt-3 text-sm leading-6 text-zinc-600">
@@ -157,7 +195,7 @@ export function AgentTerminal() {
               </p>
               <Link
                 href="/unity-rpg"
-                className="mt-4 inline-flex rounded-md border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-900 transition hover:border-rose-400"
+                className="mt-4 inline-flex rounded-md border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-900 transition hover:border-violet-400"
               >
                 Open RPG
               </Link>
@@ -165,7 +203,7 @@ export function AgentTerminal() {
 
             <Panel className="p-5">
               <div className="flex items-center gap-2">
-                <Database size={18} className="text-cyan-600" />
+                <Database size={18} className="text-violet-700" />
                 <h2 className="text-base font-semibold">Analytics POC</h2>
               </div>
               <p className="mt-3 text-sm leading-6 text-zinc-600">
@@ -183,76 +221,55 @@ export function AgentTerminal() {
   );
 }
 
-function RepoGraph({
+function PlanetLandmarks({
   activeNode,
-  expanded,
   onSelect
 }: {
   activeNode: RepoNode;
-  expanded: boolean;
   onSelect: (node: RepoNode) => void;
 }) {
   return (
-    <motion.div
-      className="absolute inset-0"
-      animate={{ opacity: expanded ? 1 : 0.42 }}
-      transition={{ duration: 0.25 }}
-    >
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <span className="planet-landmarks" aria-label="Monorepo folder landmarks">
+      <svg className="planet-links" viewBox="0 0 100 100" aria-hidden="true">
         {repoEdges.map((edge) => {
           const from = nodeById(edge.from);
           const to = nodeById(edge.to);
-          if (!from || !to) return null;
-          const active = activeNode.id === from.id || activeNode.id === to.id;
+          if (!from || !to) {
+            return null;
+          }
+
+          const isActive = edge.from === activeNode.id || edge.to === activeNode.id;
           return (
-            <motion.line
+            <line
               key={`${edge.from}-${edge.to}`}
               x1={from.x}
               y1={from.y}
               x2={to.x}
               y2={to.y}
-              stroke={active ? "#6f35ff" : "#d7cbed"}
-              strokeWidth={active ? 0.34 : 0.18}
-              strokeDasharray={active ? "1.2 0.8" : "0"}
-              initial={false}
-              animate={{ pathLength: expanded ? 1 : 0.32 }}
+              className={`planet-link ${isActive ? "planet-link--active" : ""}`}
             />
           );
         })}
       </svg>
-
       {repoNodes.map((node) => (
-        <motion.button
+        <button
           key={node.id}
           type="button"
-          className={`absolute z-10 min-w-28 rounded-lg border px-3 py-2 text-left text-xs shadow-sm transition hover:scale-[1.03] ${kindStyles[node.kind]} ${
-            activeNode.id === node.id ? "ring-2 ring-signal ring-offset-2" : ""
-          }`}
+          title={node.label}
+          aria-label={node.label}
+          className={`planet-landmark ${activeNode.id === node.id ? "planet-landmark--active" : ""}`}
           style={{
             left: `${node.x}%`,
             top: `${node.y}%`
           }}
-          initial={false}
-          animate={{
-            x: "-50%",
-            y: "-50%",
-            opacity: expanded ? 1 : 0,
-            scale: expanded ? 1 : 0.65
-          }}
-          transition={{ type: "spring", stiffness: 170, damping: 18 }}
           onClick={() => onSelect(node)}
         >
-          <span className="flex items-center gap-2 font-semibold">
-            {node.kind === "analytics" ? <Database size={14} /> : null}
-            {node.kind === "package" ? <Braces size={14} /> : null}
-            {node.kind === "app" ? <GitBranch size={14} /> : null}
-            {node.kind === "data" ? <Search size={14} /> : null}
-            {node.kind === "game" ? <Gamepad2 size={14} /> : null}
-            {node.label}
+          <span className={`planet-landmark__label ${node.featured ? "planet-landmark__label--featured" : ""}`}>
+            {node.shortLabel}
           </span>
-        </motion.button>
+        </button>
       ))}
-    </motion.div>
+    </span>
   );
 }
 
