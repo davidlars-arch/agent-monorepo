@@ -109,7 +109,7 @@ textarea {
 
 .earth-topbar h1 {
   margin: 8px 0 0;
-  max-width: 12ch;
+  max-width: 15ch;
   font-size: clamp(32px, 5vw, 72px);
   font-weight: 760;
   letter-spacing: 0;
@@ -733,8 +733,8 @@ textarea {
 
   .earth-topbar h1 {
     margin-top: 6px;
-    max-width: 9ch;
-    font-size: 36px;
+    max-width: 18ch;
+    font-size: 30px;
     line-height: 0.94;
   }
 
@@ -795,7 +795,8 @@ textarea {
 
   .earth-topbar h1 {
     margin-top: 5px;
-    font-size: 30px;
+    max-width: 18ch;
+    font-size: 25px;
     line-height: 0.94;
   }
 
