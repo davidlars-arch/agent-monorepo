@@ -25,6 +25,17 @@ type ProjectDetail = {
   commitSummary: string;
 };
 
+type CameraMove = {
+  startCamera: THREE.Vector3;
+  startLookAt: THREE.Vector3;
+  targetCamera: THREE.Vector3;
+  targetLookAt: THREE.Vector3;
+  startedAt: number;
+  durationMs: number;
+  revealProjectId?: string;
+  hasRevealedDetail: boolean;
+};
+
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
@@ -168,6 +179,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const targetCameraRef = useRef<THREE.Vector3 | null>(null);
   const targetLookAtRef = useRef<THREE.Vector3 | null>(null);
+  const cameraMoveRef = useRef<CameraMove | null>(null);
   const cameraSpinVelocityRef = useRef(new THREE.Vector2());
   const markerRefs = useRef(new Map<string, THREE.Mesh>());
   const hasRenderedFrameRef = useRef(false);
@@ -200,7 +212,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     [projects]
   );
 
-  const focusProject = useCallback((projectId: string) => {
+  const focusProject = useCallback((projectId: string, revealDetail = false) => {
     const marker = markerRefs.current.get(projectId);
     if (!marker) {
       return;
@@ -209,14 +221,38 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     setActiveProjectId(projectId);
     cameraSpinVelocityRef.current.set(0, 0);
     const surface = marker.position.clone().normalize();
-    targetCameraRef.current = surface.clone().multiplyScalar(1.72);
-    targetLookAtRef.current = new THREE.Vector3(0, 0, 0);
+    const targetCamera = surface.clone().multiplyScalar(1.92);
+    const targetLookAt = new THREE.Vector3(0, 0, 0);
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    targetCameraRef.current = null;
+    targetLookAtRef.current = null;
+
+    if (!camera || !controls) {
+      targetCameraRef.current = targetCamera;
+      targetLookAtRef.current = targetLookAt;
+      if (revealDetail) {
+        setDetailProjectId(projectId);
+      }
+      return;
+    }
+
+    cameraMoveRef.current = {
+      startCamera: camera.position.clone(),
+      startLookAt: controls.target.clone(),
+      targetCamera,
+      targetLookAt,
+      startedAt: performance.now(),
+      durationMs: 1450,
+      revealProjectId: revealDetail ? projectId : undefined,
+      hasRevealedDetail: false
+    };
   }, []);
 
   const selectProject = useCallback(
     (projectId: string) => {
-      focusProject(projectId);
-      setDetailProjectId(projectId);
+      setDetailProjectId(null);
+      focusProject(projectId, true);
     },
     [focusProject]
   );
@@ -336,6 +372,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     const clearTargetCamera = () => {
       targetCameraRef.current = null;
       targetLookAtRef.current = null;
+      cameraMoveRef.current = null;
     };
 
     const resize = () => {
@@ -514,9 +551,24 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       const now = performance.now();
       const deltaSeconds = THREE.MathUtils.clamp((now - previousFrameTime) / 1000, 0.001, 0.05);
       previousFrameTime = now;
+      const cameraMove = cameraMoveRef.current;
       const targetCamera = targetCameraRef.current;
       const targetLookAt = targetLookAtRef.current;
-      if (targetCamera && targetLookAt) {
+      if (cameraMove) {
+        const progress = THREE.MathUtils.clamp((now - cameraMove.startedAt) / cameraMove.durationMs, 0, 1);
+        const easedProgress = easeInOutCubic(progress);
+        camera.position.copy(cameraMove.startCamera).lerp(cameraMove.targetCamera, easedProgress);
+        controls.target.copy(cameraMove.startLookAt).lerp(cameraMove.targetLookAt, easedProgress);
+
+        if (cameraMove.revealProjectId && !cameraMove.hasRevealedDetail && progress >= 0.5) {
+          cameraMove.hasRevealedDetail = true;
+          setDetailProjectId(cameraMove.revealProjectId);
+        }
+
+        if (progress >= 1) {
+          cameraMoveRef.current = null;
+        }
+      } else if (targetCamera && targetLookAt) {
         camera.position.lerp(targetCamera, 0.075);
         controls.target.lerp(targetLookAt, 0.075);
         if (camera.position.distanceTo(targetCamera) < 0.01) {
@@ -601,6 +653,9 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       return;
     }
 
+    cameraMoveRef.current = null;
+    targetCameraRef.current = null;
+    targetLookAtRef.current = null;
     const direction = camera.position.clone().sub(controls.target).normalize();
     const distance = camera.position.distanceTo(controls.target);
     const nextDistance = THREE.MathUtils.clamp(distance + amount, controls.minDistance, controls.maxDistance);
@@ -608,9 +663,30 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   };
 
   const resetView = () => {
-    targetCameraRef.current = getDefaultCameraPosition();
-    targetLookAtRef.current = new THREE.Vector3(0, 0, 0);
+    const targetCamera = getDefaultCameraPosition();
+    const targetLookAt = new THREE.Vector3(0, 0, 0);
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    targetCameraRef.current = null;
+    targetLookAtRef.current = null;
+    cameraMoveRef.current =
+      camera && controls
+        ? {
+            startCamera: camera.position.clone(),
+            startLookAt: controls.target.clone(),
+            targetCamera,
+            targetLookAt,
+            startedAt: performance.now(),
+            durationMs: 1050,
+            hasRevealedDetail: true
+          }
+        : null;
+    if (!camera || !controls) {
+      targetCameraRef.current = targetCamera;
+      targetLookAtRef.current = targetLookAt;
+    }
     setActiveProjectId("web");
+    setDetailProjectId(null);
     setIsRpgOpen(false);
   };
 
@@ -826,6 +902,10 @@ function latLonToVector(lat: number, lon: number, radius: number) {
     radius * Math.sin(latRad),
     radius * Math.cos(latRad) * Math.cos(lonRad)
   );
+}
+
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
 function createStarField() {

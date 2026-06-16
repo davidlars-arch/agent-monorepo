@@ -224,6 +224,7 @@ textarea {
     0 24px 80px rgba(0, 0, 0, 0.52),
     0 0 60px rgba(109, 40, 217, 0.24);
   backdrop-filter: blur(22px);
+  animation: project-popover-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .project-popover__close {
@@ -852,6 +853,12 @@ textarea {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .project-popover {
+    animation: none;
+  }
+}
+
 .graph-stage::before {
   content: "";
   position: absolute;
@@ -1082,6 +1089,18 @@ textarea {
 
   100% {
     transform: translateY(32%);
+  }
+}
+
+@keyframes project-popover-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
