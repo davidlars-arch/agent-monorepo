@@ -50,7 +50,7 @@ const projectDetails: Record<string, ProjectDetail> = {
     title: "Kraken dry-run trader",
     preview: "crypto",
     lastBuilt: "2026-06-16 workspace build",
-    commit: "Uncommitted workspace addition",
+    commit: "69bd8a3 · 2026-06-16",
     commitSummary: "Adds a guarded spot-trading POC with scan, dry tick, live tick, state, indicators, and Kraken API code."
   },
   ui: {
@@ -74,7 +74,7 @@ const projectDetails: Record<string, ProjectDetail> = {
     title: "Astral Rift WebGL slice",
     preview: "game",
     lastBuilt: "2026-06-16 workspace build",
-    commit: "52394b5 · 2026-06-15",
+    commit: "5cf9e6d · 2026-06-16",
     commitSummary: "Initial Unity RPG slot and WebGL mount; workspace now includes the Astral Rift build and embedded route."
   },
   dbt: {
@@ -112,9 +112,11 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   const targetCameraRef = useRef<THREE.Vector3 | null>(null);
   const targetLookAtRef = useRef<THREE.Vector3 | null>(null);
   const markerRefs = useRef(new Map<string, THREE.Mesh>());
+  const hasRenderedFrameRef = useRef(false);
   const [activeProjectId, setActiveProjectId] = useState(initialProjectId);
   const [detailProjectId, setDetailProjectId] = useState<string | null>(initialOpenProjectId ? initialProjectId : null);
   const [isRpgOpen, setIsRpgOpen] = useState(false);
+  const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   const projects = useMemo(
     () =>
@@ -131,6 +133,14 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   );
   const activeProject = projects.find((project) => project.id === detailProjectId);
   const activeDetail = detailProjectId ? projectDetails[detailProjectId] : undefined;
+  const fallbackProjectData = useMemo(
+    () =>
+      projects.map((project) => ({
+        ...project,
+        detail: projectDetails[project.id]
+      })),
+    [projects]
+  );
 
   const focusProject = useCallback((projectId: string) => {
     const marker = markerRefs.current.get(projectId);
@@ -157,6 +167,9 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     if (!container) {
       return;
     }
+
+    setIsCanvasReady(false);
+    hasRenderedFrameRef.current = false;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#02030a");
@@ -283,6 +296,11 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       atmosphere.rotation.y += 0.00055;
       controls.update();
       renderer.render(scene, camera);
+
+      if (!hasRenderedFrameRef.current) {
+        hasRenderedFrameRef.current = true;
+        setIsCanvasReady(true);
+      }
     };
 
     renderer.setAnimationLoop(animate);
@@ -310,6 +328,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       disposeMaterial(atmosphere.material);
       planetTexture.dispose();
       markers.clear();
+      hasRenderedFrameRef.current = false;
       renderer.domElement.remove();
     };
   }, [projects, selectProject]);
@@ -336,7 +355,11 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
 
   return (
     <main className="earth-shell">
-      <div ref={containerRef} className="earth-canvas" aria-label="Interactive 3D project sphere" />
+      <div
+        ref={containerRef}
+        className={`earth-canvas ${isCanvasReady ? "earth-canvas--ready" : ""}`}
+        aria-label="Interactive 3D project sphere"
+      />
       <div className="earth-topbar">
         <div>
           <p>OpenClaw Monorepo</p>
@@ -363,6 +386,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           <button
             key={project.id}
             type="button"
+            data-project-id={project.id}
             className={project.id === activeProjectId ? "is-active" : ""}
             onClick={() => selectProject(project.id)}
           >
@@ -443,6 +467,95 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           </section>
         </div>
       ) : null}
+      <script
+        id="project-fallback-data"
+        type="application/json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(fallbackProjectData) }}
+      />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+(() => {
+  window.setTimeout(() => {
+    if (document.querySelector(".earth-canvas canvas")) return;
+    const root = document.querySelector(".earth-shell");
+    const dataNode = document.getElementById("project-fallback-data");
+    if (!root || !dataNode) return;
+    const projects = JSON.parse(dataNode.textContent || "[]");
+    const byId = new Map(projects.map((project) => [project.id, project]));
+
+    const text = (tag, value, className) => {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      element.textContent = value || "";
+      return element;
+    };
+
+    const showProject = (projectId) => {
+      const project = byId.get(projectId);
+      if (!project || !project.detail) return;
+      root.querySelector(".project-popover--fallback")?.remove();
+      root.querySelectorAll(".project-strip button").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.projectId === projectId);
+      });
+
+      const panel = document.createElement("aside");
+      panel.className = "project-popover project-popover--fallback";
+      panel.setAttribute("aria-label", project.shortLabel + " project details");
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "project-popover__close";
+      close.setAttribute("aria-label", "Close project details");
+      close.textContent = "X";
+      close.addEventListener("click", () => panel.remove());
+
+      const picture = document.createElement("div");
+      picture.className = "project-picture project-picture--" + project.detail.preview;
+      picture.setAttribute("aria-hidden", "true");
+      picture.append(document.createElement("span"), document.createElement("i"));
+
+      const body = document.createElement("div");
+      body.className = "project-popover__body";
+      body.append(
+        text("p", project.detail.eyebrow, "project-popover__eyebrow"),
+        text("h2", project.detail.title),
+        text("p", project.summary)
+      );
+
+      const build = document.createElement("dl");
+      build.className = "project-build";
+      [
+        ["Last built upon", project.detail.lastBuilt],
+        ["Commit", project.detail.commit],
+        ["What it had", project.detail.commitSummary]
+      ].forEach(([label, value]) => {
+        const row = document.createElement("div");
+        row.append(text("dt", label), text("dd", value));
+        build.append(row);
+      });
+      body.append(build);
+
+      if (project.id === "unity-rpg") {
+        const link = document.createElement("a");
+        link.className = "project-popover__action";
+        link.href = "/unity-rpg";
+        link.textContent = "Open RPG";
+        body.append(link);
+      }
+
+      panel.append(close, picture, body);
+      root.append(panel);
+    };
+
+    root.querySelectorAll(".project-strip button[data-project-id]").forEach((button) => {
+      button.addEventListener("click", () => showProject(button.dataset.projectId));
+    });
+  }, 1200);
+})();
+          `
+        }}
+      />
     </main>
   );
 }
