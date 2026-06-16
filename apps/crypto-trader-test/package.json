@@ -1,0 +1,14 @@
+{
+  "name": "@agent/crypto-trader-test",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dry-run-first Kraken spot trader experiment for small USDT mean-reversion tests.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "scan": "npm run build && node dist/index.js scan",
+    "tick:dry": "npm run build && node dist/index.js tick --dry-run",
+    "tick:live": "npm run build && node dist/index.js tick --live"
+  }
+}
