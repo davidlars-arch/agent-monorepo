@@ -757,33 +757,50 @@ function createStarField() {
 function createPurplePlanetTexture() {
   const random = seededRandom(1337);
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 1024;
+  const width = 2048;
+  const height = 1024;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Could not create purple planet texture.");
   }
 
-  const base = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  base.addColorStop(0, "#130821");
-  base.addColorStop(0.28, "#2c1557");
-  base.addColorStop(0.52, "#4c1d95");
-  base.addColorStop(0.76, "#24104f");
-  base.addColorStop(1, "#070816");
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const imageData = ctx.createImageData(width, height);
+  for (let y = 0; y < height; y += 1) {
+    const vertical = y / (height - 1);
+    for (let x = 0; x < width; x += 1) {
+      const theta = (x / width) * Math.PI * 2;
+      const haze =
+        0.5 +
+        0.5 *
+          (Math.sin(theta * 2 + vertical * 5.2) * 0.46 +
+            Math.sin(theta * 5 - vertical * 8.1) * 0.28 +
+            Math.cos(theta * 9 + vertical * 2.4) * 0.16);
+      const latitudeGlow = Math.sin(vertical * Math.PI);
+      const index = (y * width + x) * 4;
+      imageData.data[index] = 19 + haze * 28 + latitudeGlow * 36;
+      imageData.data[index + 1] = 8 + haze * 16 + latitudeGlow * 12;
+      imageData.data[index + 2] = 34 + haze * 74 + latitudeGlow * 132;
+      imageData.data[index + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
 
   for (let index = 0; index < 58; index += 1) {
-    const x = random() * canvas.width;
-    const y = random() * canvas.height;
+    const x = random() * width;
+    const y = random() * height;
     const radius = 80 + random() * 280;
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    glow.addColorStop(0, `rgba(${160 + random() * 70}, ${100 + random() * 70}, 255, 0.2)`);
-    glow.addColorStop(1, "rgba(20, 8, 34, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    const glowColor = `rgba(${160 + random() * 70}, ${100 + random() * 70}, 255, 0.16)`;
+    for (const offset of [-width, 0, width]) {
+      const glow = ctx.createRadialGradient(x + offset, y, 0, x + offset, y, radius);
+      glow.addColorStop(0, glowColor);
+      glow.addColorStop(1, "rgba(20, 8, 34, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x + offset, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.globalCompositeOperation = "screen";
@@ -791,40 +808,40 @@ function createPurplePlanetTexture() {
     ctx.beginPath();
     ctx.strokeStyle = band % 3 === 0 ? "rgba(125, 211, 252, 0.18)" : "rgba(216, 180, 254, 0.13)";
     ctx.lineWidth = 2 + random() * 4;
-    const y = (band / 18) * canvas.height + Math.sin(band) * 24;
+    const y = (band / 18) * height + Math.sin(band) * 24;
     ctx.moveTo(0, y);
-    for (let x = 0; x <= canvas.width; x += 80) {
-      ctx.lineTo(x, y + Math.sin(x * 0.006 + band) * (18 + band * 0.8));
+    for (let x = 0; x <= width; x += 32) {
+      const theta = (x / width) * Math.PI * 2;
+      const wave =
+        Math.sin(theta * 2 + band) * (13 + band * 0.5) +
+        Math.sin(theta * 5 - band * 0.7) * (5 + band * 0.18);
+      ctx.lineTo(x, y + wave);
     }
     ctx.stroke();
   }
 
   ctx.globalCompositeOperation = "multiply";
   const vignette = ctx.createRadialGradient(
-    canvas.width * 0.48,
-    canvas.height * 0.42,
-    canvas.width * 0.08,
-    canvas.width * 0.5,
-    canvas.height * 0.5,
-    canvas.width * 0.62
+    width * 0.5,
+    height * 0.42,
+    width * 0.08,
+    width * 0.5,
+    height * 0.5,
+    width * 0.62
   );
   vignette.addColorStop(0, "rgba(255,255,255,0)");
   vignette.addColorStop(0.68, "rgba(50,12,90,0.22)");
   vignette.addColorStop(1, "rgba(0,0,0,0.64)");
   ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, width, height);
 
   ctx.globalCompositeOperation = "source-over";
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  for (let index = 0; index < imageData.data.length; index += 4) {
-    const noise = random() * 18 - 9;
-    imageData.data[index] += noise;
-    imageData.data[index + 1] += noise;
-    imageData.data[index + 2] += noise;
-  }
-  ctx.putImageData(imageData, 0, 0);
+  ctx.putImageData(ctx.getImageData(0, 0, 8, height), width - 8, 0);
 
-  return new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
 }
 
 function seededRandom(seed: number) {
