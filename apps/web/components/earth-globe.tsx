@@ -703,7 +703,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           <h1>OpenClaw Atlas</h1>
           <div className="repo-count" aria-label={`${projects.length} repos indexed`}>
             <strong>{projects.length}</strong>
-            <span>repos mapped on the purple planet</span>
+            <span>repos mapped</span>
           </div>
         </div>
         <div className="earth-controls">
