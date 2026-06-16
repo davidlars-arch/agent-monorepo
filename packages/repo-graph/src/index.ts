@@ -42,6 +42,18 @@ export const repoNodes: RepoNode[] = [
     summary: "Dry-run-first Kraken spot trader experiment with guarded live-trading switches."
   },
   {
+    id: "crypto-tax",
+    label: "apps/crypto-tax-sweden",
+    shortLabel: "crypto-tax",
+    group: "apps",
+    kind: "app",
+    x: 57,
+    y: 28,
+    status: "scaffolded",
+    summary: "Sweden-first crypto tax calculator SaaS prototype for K4-style disposal review.",
+    featured: true
+  },
+  {
     id: "ui",
     label: "packages/ui",
     shortLabel: "ui",
@@ -114,6 +126,7 @@ export const repoNodes: RepoNode[] = [
 export const repoEdges: RepoEdge[] = [
   { from: "web", to: "ui" },
   { from: "web", to: "crypto-trader" },
+  { from: "web", to: "crypto-tax" },
   { from: "web", to: "repo-graph" },
   { from: "web", to: "unity-rpg" },
   { from: "web", to: "dbt" },

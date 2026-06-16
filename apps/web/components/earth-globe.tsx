@@ -28,6 +28,7 @@ type ProjectDetail = {
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
+  "crypto-tax": { lat: -8, lon: -34, color: "#14b8a6" },
   ui: { lat: 24, lon: 42, color: "#67e8f9" },
   "repo-graph": { lat: -12, lon: 116, color: "#facc15" },
   "unity-rpg": { lat: -42, lon: -66, color: "#fb7185" },
@@ -80,6 +81,14 @@ const projectDetails: Record<string, ProjectDetail> = {
     lastBuilt: "2026-06-16 workspace build",
     commit: "69bd8a3 · 2026-06-16",
     commitSummary: "Adds a guarded spot-trading POC with scan, dry tick, live tick, state, indicators, and Kraken API code."
+  },
+  "crypto-tax": {
+    eyebrow: "SaaS prototype",
+    title: "Sweden crypto tax workbench",
+    preview: "analytics",
+    lastBuilt: "2026-06-16 workspace build",
+    commit: "workspace draft",
+    commitSummary: "Adds a Sweden-first crypto tax calculator app with CSV import, average-cost tracking, and K4-style disposal summaries."
   },
   ui: {
     eyebrow: "Shared package",
