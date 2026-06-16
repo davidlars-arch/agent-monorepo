@@ -187,6 +187,8 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.userSelect = "none";
     container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);

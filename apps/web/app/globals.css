@@ -52,6 +52,9 @@ textarea {
 .earth-canvas {
   position: absolute;
   inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .earth-canvas::before,
@@ -110,6 +113,9 @@ textarea {
   opacity: 0;
   width: 100%;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   transition: opacity 220ms ease;
 }
 
