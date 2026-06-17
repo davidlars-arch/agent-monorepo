@@ -1122,6 +1122,17 @@ textarea {
   flex: 0 0 auto;
 }
 
+.loop-activity__row code {
+  flex: 0 0 auto;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 6px;
+  background: rgba(14, 165, 233, 0.1);
+  padding: 3px 6px;
+  color: rgba(186, 230, 253, 0.92);
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .loop-activity__event {
   align-items: flex-start;
   position: relative;
@@ -1496,7 +1507,7 @@ textarea {
 }
 
 .ticket-editor__timestamps {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   letter-spacing: 0;
   text-transform: none;
 }

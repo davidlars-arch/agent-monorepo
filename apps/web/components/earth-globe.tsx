@@ -124,6 +124,7 @@ type KanbanTicket = LoopKanbanTicket & {
   updatedAt: string;
   movedAt?: string;
   completedAt?: string;
+  completedCommit?: string;
 };
 
 type PlannerSubtask = {
@@ -518,6 +519,7 @@ function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
     updatedAt: now,
     movedAt: ticket.movedAt ?? now,
     completedAt,
+    completedCommit: ticket.status === "done" ? ticket.completedCommit : undefined,
     subtasks: ticket.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
       ...subtask,
       title: subtask.title.trim()
@@ -537,7 +539,8 @@ function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
     createdAt: ticket.createdAt ?? now,
     updatedAt: ticket.updatedAt ?? ticket.createdAt ?? now,
     movedAt: ticket.movedAt ?? ticket.updatedAt ?? ticket.createdAt ?? now,
-    completedAt: ticket.status === "done" ? ticket.completedAt ?? ticket.updatedAt ?? now : undefined
+    completedAt: ticket.status === "done" ? ticket.completedAt ?? ticket.updatedAt ?? now : undefined,
+    completedCommit: ticket.status === "done" ? ticket.completedCommit : undefined
   }));
 }
 
@@ -659,12 +662,14 @@ export function EarthGlobe({
   initialOpenProjectId,
   initialLoopOpen = false,
   usageStatus,
-  loopKanban
+  loopKanban,
+  currentCommit = "unknown"
 }: {
   initialOpenProjectId?: string;
   initialLoopOpen?: boolean;
   usageStatus?: UsageStatusSnapshot | null;
   loopKanban?: LoopKanbanProject[];
+  currentCommit?: string;
 }) {
   const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
   const initialProjectId = hasInitialProject && initialOpenProjectId ? initialOpenProjectId : "web";
@@ -1314,6 +1319,7 @@ export function EarthGlobe({
         <LoopOverview
           usageStatus={usageStatus}
           loopKanban={loopKanban ?? []}
+          currentCommit={currentCommit}
           showExplainer={isLoopExplainerOpen}
           onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
           onClose={() => setIsLoopPanelOpen(false)}
@@ -1462,12 +1468,14 @@ export function EarthGlobe({
 function LoopOverview({
   usageStatus,
   loopKanban,
+  currentCommit,
   showExplainer,
   onToggleExplainer,
   onClose
 }: {
   usageStatus?: UsageStatusSnapshot | null;
   loopKanban: LoopKanbanProject[];
+  currentCommit: string;
   showExplainer: boolean;
   onToggleExplainer: () => void;
   onClose: () => void;
@@ -1546,7 +1554,8 @@ function LoopOverview({
           status,
           updatedAt: now,
           movedAt: now,
-          completedAt: status === "done" ? now : undefined
+          completedAt: status === "done" ? now : undefined,
+          completedCommit: status === "done" ? currentCommit : undefined
         };
       })
     );
@@ -1576,10 +1585,17 @@ function LoopOverview({
             ? normalizedTicket.completedAt
             : normalizedTicket.updatedAt
           : undefined;
+      const completedCommit =
+        normalizedTicket.status === "done"
+          ? existingTicket?.status === "done"
+            ? normalizedTicket.completedCommit ?? currentCommit
+            : currentCommit
+          : undefined;
       const ticketToSave = {
         ...normalizedTicket,
         movedAt,
-        completedAt
+        completedAt,
+        completedCommit
       };
 
       const exists = Boolean(existingTicket);
@@ -1803,6 +1819,7 @@ function LoopOverview({
                       <span>{ticket.id}</span>
                       <p>{ticket.title}</p>
                       <time>{formatPlannerDateTime(ticket.completedAt)}</time>
+                      {ticket.completedCommit ? <code>{ticket.completedCommit}</code> : null}
                     </div>
                   ))
                 ) : (
@@ -1889,6 +1906,7 @@ function LoopOverview({
                           <span>Created {formatPlannerDate(ticket.createdAt)}</span>
                           <span>Moved {formatPlannerDate(ticket.movedAt)}</span>
                           {ticket.completedAt ? <span>Done {formatPlannerDate(ticket.completedAt)}</span> : null}
+                          {ticket.completedCommit ? <span>Commit {ticket.completedCommit}</span> : null}
                         </div>
                         {(ticket.tags ?? []).length > 0 ? (
                           <div className="loop-ticket__tags" aria-label={`${ticket.id} tags`}>
@@ -2159,6 +2177,11 @@ function TicketEditor({
               <CheckCircle2 size={13} />
               <span>Completed</span>
               <time>{formatPlannerDateTime(ticket.completedAt)}</time>
+            </div>
+            <div>
+              <GitCommitHorizontal size={13} />
+              <span>Commit</span>
+              <time>{ticket.completedCommit ?? "Not yet"}</time>
             </div>
           </section>
 
