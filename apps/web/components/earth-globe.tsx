@@ -1,7 +1,20 @@
 "use client";
 
 import { repoNodes } from "@agent/repo-graph";
-import { ExternalLink, Gamepad2, RotateCcw, X, ZoomOut } from "lucide-react";
+import {
+  CircleHelp,
+  ExternalLink,
+  FileText,
+  Gamepad2,
+  GitCommitHorizontal,
+  ListChecks,
+  Network,
+  RefreshCw,
+  RotateCcw,
+  Workflow,
+  X,
+  ZoomOut
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -34,6 +47,21 @@ type CameraMove = {
   durationMs: number;
   revealProjectId?: string;
   hasRevealedDetail: boolean;
+};
+
+type LoopSummary = {
+  id: string;
+  label: string;
+  cadence: string;
+  permission: string;
+  commit: string;
+  summary: string;
+  status: "ready" | "registered" | "blocked";
+};
+
+type LoopFile = {
+  path: string;
+  role: string;
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
@@ -151,6 +179,116 @@ const projectDetails: Record<string, ProjectDetail> = {
   }
 };
 
+const loopSummaries: LoopSummary[] = [
+  {
+    id: "project-controller",
+    label: "Project Controller",
+    cadence: "Runs due loops",
+    permission: "registry controlled",
+    commit: "c445d7d · chore: add project loop controller",
+    summary: "Adds the central registry, lock, local state, latest report, project selection, dry-run mode, and build-mode execution.",
+    status: "ready"
+  },
+  {
+    id: "repo-health",
+    label: "Repo Health",
+    cadence: "Every 24h",
+    permission: "build-local",
+    commit: "65ff02e · chore: organize project sphere workspace tooling",
+    summary: "Keeps the monorepo green with typecheck, lint, optional build, dirty-worktree detection, and TODO sampling.",
+    status: "ready"
+  },
+  {
+    id: "web-atlas",
+    label: "Web Atlas",
+    cadence: "Every 24h",
+    permission: "build-local-and-commit",
+    commit: "9b8cdc7 · chore: add web atlas loop",
+    summary: "Checks the Project Sphere web surface, repo graph metadata, shared UI package, and atlas surface files.",
+    status: "ready"
+  },
+  {
+    id: "crypto-tax-sweden",
+    label: "Crypto Tax Sweden",
+    cadence: "Every 72h",
+    permission: "build-local-and-commit",
+    commit: "c445d7d · registered in project controller",
+    summary: "Runs the tax app checks and queues focused work around CSV edge cases, review flow, exports, and evidence trails.",
+    status: "registered"
+  },
+  {
+    id: "crypto-trader-test",
+    label: "Crypto Trader Test",
+    cadence: "Every 72h",
+    permission: "dry-run-only-and-commit",
+    commit: "c445d7d · registered in project controller",
+    summary: "Runs safe trader checks and dry-run-only automation. Live trading is deliberately excluded from the loop.",
+    status: "registered"
+  },
+  {
+    id: "rpg-slice",
+    label: "RPG Slice",
+    cadence: "Every 72h",
+    permission: "build-local-and-commit",
+    commit: "c445d7d · registered in project controller",
+    summary: "Tracks the Unity/WebGL slice, browser mock parity, and original JRPG-style gameplay increments.",
+    status: "registered"
+  },
+  {
+    id: "analytics-dbt",
+    label: "Analytics dbt POC",
+    cadence: "Every 168h",
+    permission: "plan-until-dbt-installed",
+    commit: "c445d7d · registered in project controller",
+    summary: "Records the dbt analytics loop as blocked until dbt is available on PATH, then runs local DuckDB models.",
+    status: "blocked"
+  },
+  {
+    id: "workspace-memory",
+    label: "Workspace Maintenance",
+    cadence: "Every 168h",
+    permission: "internal-edits-only",
+    commit: "c445d7d · registered in project controller",
+    summary: "Keeps OpenClaw memory and heartbeat notes maintained without leaking private workspace context.",
+    status: "registered"
+  }
+];
+
+const loopFiles: LoopFile[] = [
+  {
+    path: "loops/project-controller/projects.json",
+    role: "Committed registry: project ids, cadence, permissions, commands, build commands, and next actions."
+  },
+  {
+    path: "loops/project-controller/LOOP.md",
+    role: "Human-readable controller contract: purpose, cadence, state files, and expansion points."
+  },
+  {
+    path: "loops/project-controller/PROMPT.md",
+    role: "Agent runbook for operating the controller and choosing the next build slice."
+  },
+  {
+    path: "loops/project-controller/state.json",
+    role: "Ignored local memory: last run time, status, command counts, and short run history."
+  },
+  {
+    path: "loops/project-controller/latest-report.md",
+    role: "Ignored latest report: selected projects, pass/block/fail state, and next controller action."
+  },
+  {
+    path: "loops/*/LOOP.md",
+    role: "Durable child-loop contract for one project area."
+  },
+  {
+    path: "loops/*/PROMPT.md",
+    role: "Agent prompt/runbook for executing that child loop safely."
+  },
+  {
+    path: "scripts/project-loop.mjs",
+    role: "Controller runner: lock, select due projects, execute commands, write state/report."
+  }
+];
+
 const getDefaultCameraPosition = () => {
   if (typeof window === "undefined") {
     return new THREE.Vector3(0, 0.35, 3.45);
@@ -186,6 +324,8 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   const [activeProjectId, setActiveProjectId] = useState(initialProjectId);
   const [detailProjectId, setDetailProjectId] = useState<string | null>(initialOpenProjectId ? initialProjectId : null);
   const [isRpgOpen, setIsRpgOpen] = useState(false);
+  const [isLoopPanelOpen, setIsLoopPanelOpen] = useState(false);
+  const [isLoopExplainerOpen, setIsLoopExplainerOpen] = useState(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   const projects = useMemo(
@@ -264,6 +404,21 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
   const openCryptoTrader = useCallback(() => {
     window.location.href = `${window.location.protocol}//${window.location.hostname}:3002/`;
   }, []);
+
+  useEffect(() => {
+    if (!isLoopPanelOpen) {
+      return;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsLoopPanelOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isLoopPanelOpen]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -715,6 +870,9 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
           </div>
         </div>
         <div className="earth-controls">
+          <button type="button" aria-label="Open loop overview" onClick={() => setIsLoopPanelOpen(true)}>
+            <RefreshCw size={18} />
+          </button>
           <button type="button" aria-label="Zoom out" onClick={() => zoomBy(0.34)}>
             <ZoomOut size={18} />
           </button>
@@ -789,6 +947,13 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
             ) : null}
           </div>
         </aside>
+      ) : null}
+      {isLoopPanelOpen ? (
+        <LoopOverview
+          showExplainer={isLoopExplainerOpen}
+          onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
+          onClose={() => setIsLoopPanelOpen(false)}
+        />
       ) : null}
       {isRpgOpen ? (
         <div className="rpg-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-overlay-title">
@@ -927,6 +1092,123 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
         }}
       />
     </main>
+  );
+}
+
+function LoopOverview({
+  showExplainer,
+  onToggleExplainer,
+  onClose
+}: {
+  showExplainer: boolean;
+  onToggleExplainer: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
+      <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
+      <section className="loop-panel">
+        <header className="loop-panel__header">
+          <div>
+            <p>Automation Loop Control</p>
+            <h2 id="loop-overview-title">
+              <RefreshCw size={19} />
+              Project loop overview
+            </h2>
+          </div>
+          <div className="loop-panel__actions">
+            <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
+              <CircleHelp size={16} />
+              {showExplainer ? "Loop list" : "How it works"}
+            </button>
+            <button type="button" className="loop-close-button" aria-label="Close loop overview" onClick={onClose}>
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="loop-panel__body">
+          <section className="loop-summary-grid" aria-label="Loop commit summaries">
+            {loopSummaries.map((loop) => (
+              <article key={loop.id} className={`loop-summary loop-summary--${loop.status}`}>
+                <div className="loop-summary__topline">
+                  <span>{loop.status}</span>
+                  <small>{loop.cadence}</small>
+                </div>
+                <h3>{loop.label}</h3>
+                <p>{loop.summary}</p>
+                <dl>
+                  <div>
+                    <dt>
+                      <GitCommitHorizontal size={13} />
+                      Latest commit
+                    </dt>
+                    <dd>{loop.commit}</dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <ListChecks size={13} />
+                      Permission
+                    </dt>
+                    <dd>{loop.permission}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </section>
+
+          {showExplainer ? (
+            <section className="loop-explainer" aria-label="Loop architecture overview">
+              <div className="loop-explainer__intro">
+                <p>
+                  The controller is the only part that decides what is due. Child loops stay small: they run checks,
+                  write a report, and hand back one next action. The point is repeatable movement without turning the
+                  repo into scheduled chaos.
+                </p>
+              </div>
+
+              <div className="loop-graph" aria-label="Architecture graph">
+                <div className="loop-node loop-node--source">
+                  <Workflow size={18} />
+                  <strong>project-loop.mjs</strong>
+                  <span>locks and selects due work</span>
+                </div>
+                <span className="loop-edge" />
+                <div className="loop-node">
+                  <Network size={18} />
+                  <strong>projects.json</strong>
+                  <span>registry, cadence, permissions</span>
+                </div>
+                <span className="loop-edge" />
+                <div className="loop-node">
+                  <RefreshCw size={18} />
+                  <strong>child loops</strong>
+                  <span>repo-health, web-atlas, project checks</span>
+                </div>
+                <span className="loop-edge" />
+                <div className="loop-node loop-node--output">
+                  <FileText size={18} />
+                  <strong>state + report</strong>
+                  <span>local memory and next action</span>
+                </div>
+              </div>
+
+              <div className="loop-file-map">
+                <h3>Markdown and state map</h3>
+                <div>
+                  {loopFiles.map((file) => (
+                    <article key={file.path}>
+                      <code>{file.path}</code>
+                      <p>{file.role}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
