@@ -210,6 +210,35 @@ function getAgentRunSuggestions(ticket: PlannerTicketDraft) {
   };
 }
 
+function formatRelativeUsageTime(timestamp: string | undefined, now: number) {
+  if (!timestamp) {
+    return "Updated unknown";
+  }
+
+  const recordedAt = new Date(timestamp).getTime();
+  if (!Number.isFinite(recordedAt)) {
+    return "Updated unknown";
+  }
+
+  const diffSeconds = Math.max(0, Math.floor((now - recordedAt) / 1000));
+  if (diffSeconds < 45) {
+    return "Updated just now";
+  }
+
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `Updated ${diffMinutes} min ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) {
+    return `Updated ${diffHours} hr ago`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  return `Updated ${diffDays} d ago`;
+}
+
 export function AtlasPlannerOverview({
   usageStatus,
   loopKanban,
@@ -225,7 +254,9 @@ export function AtlasPlannerOverview({
   onToggleExplainer: () => void;
   onClose: () => void;
 }) {
-  const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
+  const [latestUsageStatus, setLatestUsageStatus] = useState<UsageStatusSnapshot | null>(usageStatus ?? null);
+  const [usageClock, setUsageClock] = useState(() => Date.now());
+  const usageMetrics = latestUsageStatus ? getUsageMetrics(latestUsageStatus) : [];
   const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
@@ -240,7 +271,7 @@ export function AtlasPlannerOverview({
   const suppressTicketClickRef = useRef(false);
   const suppressTicketClickTimeoutRef = useRef<number | null>(null);
   const [plannerStateMessage, setPlannerStateMessage] = useState("");
-  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+  const kanbanColumns = getKanbanColumns(plannerTickets, latestUsageStatus);
   const completedTicketsInRange = plannerTickets.filter((ticket) =>
     isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
   );
@@ -293,6 +324,37 @@ export function AtlasPlannerOverview({
       if (suppressTicketClickTimeoutRef.current) {
         window.clearTimeout(suppressTicketClickTimeoutRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function refreshUsageStatus() {
+      try {
+        const response = await fetch("/api/usage-status", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const nextUsageStatus = (await response.json()) as UsageStatusSnapshot | null;
+        if (isMounted) {
+          setLatestUsageStatus(nextUsageStatus);
+          setUsageClock(Date.now());
+        }
+      } catch {
+        // Keep the latest known snapshot visible if the local status file is temporarily unavailable.
+      }
+    }
+
+    refreshUsageStatus();
+    const refreshInterval = window.setInterval(refreshUsageStatus, 60_000);
+    const clockInterval = window.setInterval(() => setUsageClock(Date.now()), 30_000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshInterval);
+      window.clearInterval(clockInterval);
     };
   }, []);
 
@@ -544,16 +606,17 @@ export function AtlasPlannerOverview({
                 <h3>Token runway</h3>
               </div>
             </div>
-            {usageStatus ? (
+            {latestUsageStatus ? (
               <>
                 <div className="usage-meta" aria-label="Usage snapshot metadata">
                   <div className="usage-snapshot">
                     <span>Model</span>
-                    <strong>{usageStatus.model}</strong>
+                    <strong>{latestUsageStatus.model}</strong>
                   </div>
                   <div className="usage-snapshot usage-snapshot--date">
-                    <span>Latest</span>
-                    <strong>{usageStatus.recordedAt}</strong>
+                    <span>Updated</span>
+                    <strong>{formatRelativeUsageTime(latestUsageStatus.recordedAt, usageClock)}</strong>
+                    <small>{formatPlannerDateTime(latestUsageStatus.recordedAt)}</small>
                   </div>
                 </div>
                 <div className="usage-dashboard">
@@ -595,7 +658,7 @@ export function AtlasPlannerOverview({
             ) : (
               <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
             )}
-            {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
+            {latestUsageStatus?.note ? <p className="loop-usage__note">{latestUsageStatus.note}</p> : null}
           </section>
 
           {isActivityDashboardOpen ? (
@@ -706,7 +769,7 @@ export function AtlasPlannerOverview({
                 <h3>Epics and tickets</h3>
               </div>
               <div className="loop-kanban__tools">
-                <span>{getWindowDecisionLabel(usageStatus)}</span>
+                <span>{getWindowDecisionLabel(latestUsageStatus)}</span>
                 <button type="button" onClick={() => setIsActivityDashboardOpen(true)}>
                   <CalendarDays size={14} />
                   Dashboard
