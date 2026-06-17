@@ -12,6 +12,7 @@ const registryPath = join(controllerDir, "projects.json");
 const statePath = join(controllerDir, "state.json");
 const reportPath = join(controllerDir, "latest-report.md");
 const lockPath = join(controllerDir, "LOCK");
+const usageStatusPath = join(root, "loops", "usage-status", "latest-status.json");
 const args = process.argv.slice(2);
 
 const flags = new Set(args.filter((arg) => arg.startsWith("--")));
@@ -24,6 +25,7 @@ const projectIds = valuesFor("--project");
 
 const registry = JSON.parse(await readFile(registryPath, "utf8"));
 const state = await readState();
+const usageStatus = await readUsageStatus();
 const now = new Date();
 
 if (listOnly) {
@@ -85,6 +87,14 @@ async function readState() {
   }
 }
 
+async function readUsageStatus() {
+  try {
+    return JSON.parse(await readFile(usageStatusPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 function selectProjects(projects, currentState, at) {
   if (projectIds.length > 0) {
     const found = projects.filter((project) => projectIds.includes(project.id));
@@ -125,12 +135,14 @@ function isDue(project, currentState, at) {
 async function runProject(project) {
   const commands = commandsFor(project);
   const startedAt = new Date();
+  const plannedTask = chooseTaskForWindow(project, usageStatus);
 
   if (dryRun) {
     return {
       id: project.id,
       label: project.label,
       status: "planned",
+      plannedTask,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       commands: commands.map((command) => ({ ...command, exitCode: null }))
@@ -153,6 +165,7 @@ async function runProject(project) {
     id: project.id,
     label: project.label,
     status: failed && !project.allowFailure ? "failed" : failed ? "blocked" : "passed",
+    plannedTask,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     commands: commandResults
@@ -205,7 +218,8 @@ function updateState(currentState, results, at) {
     next.projects[result.id] = {
       lastRunAt: result.finishedAt,
       lastStatus: result.status,
-      lastCommandCount: result.commands.length
+      lastCommandCount: result.commands.length,
+      lastPlannedTask: result.plannedTask
     };
   }
 
@@ -225,6 +239,7 @@ function renderReport({ now, selected, results }) {
 - **Run:** ${now.toISOString()}
 - **Mode:** ${runBuild ? "build" : "fast"}
 - **Dry run:** ${dryRun ? "yes" : "no"}
+- **Token window:** ${usageStatusSummary(usageStatus)}
 - **Selected projects:** ${selected.length === 0 ? "none" : selected.map((project) => `\`${project.id}\``).join(", ")}
 - **Status:** ${reportStatus(results)}
 
@@ -251,10 +266,126 @@ function renderProjectResult(result) {
 - Project: \`${result.id}\`
 - Status: ${result.status}
 - Permission: ${project?.permission ?? registry.defaults.permission}
+- Planned ticket: ${renderPlannedTask(result.plannedTask)}
 - Next action: ${project?.nextAction ?? "No next action recorded."}
 
 ${result.commands.map(renderCommandResult).join("\n")}
 `;
+}
+
+function chooseTaskForWindow(project, currentUsageStatus) {
+  const tickets = flattenTickets(project);
+  if (tickets.length === 0) {
+    return null;
+  }
+
+  const shortWindowLeft = parseFirstPercent(currentUsageStatus?.shortWindow);
+  const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
+  const activeTickets = tickets.filter((ticket) => ticket.status === "in-progress" || ticket.status === "review");
+  const backlogTickets = tickets.filter((ticket) => ticket.status === "backlog");
+  const activeFits = activeTickets.find((ticket) => ticket.estimate <= maxEstimate);
+
+  if (activeFits) {
+    return {
+      ...activeFits,
+      reason: `Continue active work because estimate ${activeFits.estimate} fits the current token window.`,
+      shortWindowLeft,
+      maxEstimate
+    };
+  }
+
+  const easiestBacklog = [...backlogTickets].sort((left, right) => left.estimate - right.estimate)[0];
+  if (easiestBacklog && activeTickets.length > 0) {
+    return {
+      ...easiestBacklog,
+      reason: `Active work is too large for this token window, so choose the smallest backlog ticket.`,
+      shortWindowLeft,
+      maxEstimate
+    };
+  }
+
+  const firstBacklogThatFits = backlogTickets.find((ticket) => ticket.estimate <= maxEstimate) ?? easiestBacklog;
+  if (firstBacklogThatFits) {
+    return {
+      ...firstBacklogThatFits,
+      reason:
+        firstBacklogThatFits.estimate <= maxEstimate
+          ? `Choose the first backlog ticket that fits the token window.`
+          : `No backlog ticket fits cleanly, so surface the smallest available ticket and avoid implementation sprawl.`,
+      shortWindowLeft,
+      maxEstimate
+    };
+  }
+
+  const fallbackTicket = tickets.find((ticket) => ticket.status !== "done") ?? tickets[0];
+  return {
+    ...fallbackTicket,
+    reason: "No actionable backlog ticket was available; review the board before starting work.",
+    shortWindowLeft,
+    maxEstimate
+  };
+}
+
+function flattenTickets(project) {
+  return (project.epics ?? []).flatMap((epic) =>
+    (epic.tickets ?? []).map((ticket) => ({
+      ...ticket,
+      epicId: epic.id,
+      epicLabel: epic.label,
+      projectId: project.id,
+      projectLabel: project.label
+    }))
+  );
+}
+
+function estimateBudgetForWindow(percentLeft) {
+  if (percentLeft === undefined) {
+    return 8;
+  }
+  if (percentLeft >= 70) {
+    return 21;
+  }
+  if (percentLeft >= 45) {
+    return 13;
+  }
+  if (percentLeft >= 25) {
+    return 8;
+  }
+  if (percentLeft >= 12) {
+    return 5;
+  }
+  return 3;
+}
+
+function parseFirstPercent(value) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const match = value.match(/(\d+(?:\.\d+)?)%/);
+  if (!match) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(Number.parseFloat(match[1]))));
+}
+
+function usageStatusSummary(currentUsageStatus) {
+  if (!currentUsageStatus) {
+    return "No usage snapshot available; defaulting to Fibonacci budget 8.";
+  }
+
+  const percentLeft = parseFirstPercent(currentUsageStatus.shortWindow);
+  const budget = estimateBudgetForWindow(percentLeft);
+  return `${currentUsageStatus.shortWindow} -> max ticket estimate ${budget}`;
+}
+
+function renderPlannedTask(task) {
+  if (!task) {
+    return "No ticket registered.";
+  }
+
+  return `\`${task.id}\` ${task.title} (${task.epicLabel}, ${task.estimate} pts, max ${task.maxEstimate}) - ${task.reason}`;
 }
 
 function renderCommandResult(command) {

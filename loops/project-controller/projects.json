@@ -13,6 +13,28 @@
       "cadenceHours": 24,
       "permission": "build-local",
       "nextAction": "Keep the monorepo green and separate dirty work before assigning agents.",
+      "epics": [
+        {
+          "id": "repo-safety",
+          "label": "Repo Safety",
+          "tickets": [
+            {
+              "id": "RH-1",
+              "title": "Separate dirty work before spawning agents",
+              "status": "in-progress",
+              "estimate": 3,
+              "summary": "Classify uncommitted work so loops do not trample active edits."
+            },
+            {
+              "id": "RH-2",
+              "title": "Keep health loop report actionable",
+              "status": "backlog",
+              "estimate": 5,
+              "summary": "Turn broad repo checks into one concrete next action per run."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "repo health", "cmd": "npm", "args": ["run", "loop:repo-health"] }
       ],
@@ -27,6 +49,35 @@
       "cadenceHours": 24,
       "permission": "build-local-and-commit",
       "nextAction": "Pick one small atlas improvement: graph truthfulness, responsive polish, route discovery, or project detail refinement.",
+      "epics": [
+        {
+          "id": "atlas-loop-control",
+          "label": "Loop Control",
+          "tickets": [
+            {
+              "id": "WA-1",
+              "title": "Show Kanban loop board in Atlas",
+              "status": "in-progress",
+              "estimate": 5,
+              "summary": "Expose epics, ticket state, and Fibonacci size in the loop popup."
+            },
+            {
+              "id": "WA-2",
+              "title": "Explain token-aware task selection",
+              "status": "backlog",
+              "estimate": 3,
+              "summary": "Make the loop picker logic visible without burying users in scheduler guts."
+            },
+            {
+              "id": "WA-3",
+              "title": "Persist board changes from UI",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Add a controlled editor for moving tickets between columns."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "web atlas", "cmd": "npm", "args": ["run", "loop:web-atlas"] }
       ],
@@ -41,6 +92,35 @@
       "cadenceHours": 72,
       "permission": "build-local-and-commit",
       "nextAction": "Build toward a real tax app: profile/password setup, CSV upload, public wallet/address imports, period transaction review, and clear Swedish tax assumptions. Message David when blocked.",
+      "epics": [
+        {
+          "id": "tax-workflow",
+          "label": "Tax Workflow",
+          "tickets": [
+            {
+              "id": "CT-1",
+              "title": "Add tax-year period review",
+              "status": "backlog",
+              "estimate": 5,
+              "summary": "Filter imported transactions and K4 rows by selected Swedish tax year."
+            },
+            {
+              "id": "CT-2",
+              "title": "Store local profile settings",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Persist profile name, base currency, and tax-year defaults locally."
+            },
+            {
+              "id": "CT-3",
+              "title": "Exchange CSV mapper presets",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Start Kraken/Coinbase import mapping instead of one generic CSV shape."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "crypto tax typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-tax-sweden"] },
         { "name": "crypto tax lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-tax-sweden"] }
@@ -56,6 +136,35 @@
       "cadenceHours": 72,
       "permission": "dry-run-only-and-commit",
       "nextAction": "Build a risk-managed paper-trading bot: low-cap bullish trend scanning, explainable entries/exits, backtest evidence, and later guarded Kraken key setup. Never run live trading; message David when blocked.",
+      "epics": [
+        {
+          "id": "paper-trading-evidence",
+          "label": "Paper Trading Evidence",
+          "tickets": [
+            {
+              "id": "TR-1",
+              "title": "Add candidate scoring explanation",
+              "status": "backlog",
+              "estimate": 5,
+              "summary": "Show why the scanner preferred a pair before a dry-run entry."
+            },
+            {
+              "id": "TR-2",
+              "title": "Backtest result snapshot",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Summarize recent simulated entries, exits, drawdown, and hit rate."
+            },
+            {
+              "id": "TR-3",
+              "title": "Guarded Kraken key onboarding",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Design the key setup path while keeping live trading disabled by default."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "crypto trader typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-trader-test"] },
         { "name": "crypto trader lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-trader-test"] },
@@ -72,6 +181,28 @@
       "cadenceHours": 72,
       "permission": "build-local-and-commit",
       "nextAction": "Keep the browser mock and Unity slice aligned, expand one original gameplay beat, or polish the WebGL mount.",
+      "epics": [
+        {
+          "id": "rpg-playable-slice",
+          "label": "Playable Slice",
+          "tickets": [
+            {
+              "id": "RP-1",
+              "title": "Add one aligned story beat",
+              "status": "review",
+              "estimate": 5,
+              "summary": "Keep the browser mock, Unity data, and design note in sync."
+            },
+            {
+              "id": "RP-2",
+              "title": "Polish WebGL load state",
+              "status": "backlog",
+              "estimate": 3,
+              "summary": "Make the Unity embed recover cleanly when the build is still loading."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "web typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/web"] },
         { "name": "web lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/web"] }
@@ -87,6 +218,28 @@
       "cadenceHours": 168,
       "permission": "plan-until-dbt-installed",
       "nextAction": "Install or expose dbt before running models; then seed and run local DuckDB analytics.",
+      "epics": [
+        {
+          "id": "analytics-unblock",
+          "label": "Analytics Unblock",
+          "tickets": [
+            {
+              "id": "AN-1",
+              "title": "Expose dbt on PATH",
+              "status": "backlog",
+              "estimate": 3,
+              "summary": "Make the local dbt command available so the loop can run models."
+            },
+            {
+              "id": "AN-2",
+              "title": "Run first DuckDB model report",
+              "status": "blocked",
+              "estimate": 5,
+              "summary": "Blocked until dbt is installed or discoverable."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "dbt availability", "cmd": "sh", "args": ["-lc", "command -v dbt >/dev/null"] }
       ],
@@ -99,6 +252,21 @@
       "cadenceHours": 168,
       "permission": "internal-edits-only",
       "nextAction": "Maintain memory and heartbeat notes when significant context changes; avoid leaking private context.",
+      "epics": [
+        {
+          "id": "memory-hygiene",
+          "label": "Memory Hygiene",
+          "tickets": [
+            {
+              "id": "WM-1",
+              "title": "Review recent daily notes",
+              "status": "backlog",
+              "estimate": 3,
+              "summary": "Distill durable lessons into MEMORY.md without leaking private context."
+            }
+          ]
+        }
+      ],
       "commands": [
         { "name": "workspace status", "cmd": "git", "args": ["-C", "/Users/david/.openclaw/workspace", "status", "--short", "--branch"] }
       ],

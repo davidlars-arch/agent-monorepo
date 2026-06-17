@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { EarthGlobe, type UsageStatusSnapshot } from "@/components/earth-globe";
+import { EarthGlobe, type LoopKanbanProject, type UsageStatusSnapshot } from "@/components/earth-globe";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +22,39 @@ async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
   }
 }
 
+async function readLoopKanban(): Promise<LoopKanbanProject[]> {
+  const candidates = [
+    join(process.cwd(), "loops/project-controller/projects.json"),
+    resolve(process.cwd(), "../..", "loops/project-controller/projects.json")
+  ];
+  const registryPath = candidates.find((candidate) => existsSync(candidate));
+  if (!registryPath) {
+    return [];
+  }
+
+  try {
+    const registry = JSON.parse(await readFile(registryPath, "utf8")) as { projects?: LoopKanbanProject[] };
+    return registry.projects ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function Home({
   searchParams
 }: {
   searchParams: Promise<{ open?: string }>;
 }) {
   const params = await searchParams;
+  const requestedOpen = Array.isArray(params.open) ? params.open[0] : params.open;
   const usageStatus = await readUsageStatus();
-  return <EarthGlobe initialOpenProjectId={params.open} usageStatus={usageStatus} />;
+  const loopKanban = await readLoopKanban();
+  return (
+    <EarthGlobe
+      initialOpenProjectId={requestedOpen}
+      initialLoopOpen={requestedOpen === "loops"}
+      usageStatus={usageStatus}
+      loopKanban={loopKanban}
+    />
+  );
 }

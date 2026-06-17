@@ -65,6 +65,29 @@ type LoopFile = {
   role: string;
 };
 
+export type LoopTicketStatus = "backlog" | "in-progress" | "review" | "done" | "blocked";
+
+export type LoopKanbanTicket = {
+  id: string;
+  title: string;
+  status: LoopTicketStatus;
+  estimate: number;
+  summary: string;
+};
+
+export type LoopKanbanEpic = {
+  id: string;
+  label: string;
+  tickets: LoopKanbanTicket[];
+};
+
+export type LoopKanbanProject = {
+  id: string;
+  label: string;
+  nextAction: string;
+  epics?: LoopKanbanEpic[];
+};
+
 export type UsageStatusSnapshot = {
   recordedAt: string;
   model: string;
@@ -81,6 +104,12 @@ type UsageMetric = {
   detail: string;
   percentLeft?: number;
   tone: "cyan" | "teal" | "violet" | "slate";
+};
+
+type KanbanTicket = LoopKanbanTicket & {
+  epicLabel: string;
+  projectLabel: string;
+  fitLabel: string;
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
@@ -358,6 +387,68 @@ function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
   ];
 }
 
+function getKanbanColumns(projects: LoopKanbanProject[], usageStatus?: UsageStatusSnapshot | null) {
+  const maxEstimate = estimateBudgetForWindow(usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null);
+  const tickets = projects.flatMap((project) =>
+    (project.epics ?? []).flatMap((epic) =>
+      epic.tickets.map((ticket) => ({
+        ...ticket,
+        epicLabel: epic.label,
+        projectLabel: project.label,
+        fitLabel: ticket.estimate <= maxEstimate ? `fits <= ${maxEstimate}` : `over ${maxEstimate}`
+      }))
+    )
+  );
+  const columns: Array<{ id: LoopTicketStatus; label: string; tickets: KanbanTicket[] }> = [
+    { id: "backlog", label: "Backlog", tickets: [] },
+    { id: "in-progress", label: "In progress", tickets: [] },
+    { id: "review", label: "Review", tickets: [] },
+    { id: "blocked", label: "Blocked", tickets: [] },
+    { id: "done", label: "Done", tickets: [] }
+  ];
+
+  for (const ticket of tickets) {
+    const column = columns.find((candidate) => candidate.id === ticket.status);
+    if (column) {
+      column.tickets.push(ticket);
+    }
+  }
+
+  for (const column of columns) {
+    column.tickets.sort((left, right) => left.estimate - right.estimate || left.id.localeCompare(right.id));
+  }
+
+  return columns.filter((column) => column.id !== "done" || column.tickets.length > 0);
+}
+
+function estimateBudgetForWindow(percentLeft: number | null) {
+  if (percentLeft === null) {
+    return 8;
+  }
+  if (percentLeft >= 70) {
+    return 21;
+  }
+  if (percentLeft >= 45) {
+    return 13;
+  }
+  if (percentLeft >= 25) {
+    return 8;
+  }
+  if (percentLeft >= 12) {
+    return 5;
+  }
+  return 3;
+}
+
+function getWindowDecisionLabel(usageStatus?: UsageStatusSnapshot | null) {
+  if (!usageStatus) {
+    return "No token snapshot: max 8";
+  }
+
+  const shortWindowLeft = parseFirstPercent(usageStatus.shortWindow);
+  return `Short window max: ${estimateBudgetForWindow(shortWindowLeft)} pts`;
+}
+
 const getDefaultCameraPosition = () => {
   if (typeof window === "undefined") {
     return new THREE.Vector3(0, 0.35, 3.45);
@@ -380,13 +471,17 @@ const getDefaultCameraPosition = () => {
 
 export function EarthGlobe({
   initialOpenProjectId,
-  usageStatus
+  initialLoopOpen = false,
+  usageStatus,
+  loopKanban
 }: {
   initialOpenProjectId?: string;
+  initialLoopOpen?: boolean;
   usageStatus?: UsageStatusSnapshot | null;
+  loopKanban?: LoopKanbanProject[];
 }) {
-  const initialProjectId =
-    initialOpenProjectId && projectLocations[initialOpenProjectId] ? initialOpenProjectId : "web";
+  const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
+  const initialProjectId = hasInitialProject && initialOpenProjectId ? initialOpenProjectId : "web";
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -397,9 +492,9 @@ export function EarthGlobe({
   const markerRefs = useRef(new Map<string, THREE.Mesh>());
   const hasRenderedFrameRef = useRef(false);
   const [activeProjectId, setActiveProjectId] = useState(initialProjectId);
-  const [detailProjectId, setDetailProjectId] = useState<string | null>(initialOpenProjectId ? initialProjectId : null);
+  const [detailProjectId, setDetailProjectId] = useState<string | null>(hasInitialProject ? initialProjectId : null);
   const [isRpgOpen, setIsRpgOpen] = useState(false);
-  const [isLoopPanelOpen, setIsLoopPanelOpen] = useState(false);
+  const [isLoopPanelOpen, setIsLoopPanelOpen] = useState(initialLoopOpen || initialOpenProjectId === "loops");
   const [isLoopExplainerOpen, setIsLoopExplainerOpen] = useState(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
@@ -1032,6 +1127,7 @@ export function EarthGlobe({
       {isLoopPanelOpen ? (
         <LoopOverview
           usageStatus={usageStatus}
+          loopKanban={loopKanban ?? []}
           showExplainer={isLoopExplainerOpen}
           onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
           onClose={() => setIsLoopPanelOpen(false)}
@@ -1179,16 +1275,19 @@ export function EarthGlobe({
 
 function LoopOverview({
   usageStatus,
+  loopKanban,
   showExplainer,
   onToggleExplainer,
   onClose
 }: {
   usageStatus?: UsageStatusSnapshot | null;
+  loopKanban: LoopKanbanProject[];
   showExplainer: boolean;
   onToggleExplainer: () => void;
   onClose: () => void;
 }) {
   const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
+  const kanbanColumns = getKanbanColumns(loopKanban, usageStatus);
 
   return (
     <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
@@ -1268,6 +1367,43 @@ function LoopOverview({
               <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
             )}
             {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
+          </section>
+
+          <section className="loop-kanban" aria-label="Token-aware loop Kanban">
+            <div className="loop-kanban__header">
+              <div>
+                <p>Token-aware board</p>
+                <h3>Epics and loop tickets</h3>
+              </div>
+              <span>{getWindowDecisionLabel(usageStatus)}</span>
+            </div>
+            <div className="loop-kanban__columns">
+              {kanbanColumns.map((column) => (
+                <article key={column.id} className="loop-kanban__column">
+                  <div className="loop-kanban__column-heading">
+                    <strong>{column.label}</strong>
+                    <span>{column.tickets.length}</span>
+                  </div>
+                  <div className="loop-kanban__cards">
+                    {column.tickets.map((ticket) => (
+                      <section key={ticket.id} className="loop-ticket">
+                        <div className="loop-ticket__topline">
+                          <span>{ticket.projectLabel}</span>
+                          <strong>{ticket.estimate}</strong>
+                        </div>
+                        <h4>{ticket.id}: {ticket.title}</h4>
+                        <p>{ticket.summary}</p>
+                        <div className="loop-ticket__meta">
+                          <span>{ticket.epicLabel}</span>
+                          <small>{ticket.fitLabel}</small>
+                        </div>
+                      </section>
+                    ))}
+                    {column.tickets.length === 0 ? <p className="loop-kanban__empty">No tickets here.</p> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
 
           <section className="loop-summary-grid" aria-label="Loop commit summaries">
