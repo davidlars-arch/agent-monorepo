@@ -901,7 +901,14 @@ textarea {
   letter-spacing: 0;
 }
 
-.loop-kanban__header > span {
+.loop-kanban__tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-kanban__tools > span {
   flex: 0 0 auto;
   border: 1px solid rgba(45, 212, 191, 0.34);
   border-radius: 999px;
@@ -910,6 +917,21 @@ textarea {
   color: rgba(204, 251, 241, 0.92);
   font-size: 11px;
   font-weight: 780;
+}
+
+.loop-kanban__tools button,
+.ticket-editor button {
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: white;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.loop-kanban__tools button {
+  min-height: 34px;
+  padding: 7px 11px;
 }
 
 .loop-kanban__columns {
@@ -963,10 +985,15 @@ textarea {
 .loop-ticket {
   display: grid;
   gap: 7px;
+  cursor: grab;
   border: 1px solid rgba(226, 232, 240, 0.13);
   border-radius: 8px;
   background: rgba(3, 7, 18, 0.68);
   padding: 10px;
+}
+
+.loop-ticket:active {
+  cursor: grabbing;
 }
 
 .loop-ticket__topline,
@@ -1022,6 +1049,174 @@ textarea {
   padding: 12px;
   color: rgba(226, 232, 240, 0.5);
   font-size: 12px;
+}
+
+.ticket-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.ticket-editor__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(2, 3, 10, 0.62);
+  backdrop-filter: blur(12px);
+}
+
+.ticket-editor__panel {
+  position: relative;
+  display: flex;
+  width: min(760px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(168, 85, 247, 0.22), transparent 0 38%),
+    linear-gradient(180deg, rgba(9, 14, 28, 0.98), rgba(2, 6, 23, 0.98));
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.72),
+    0 0 54px rgba(124, 58, 237, 0.18);
+  color: white;
+}
+
+.ticket-editor__header,
+.ticket-editor__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.12);
+  padding: 16px;
+}
+
+.ticket-editor__header p {
+  margin: 0;
+  color: rgba(125, 211, 252, 0.78);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ticket-editor__header h3 {
+  margin: 4px 0 0;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.ticket-editor__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  overflow: auto;
+  padding: 16px;
+}
+
+.ticket-editor label,
+.ticket-editor__subtasks {
+  display: grid;
+  gap: 7px;
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ticket-editor input,
+.ticket-editor textarea,
+.ticket-editor select {
+  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.72);
+  color: white;
+  font: inherit;
+  letter-spacing: 0;
+  outline: none;
+}
+
+.ticket-editor input,
+.ticket-editor select {
+  height: 40px;
+  padding: 0 10px;
+}
+
+.ticket-editor textarea {
+  min-height: 132px;
+  resize: vertical;
+  padding: 10px;
+}
+
+.ticket-editor__wide {
+  grid-column: 1 / -1;
+}
+
+.ticket-editor__subtasks > div:first-child,
+.ticket-editor__subtask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-editor__subtasks > div:first-child {
+  justify-content: space-between;
+}
+
+.ticket-editor__subtasks strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ticket-editor__subtasks p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ticket-editor__subtask input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.ticket-editor__subtask button,
+.ticket-editor__subtasks button {
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.ticket-editor__footer {
+  border-top: 1px solid rgba(226, 232, 240, 0.12);
+  border-bottom: 0;
+}
+
+.ticket-editor__footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.ticket-editor__footer button {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.ticket-editor__footer > div button:last-child {
+  border-color: rgba(45, 212, 191, 0.34);
+  background: rgba(20, 184, 166, 0.2);
 }
 
 @media (min-width: 900px) {
@@ -1199,7 +1394,7 @@ textarea {
     font-weight: 820;
   }
 
-  .loop-kanban__header > span {
+  .loop-kanban__tools > span {
     border-color: rgba(34, 211, 238, 0.28);
     background: rgba(34, 211, 238, 0.08);
     color: rgba(207, 250, 254, 0.9);
@@ -1207,7 +1402,7 @@ textarea {
 
   .loop-kanban__columns {
     min-height: 0;
-    grid-template-columns: repeat(4, minmax(250px, 1fr));
+    grid-template-columns: repeat(5, minmax(240px, 1fr));
     gap: 14px;
     overflow-x: auto;
   }
@@ -1710,7 +1905,11 @@ textarea {
     display: grid;
   }
 
-  .loop-kanban__header > span {
+  .loop-kanban__tools {
+    width: fit-content;
+  }
+
+  .loop-kanban__tools > span {
     width: fit-content;
   }
 

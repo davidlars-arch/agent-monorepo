@@ -15,7 +15,7 @@ import {
   X,
   ZoomOut
 } from "lucide-react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -107,10 +107,34 @@ type UsageMetric = {
 };
 
 type KanbanTicket = LoopKanbanTicket & {
+  projectId: string;
+  epicId: string;
   epicLabel: string;
   projectLabel: string;
   fitLabel: string;
+  description: string;
+  subtasks: PlannerSubtask[];
 };
+
+type PlannerSubtask = {
+  id: string;
+  title: string;
+  done: boolean;
+};
+
+type PlannerTicketDraft = Omit<KanbanTicket, "fitLabel"> & {
+  fitLabel?: string;
+};
+
+const plannerTicketStorageKey = "atlas-planner:tickets:v1";
+const fibonacciEstimates = [1, 2, 3, 5, 8, 13, 21];
+const ticketStatuses: Array<{ id: LoopTicketStatus; label: string }> = [
+  { id: "backlog", label: "Backlog" },
+  { id: "in-progress", label: "In progress" },
+  { id: "review", label: "Review" },
+  { id: "blocked", label: "Blocked" },
+  { id: "done", label: "Done" }
+];
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
@@ -387,18 +411,25 @@ function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
   ];
 }
 
-function getKanbanColumns(projects: LoopKanbanProject[], usageStatus?: UsageStatusSnapshot | null) {
-  const maxEstimate = estimateBudgetForWindow(usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null);
-  const tickets = projects.flatMap((project) =>
+function buildPlannerTickets(projects: LoopKanbanProject[]): KanbanTicket[] {
+  return projects.flatMap((project) =>
     (project.epics ?? []).flatMap((epic) =>
       epic.tickets.map((ticket) => ({
         ...ticket,
+        projectId: project.id,
+        epicId: epic.id,
         epicLabel: epic.label,
         projectLabel: project.label,
-        fitLabel: ticket.estimate <= maxEstimate ? `fits <= ${maxEstimate}` : `over ${maxEstimate}`
+        description: ticket.summary,
+        fitLabel: "",
+        subtasks: []
       }))
     )
   );
+}
+
+function getKanbanColumns(tickets: KanbanTicket[], usageStatus?: UsageStatusSnapshot | null) {
+  const maxEstimate = estimateBudgetForWindow(usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null);
   const columns: Array<{ id: LoopTicketStatus; label: string; tickets: KanbanTicket[] }> = [
     { id: "backlog", label: "Backlog", tickets: [] },
     { id: "in-progress", label: "In progress", tickets: [] },
@@ -410,7 +441,10 @@ function getKanbanColumns(projects: LoopKanbanProject[], usageStatus?: UsageStat
   for (const ticket of tickets) {
     const column = columns.find((candidate) => candidate.id === ticket.status);
     if (column) {
-      column.tickets.push(ticket);
+      column.tickets.push({
+        ...ticket,
+        fitLabel: ticket.estimate <= maxEstimate ? `fits <= ${maxEstimate}` : `over ${maxEstimate}`
+      });
     }
   }
 
@@ -418,7 +452,42 @@ function getKanbanColumns(projects: LoopKanbanProject[], usageStatus?: UsageStat
     column.tickets.sort((left, right) => left.estimate - right.estimate || left.id.localeCompare(right.id));
   }
 
-  return columns.filter((column) => column.id !== "done" || column.tickets.length > 0);
+  return columns;
+}
+
+function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDraft {
+  const project = projects[0] ?? { id: "atlas-planner", label: "Atlas Planner", epics: [] };
+  const epic = project.epics?.[0] ?? { id: "general", label: "General", tickets: [] };
+  const now = Date.now().toString(36).toUpperCase();
+
+  return {
+    id: `AP-${now}`,
+    title: "New ticket",
+    status: "backlog",
+    estimate: 3,
+    summary: "",
+    description: "",
+    projectId: project.id,
+    projectLabel: project.label,
+    epicId: epic.id,
+    epicLabel: epic.label,
+    subtasks: []
+  };
+}
+
+function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
+  return {
+    ...ticket,
+    id: ticket.id.trim() || `AP-${Date.now().toString(36).toUpperCase()}`,
+    title: ticket.title.trim() || "Untitled ticket",
+    summary: ticket.description.trim() || ticket.summary.trim() || "No description yet.",
+    description: ticket.description.trim() || ticket.summary.trim(),
+    fitLabel: ticket.fitLabel ?? "",
+    subtasks: ticket.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
+      ...subtask,
+      title: subtask.title.trim()
+    }))
+  };
 }
 
 function estimateBudgetForWindow(percentLeft: number | null) {
@@ -1287,7 +1356,118 @@ function LoopOverview({
   onClose: () => void;
 }) {
   const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
-  const kanbanColumns = getKanbanColumns(loopKanban, usageStatus);
+  const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
+  const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
+  const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
+  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(plannerTicketStorageKey);
+        setPlannerTickets(stored ? (JSON.parse(stored) as KanbanTicket[]) : buildPlannerTickets(loopKanban));
+      } catch {
+        setPlannerTickets(buildPlannerTickets(loopKanban));
+      } finally {
+        setHasLoadedPlannerState(true);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loopKanban]);
+
+  useEffect(() => {
+    if (!hasLoadedPlannerState || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(plannerTicketStorageKey, JSON.stringify(plannerTickets));
+  }, [hasLoadedPlannerState, plannerTickets]);
+
+  function moveTicket(ticketId: string, status: LoopTicketStatus) {
+    setPlannerTickets((current) =>
+      current.map((ticket) => (ticket.id === ticketId ? { ...ticket, status } : ticket))
+    );
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>, status: LoopTicketStatus) {
+    event.preventDefault();
+    const ticketId = event.dataTransfer.getData("text/plain");
+    if (ticketId) {
+      moveTicket(ticketId, status);
+    }
+  }
+
+  function saveEditingTicket() {
+    if (!editingTicket) {
+      return;
+    }
+
+    const normalizedTicket = normalizePlannerTicket(editingTicket);
+    setPlannerTickets((current) => {
+      const exists = current.some((ticket) => ticket.id === normalizedTicket.id);
+      if (exists) {
+        return current.map((ticket) => (ticket.id === normalizedTicket.id ? normalizedTicket : ticket));
+      }
+      return [normalizedTicket, ...current];
+    });
+    setEditingTicket(null);
+  }
+
+  function deleteEditingTicket() {
+    if (!editingTicket) {
+      return;
+    }
+
+    setPlannerTickets((current) => current.filter((ticket) => ticket.id !== editingTicket.id));
+    setEditingTicket(null);
+  }
+
+  function updateEditingTicket(update: Partial<PlannerTicketDraft>) {
+    setEditingTicket((current) => (current ? { ...current, ...update } : current));
+  }
+
+  function addSubtask() {
+    setEditingTicket((current) =>
+      current
+        ? {
+            ...current,
+            subtasks: [
+              ...current.subtasks,
+              { id: `sub-${Date.now().toString(36)}`, title: "", done: false }
+            ]
+          }
+        : current
+    );
+  }
+
+  function updateSubtask(subtaskId: string, update: Partial<PlannerSubtask>) {
+    setEditingTicket((current) =>
+      current
+        ? {
+            ...current,
+            subtasks: current.subtasks.map((subtask) =>
+              subtask.id === subtaskId ? { ...subtask, ...update } : subtask
+            )
+          }
+        : current
+    );
+  }
+
+  function removeSubtask(subtaskId: string) {
+    setEditingTicket((current) =>
+      current
+        ? {
+            ...current,
+            subtasks: current.subtasks.filter((subtask) => subtask.id !== subtaskId)
+          }
+        : current
+    );
+  }
 
   return (
     <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
@@ -1372,27 +1552,49 @@ function LoopOverview({
                 <p>Atlas Planner</p>
                 <h3>Epics and tickets</h3>
               </div>
-              <span>{getWindowDecisionLabel(usageStatus)}</span>
+              <div className="loop-kanban__tools">
+                <span>{getWindowDecisionLabel(usageStatus)}</span>
+                <button type="button" onClick={() => setEditingTicket(getDefaultPlannerTicket(loopKanban))}>
+                  New ticket
+                </button>
+              </div>
             </div>
             <div className="loop-kanban__columns">
               {kanbanColumns.map((column) => (
-                <article key={column.id} className="loop-kanban__column">
+                <article
+                  key={column.id}
+                  className="loop-kanban__column"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => handleDrop(event, column.id)}
+                >
                   <div className="loop-kanban__column-heading">
                     <strong>{column.label}</strong>
                     <span>{column.tickets.length}</span>
                   </div>
                   <div className="loop-kanban__cards">
                     {column.tickets.map((ticket) => (
-                      <section key={ticket.id} className="loop-ticket">
+                      <section
+                        key={ticket.id}
+                        className="loop-ticket"
+                        draggable
+                        onClick={() => setEditingTicket(ticket)}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData("text/plain", ticket.id);
+                          event.dataTransfer.effectAllowed = "move";
+                        }}
+                      >
                         <div className="loop-ticket__topline">
                           <span>{ticket.projectLabel}</span>
                           <strong>{ticket.estimate}</strong>
                         </div>
                         <h4>{ticket.id}: {ticket.title}</h4>
-                        <p>{ticket.summary}</p>
+                        <p>{ticket.description || ticket.summary}</p>
                         <div className="loop-ticket__meta">
                           <span>{ticket.epicLabel}</span>
-                          <small>{ticket.fitLabel}</small>
+                          <small>
+                            {ticket.subtasks.filter((subtask) => subtask.done).length}/{ticket.subtasks.length} tasks ·{" "}
+                            {ticket.fitLabel}
+                          </small>
                         </div>
                       </section>
                     ))}
@@ -1402,6 +1604,20 @@ function LoopOverview({
               ))}
             </div>
           </section>
+
+          {editingTicket ? (
+            <TicketEditor
+              ticket={editingTicket}
+              projects={loopKanban}
+              onChange={updateEditingTicket}
+              onSave={saveEditingTicket}
+              onDelete={deleteEditingTicket}
+              onClose={() => setEditingTicket(null)}
+              onAddSubtask={addSubtask}
+              onUpdateSubtask={updateSubtask}
+              onRemoveSubtask={removeSubtask}
+            />
+          ) : null}
 
           <section className="loop-summary-grid" aria-label="Loop commit summaries">
             {loopSummaries.map((loop) => (
@@ -1482,6 +1698,179 @@ function LoopOverview({
             </section>
           ) : null}
         </div>
+      </section>
+    </div>
+  );
+}
+
+function TicketEditor({
+  ticket,
+  projects,
+  onChange,
+  onSave,
+  onDelete,
+  onClose,
+  onAddSubtask,
+  onUpdateSubtask,
+  onRemoveSubtask
+}: {
+  ticket: PlannerTicketDraft;
+  projects: LoopKanbanProject[];
+  onChange: (update: Partial<PlannerTicketDraft>) => void;
+  onSave: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+  onAddSubtask: () => void;
+  onUpdateSubtask: (subtaskId: string, update: Partial<PlannerSubtask>) => void;
+  onRemoveSubtask: (subtaskId: string) => void;
+}) {
+  const selectedProject = projects.find((project) => project.id === ticket.projectId) ?? projects[0];
+  const selectedEpic =
+    selectedProject?.epics?.find((epic) => epic.id === ticket.epicId) ?? selectedProject?.epics?.[0];
+
+  function updateProject(projectId: string) {
+    const project = projects.find((candidate) => candidate.id === projectId);
+    const epic = project?.epics?.[0];
+    if (!project) {
+      return;
+    }
+
+    onChange({
+      projectId: project.id,
+      projectLabel: project.label,
+      epicId: epic?.id ?? "general",
+      epicLabel: epic?.label ?? "General"
+    });
+  }
+
+  function updateEpic(epicId: string) {
+    const epic = selectedProject?.epics?.find((candidate) => candidate.id === epicId);
+    if (!epic) {
+      onChange({ epicId: "custom", epicLabel: epicId || "General" });
+      return;
+    }
+
+    onChange({ epicId: epic.id, epicLabel: epic.label });
+  }
+
+  return (
+    <div className="ticket-editor" role="dialog" aria-modal="true" aria-labelledby="ticket-editor-title">
+      <button type="button" className="ticket-editor__scrim" aria-label="Close ticket editor" onClick={onClose} />
+      <section className="ticket-editor__panel">
+        <header className="ticket-editor__header">
+          <div>
+            <p>{ticket.status}</p>
+            <h3 id="ticket-editor-title">{ticket.id}</h3>
+          </div>
+          <button type="button" className="loop-close-button" aria-label="Close ticket editor" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="ticket-editor__body">
+          <label>
+            Ticket id
+            <input value={ticket.id} onChange={(event) => onChange({ id: event.target.value })} />
+          </label>
+          <label>
+            Title
+            <input value={ticket.title} onChange={(event) => onChange({ title: event.target.value })} />
+          </label>
+          <label className="ticket-editor__wide">
+            Description
+            <textarea value={ticket.description} onChange={(event) => onChange({ description: event.target.value })} />
+          </label>
+
+          <label>
+            Status
+            <select
+              value={ticket.status}
+              onChange={(event) => onChange({ status: event.target.value as LoopTicketStatus })}
+            >
+              {ticketStatuses.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Estimate
+            <select value={ticket.estimate} onChange={(event) => onChange({ estimate: Number(event.target.value) })}>
+              {fibonacciEstimates.map((estimate) => (
+                <option key={estimate} value={estimate}>
+                  {estimate}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Project
+            <select value={ticket.projectId} onChange={(event) => updateProject(event.target.value)}>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Epic
+            <select value={selectedEpic?.id ?? ticket.epicId} onChange={(event) => updateEpic(event.target.value)}>
+              {(selectedProject?.epics ?? []).map((epic) => (
+                <option key={epic.id} value={epic.id}>
+                  {epic.label}
+                </option>
+              ))}
+              {selectedEpic ? null : <option value={ticket.epicId}>{ticket.epicLabel}</option>}
+            </select>
+          </label>
+
+          <section className="ticket-editor__subtasks ticket-editor__wide">
+            <div>
+              <strong>Subtasks</strong>
+              <button type="button" onClick={onAddSubtask}>
+                Add subtask
+              </button>
+            </div>
+            {ticket.subtasks.map((subtask) => (
+              <div key={subtask.id} className="ticket-editor__subtask">
+                <input
+                  type="checkbox"
+                  checked={subtask.done}
+                  onChange={(event) => onUpdateSubtask(subtask.id, { done: event.target.checked })}
+                  aria-label={`Mark ${subtask.title || "subtask"} done`}
+                />
+                <input
+                  value={subtask.title}
+                  placeholder="Subtask"
+                  onChange={(event) => onUpdateSubtask(subtask.id, { title: event.target.value })}
+                />
+                <button type="button" onClick={() => onRemoveSubtask(subtask.id)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            {ticket.subtasks.length === 0 ? <p>No subtasks yet.</p> : null}
+          </section>
+        </div>
+
+        <footer className="ticket-editor__footer">
+          <button type="button" onClick={onDelete}>
+            Delete
+          </button>
+          <div>
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" onClick={onSave}>
+              Save ticket
+            </button>
+          </div>
+        </footer>
       </section>
     </div>
   );
