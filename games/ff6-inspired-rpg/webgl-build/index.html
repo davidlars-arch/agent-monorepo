@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | unity-project</title>
+    <title>Astral Rift</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
   <script src="TemplateData/profiler.js"></script>
@@ -21,10 +21,14 @@
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
         <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">unity-project</div>
+        <div id="unity-build-title">Astral Rift</div>
       </div>
     </div>
     <script>
+      var isEmbedded = new URLSearchParams(window.location.search).get("embed") === "1";
+      if (isEmbedded) {
+        document.body.classList.add("embedded");
+      }
       var canvas = document.querySelector("#unity-canvas");
 
       // Shows a temporary message banner/ribbon for a few seconds, or
@@ -60,8 +64,8 @@
         frameworkUrl: buildUrl + "/webgl-build.framework.js",
         codeUrl: buildUrl + "/webgl-build.wasm",
         streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "unity-project",
+        companyName: "OpenClaw",
+        productName: "Astral Rift",
         productVersion: "1.0",
         showBanner: unityShowBanner,
         // errorHandler: function(err, url, line) {
@@ -105,8 +109,8 @@
 
       } else {
         // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "960px";
-        canvas.style.height = "600px";
+        canvas.style.width = isEmbedded ? "100%" : "960px";
+        canvas.style.height = isEmbedded ? "100%" : "600px";
       }
 
       document.querySelector("#unity-loading-bar").style.display = "block";

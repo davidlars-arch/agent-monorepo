@@ -1,5 +1,60 @@
-import { AgentTerminal } from "@/components/agent-terminal";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { EarthGlobe, type LoopKanbanProject, type UsageStatusSnapshot } from "@/components/earth-globe";
 
-export default function Home() {
-  return <AgentTerminal />;
+export const dynamic = "force-dynamic";
+
+async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
+  const candidates = [
+    join(process.cwd(), "loops/usage-status/latest-status.json"),
+    resolve(process.cwd(), "../..", "loops/usage-status/latest-status.json")
+  ];
+  const statusPath = candidates.find((candidate) => existsSync(candidate));
+  if (!statusPath) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await readFile(statusPath, "utf8")) as UsageStatusSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+async function readLoopKanban(): Promise<LoopKanbanProject[]> {
+  const candidates = [
+    join(process.cwd(), "loops/project-controller/projects.json"),
+    resolve(process.cwd(), "../..", "loops/project-controller/projects.json")
+  ];
+  const registryPath = candidates.find((candidate) => existsSync(candidate));
+  if (!registryPath) {
+    return [];
+  }
+
+  try {
+    const registry = JSON.parse(await readFile(registryPath, "utf8")) as { projects?: LoopKanbanProject[] };
+    return registry.projects ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export default async function Home({
+  searchParams
+}: {
+  searchParams: Promise<{ open?: string }>;
+}) {
+  const params = await searchParams;
+  const requestedOpen = Array.isArray(params.open) ? params.open[0] : params.open;
+  const usageStatus = await readUsageStatus();
+  const loopKanban = await readLoopKanban();
+  return (
+    <EarthGlobe
+      initialOpenProjectId={requestedOpen}
+      initialLoopOpen={requestedOpen === "loops"}
+      usageStatus={usageStatus}
+      loopKanban={loopKanban}
+    />
+  );
 }

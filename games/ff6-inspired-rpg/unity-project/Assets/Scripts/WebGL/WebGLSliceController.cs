@@ -8,6 +8,7 @@ namespace AstralRift.WebGL
         {
             Title,
             Room,
+            StarMap,
             Dialogue,
             Battle,
             Victory
@@ -48,7 +49,10 @@ namespace AstralRift.WebGL
                     DrawCentered("UNITY WEBGL", "FF6-inspired RPG", "A tiny original JRPG slice running from Unity.", "Start", StartGame);
                     break;
                 case Stage.Room:
-                    DrawCentered("OBSERVATORY ROOM", "Aster", "The floor hums under a broken star map. Mira waits beside the engine hatch.", "Talk to Mira", () => stage = Stage.Dialogue);
+                    DrawCentered("OBSERVATORY ROOM", "Aster", "The floor hums under a fractured star map. Mira waits beside the engine hatch as brass footsteps tick below.", "Read Star Map", () => stage = Stage.StarMap);
+                    break;
+                case Stage.StarMap:
+                    DrawCentered("STAR MAP", "The missing star blinks twice.", "Aster marks the impossible point before the engine answers with three iron knocks from below.", "Call Mira", () => stage = Stage.Dialogue);
                     break;
                 case Stage.Dialogue:
                     DrawCentered("MIRA", MiraLines[lineIndex], "Dialogue is now flowing through the Unity runtime.", lineIndex >= MiraLines.Length - 1 ? "Enter Battle" : "Continue", ContinueDialogue);

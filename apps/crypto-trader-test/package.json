@@ -1,0 +1,33 @@
+{
+  "name": "@agent/crypto-trader-test",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dry-run-first Kraken spot trader experiment for small USDT mean-reversion tests.",
+  "scripts": {
+    "build": "tsc -p tsconfig.cli.json && next build",
+    "build:cli": "tsc -p tsconfig.cli.json",
+    "dev": "next dev",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.cli.json && tsc --noEmit -p tsconfig.json",
+    "scan": "npm run build:cli && node dist/index.js scan",
+    "tick:dry": "npm run build:cli && node dist/index.js tick --dry-run",
+    "tick:live": "npm run build:cli && node dist/index.js tick --live"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/node": "^22.19.21",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.9",
+    "typescript": "^5.9.3"
+  }
+}
