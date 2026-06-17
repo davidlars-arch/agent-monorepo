@@ -6,6 +6,7 @@ Goal: one original 16-bit JRPG-inspired loop running in WebGL.
 
 - Title screen
 - One interior scene
+- One inspectable room beat
 - One NPC dialogue
 - One scripted battle
 - One spell
@@ -20,6 +21,12 @@ Goal: one original 16-bit JRPG-inspired loop running in WebGL.
 - Enemy: Clockwork Imp
 - Spell: Spark
 - Location: Observatory Room
+
+## Current Exploration Beat
+
+- Aster reads the fractured star map before calling Mira.
+- The missing star blinks twice, then the engine answers with three iron knocks from below.
+- This beat should stay mirrored between the browser mock and Unity WebGL controller.
 
 ## Current Combat Beat
 

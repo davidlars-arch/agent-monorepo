@@ -4,7 +4,7 @@ import { Shield, Sparkles, Swords, Zap } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 
-type SliceStage = "title" | "room" | "dialogue" | "battle" | "victory" | "defeat";
+type SliceStage = "title" | "room" | "star-map" | "dialogue" | "battle" | "victory" | "defeat";
 type EnemyIntent = "scratch" | "overwind";
 
 const heroMaxHp = 42;
@@ -36,6 +36,8 @@ export function RpgSliceMock() {
         return "Title";
       case "room":
         return "Observatory Room";
+      case "star-map":
+        return "Star Map";
       case "dialogue":
         return "Mira";
       case "battle":
@@ -171,7 +173,17 @@ export function RpgSliceMock() {
           kicker="Observatory Room"
           title="Aster"
           body="The floor hums under a fractured star map. Mira waits beside the engine hatch as brass footsteps tick below."
-          actionLabel="Talk to Mira"
+          actionLabel="Read Star Map"
+          onAction={() => setStage("star-map")}
+        />
+      ) : null}
+
+      {stage === "star-map" ? (
+        <CenteredScene
+          kicker="Star Map"
+          title="The missing star blinks twice."
+          body="Aster marks the impossible point before the engine answers with three iron knocks from below."
+          actionLabel="Call Mira"
           onAction={() => setStage("dialogue")}
         />
       ) : null}

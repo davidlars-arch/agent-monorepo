@@ -9,6 +9,12 @@
     "defense": 4,
     "spells": ["spark"]
   },
+  "roomBeat": {
+    "id": "star_map",
+    "name": "Fractured Star Map",
+    "title": "The missing star blinks twice.",
+    "description": "Aster marks the impossible point before the engine answers with three iron knocks from below."
+  },
   "npc": {
     "id": "mira",
     "name": "Mira",
