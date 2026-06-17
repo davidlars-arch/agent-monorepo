@@ -522,6 +522,75 @@ textarea {
   padding: 16px;
 }
 
+.loop-usage {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(15, 23, 42, 0.48)),
+    rgba(2, 6, 23, 0.62);
+  padding: 13px;
+}
+
+.loop-usage__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-usage__heading svg {
+  color: #2dd4bf;
+}
+
+.loop-usage h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.loop-usage dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+
+.loop-usage div {
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.48);
+  padding: 9px;
+}
+
+.loop-usage dt {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.loop-usage dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.loop-usage p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.74);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.loop-usage__note {
+  color: rgba(251, 191, 36, 0.82) !important;
+}
+
 .loop-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -930,6 +999,7 @@ textarea {
   }
 
   .loop-summary-grid,
+  .loop-usage dl,
   .loop-file-map > div {
     grid-template-columns: 1fr;
   }

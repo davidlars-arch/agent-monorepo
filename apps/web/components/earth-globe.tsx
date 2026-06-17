@@ -64,6 +64,16 @@ type LoopFile = {
   role: string;
 };
 
+export type UsageStatusSnapshot = {
+  recordedAt: string;
+  model: string;
+  context: string;
+  currentTokens: string;
+  shortWindow: string;
+  weekly: string;
+  note?: string;
+};
+
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
@@ -309,7 +319,13 @@ const getDefaultCameraPosition = () => {
   return new THREE.Vector3(0, 0.35, 3.45);
 };
 
-export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: string }) {
+export function EarthGlobe({
+  initialOpenProjectId,
+  usageStatus
+}: {
+  initialOpenProjectId?: string;
+  usageStatus?: UsageStatusSnapshot | null;
+}) {
   const initialProjectId =
     initialOpenProjectId && projectLocations[initialOpenProjectId] ? initialOpenProjectId : "web";
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -950,6 +966,7 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
       ) : null}
       {isLoopPanelOpen ? (
         <LoopOverview
+          usageStatus={usageStatus}
           showExplainer={isLoopExplainerOpen}
           onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
           onClose={() => setIsLoopPanelOpen(false)}
@@ -1096,10 +1113,12 @@ export function EarthGlobe({ initialOpenProjectId }: { initialOpenProjectId?: st
 }
 
 function LoopOverview({
+  usageStatus,
   showExplainer,
   onToggleExplainer,
   onClose
 }: {
+  usageStatus?: UsageStatusSnapshot | null;
   showExplainer: boolean;
   onToggleExplainer: () => void;
   onClose: () => void;
@@ -1128,6 +1147,44 @@ function LoopOverview({
         </header>
 
         <div className="loop-panel__body">
+          <section className="loop-usage" aria-label="Latest usage status">
+            <div className="loop-usage__heading">
+              <ListChecks size={16} />
+              <h3>Latest token status</h3>
+            </div>
+            {usageStatus ? (
+              <dl>
+                <div>
+                  <dt>Timestamp</dt>
+                  <dd>{usageStatus.recordedAt}</dd>
+                </div>
+                <div>
+                  <dt>Model</dt>
+                  <dd>{usageStatus.model}</dd>
+                </div>
+                <div>
+                  <dt>Context</dt>
+                  <dd>{usageStatus.context}</dd>
+                </div>
+                <div>
+                  <dt>Current tokens</dt>
+                  <dd>{usageStatus.currentTokens}</dd>
+                </div>
+                <div>
+                  <dt>Short window</dt>
+                  <dd>{usageStatus.shortWindow}</dd>
+                </div>
+                <div>
+                  <dt>Weekly</dt>
+                  <dd>{usageStatus.weekly}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
+            )}
+            {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
+          </section>
+
           <section className="loop-summary-grid" aria-label="Loop commit summaries">
             {loopSummaries.map((loop) => (
               <article key={loop.id} className={`loop-summary loop-summary--${loop.status}`}>

@@ -16,6 +16,7 @@ logs
 loops/**/STATE.md
 loops/**/latest-report.md
 loops/**/state.json
+loops/**/latest-status.json
 loops/**/LOCK
 
 # Unity generated local state
