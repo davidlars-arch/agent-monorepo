@@ -1,0 +1,6 @@
+{
+  "name": "@agent/atlas-planner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Token-aware agent work planner and Atlas landmark."
+}

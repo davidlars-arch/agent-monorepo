@@ -151,6 +151,7 @@ const ticketStatuses: Array<{ id: LoopTicketStatus; label: string }> = [
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
+  "atlas-planner": { lat: 19, lon: -44, color: "#f0abfc" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
   "crypto-tax": { lat: -8, lon: -34, color: "#14b8a6" },
   ui: { lat: 24, lon: 42, color: "#67e8f9" },
@@ -197,6 +198,14 @@ const projectDetails: Record<string, ProjectDetail> = {
     lastBuilt: "2026-06-16 workspace build",
     commit: "52394b5 · 2026-06-15",
     commitSummary: "Initial scaffold with the web app, shared packages, Unity slot, analytics POC, and docs."
+  },
+  "atlas-planner": {
+    eyebrow: "Agent planning app",
+    title: "Atlas Planner",
+    preview: "web",
+    lastBuilt: "2026-06-17 planner build",
+    commit: "b6517f6 · completion commits",
+    commitSummary: "Token-aware Jira competitor with Kanban, lifecycle timestamps, completion commits, and activity dashboard."
   },
   "crypto-trader": {
     eyebrow: "Trading experiment",
@@ -1300,6 +1309,12 @@ export function EarthGlobe({
                 Open RPG
               </button>
             ) : null}
+            {activeProject.id === "atlas-planner" ? (
+              <button type="button" className="project-popover__action" onClick={() => setIsLoopPanelOpen(true)}>
+                <Workflow size={16} />
+                Open planner
+              </button>
+            ) : null}
             {activeProject.id === "crypto-tax" ? (
               <button type="button" className="project-popover__action" onClick={openCryptoTax}>
                 <ExternalLink size={16} />
@@ -1430,6 +1445,14 @@ export function EarthGlobe({
         link.className = "project-popover__action";
         link.href = "/unity-rpg";
         link.textContent = "Open RPG";
+        body.append(link);
+      }
+
+      if (project.id === "atlas-planner") {
+        const link = document.createElement("a");
+        link.className = "project-popover__action";
+        link.href = "/?open=loops";
+        link.textContent = "Open planner";
         body.append(link);
       }
 
