@@ -477,10 +477,10 @@ textarea {
   align-items: center;
   gap: 9px;
   margin: 6px 0 0;
-  font-size: clamp(20px, 3vw, 30px);
-  font-weight: 780;
+  font-size: clamp(24px, 4vw, 38px);
+  font-weight: 820;
   letter-spacing: 0;
-  line-height: 1.05;
+  line-height: 0.98;
 }
 
 .loop-panel__actions {
@@ -530,12 +530,12 @@ textarea {
 
 .loop-usage {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 16px;
-  border: 1px solid rgba(45, 212, 191, 0.38);
+  border: 1px solid rgba(125, 211, 252, 0.2);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.2), rgba(59, 130, 246, 0.08) 48%, rgba(15, 23, 42, 0.72)),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(88, 28, 135, 0.18) 52%, rgba(2, 6, 23, 0.78)),
     rgba(2, 6, 23, 0.78);
   padding: 14px;
   box-shadow:
@@ -578,16 +578,23 @@ textarea {
   line-height: 1.1;
 }
 
+.usage-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .usage-snapshot {
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
   align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(226, 232, 240, 0.12);
+  gap: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
   border-radius: 999px;
-  background: rgba(2, 6, 23, 0.62);
-  padding: 7px 10px;
+  background: rgba(2, 6, 23, 0.48);
+  padding: 7px 11px;
 }
 
 .usage-snapshot span {
@@ -600,12 +607,16 @@ textarea {
 
 .usage-snapshot strong {
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 12px;
   font-weight: 760;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.usage-snapshot--date strong {
+  color: rgba(204, 251, 241, 0.92);
 }
 
 .usage-dashboard {
@@ -617,20 +628,19 @@ textarea {
 .usage-card {
   position: relative;
   display: grid;
-  min-height: 172px;
+  min-height: 150px;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   overflow: hidden;
-  border: 1px solid rgba(226, 232, 240, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.12);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 84% 16%, rgba(255, 255, 255, 0.12), transparent 0 26%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.72)),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(3, 7, 18, 0.74)),
     rgba(2, 6, 23, 0.72);
-  padding: 13px;
+  padding: 12px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 14px 28px rgba(0, 0, 0, 0.2);
+    0 12px 24px rgba(0, 0, 0, 0.18);
 }
 
 .usage-card--cyan {
@@ -712,13 +722,13 @@ textarea {
 .usage-ring {
   --usage-percent: 0%;
   display: grid;
-  width: 78px;
-  height: 78px;
+  width: 66px;
+  height: 66px;
   place-items: center;
   justify-self: center;
   border-radius: 999px;
   background:
-    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    radial-gradient(circle closest-side, #06111f 70%, transparent 72% 100%),
     conic-gradient(#22d3ee var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
   box-shadow:
     0 0 0 1px rgba(226, 232, 240, 0.08),
@@ -727,19 +737,19 @@ textarea {
 
 .usage-card--teal .usage-ring {
   background:
-    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    radial-gradient(circle closest-side, #06111f 70%, transparent 72% 100%),
     conic-gradient(#2dd4bf var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
 }
 
 .usage-card--violet .usage-ring {
   background:
-    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    radial-gradient(circle closest-side, #06111f 70%, transparent 72% 100%),
     conic-gradient(#a78bfa var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
 }
 
 .usage-ring span {
   color: white;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 820;
   letter-spacing: 0;
 }
@@ -1249,13 +1259,13 @@ textarea {
   }
 
   .loop-panel__header {
-    min-height: 154px;
+    min-height: 118px;
     align-items: flex-start;
     border-bottom-color: rgba(168, 85, 247, 0.22);
     background:
-      linear-gradient(100deg, rgba(15, 23, 42, 0.52), rgba(88, 28, 135, 0.24), rgba(8, 13, 30, 0.16)),
+      linear-gradient(100deg, rgba(15, 23, 42, 0.44), rgba(88, 28, 135, 0.18), rgba(8, 13, 30, 0.16)),
       rgba(3, 7, 18, 0.2);
-    padding: 28px 32px 22px;
+    padding: 24px 30px 20px;
   }
 
   .loop-panel__header p {
@@ -1265,14 +1275,14 @@ textarea {
   }
 
   .loop-panel__header h2 {
-    margin-top: 8px;
+    margin-top: 7px;
     color: rgba(255, 255, 255, 0.98);
-    font-size: clamp(56px, 7.2vw, 94px);
-    font-weight: 850;
-    line-height: 0.84;
+    font-size: clamp(42px, 4.8vw, 68px);
+    font-weight: 840;
+    line-height: 0.92;
     text-shadow:
-      0 0 24px rgba(168, 85, 247, 0.34),
-      0 0 54px rgba(34, 211, 238, 0.12);
+      0 0 22px rgba(168, 85, 247, 0.22),
+      0 0 42px rgba(34, 211, 238, 0.1);
   }
 
   .loop-help-button,
@@ -1284,21 +1294,21 @@ textarea {
   .loop-panel__body {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 18px;
+    gap: 16px;
     overflow: hidden;
-    padding: 18px 22px 22px;
+    padding: 16px 22px 22px;
   }
 
   .loop-usage {
-    grid-template-columns: minmax(170px, 0.7fr) auto minmax(0, 3fr);
+    grid-template-columns: minmax(150px, 0.58fr) minmax(280px, 0.95fr) minmax(0, 3.4fr);
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     margin: 0;
     border-color: rgba(125, 211, 252, 0.2);
     background:
-      linear-gradient(120deg, rgba(15, 23, 42, 0.76), rgba(88, 28, 135, 0.18), rgba(6, 13, 29, 0.84)),
+      linear-gradient(120deg, rgba(15, 23, 42, 0.78), rgba(88, 28, 135, 0.14), rgba(6, 13, 29, 0.84)),
       rgba(2, 6, 23, 0.78);
-    padding: 12px 14px;
+    padding: 12px;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.06),
       0 12px 44px rgba(2, 6, 23, 0.28);
@@ -1314,7 +1324,7 @@ textarea {
   }
 
   .loop-usage h3 {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 830;
   }
 
@@ -1324,39 +1334,65 @@ textarea {
     font-size: 10px;
   }
 
+  .usage-meta {
+    gap: 7px;
+  }
+
   .usage-snapshot {
     align-self: center;
-    padding: 8px 11px;
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 10px;
+  }
+
+  .usage-snapshot strong {
+    font-size: 11px;
+  }
+
+  .usage-snapshot--date strong {
+    font-size: 10px;
   }
 
   .usage-dashboard {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 9px;
+    gap: 8px;
   }
 
   .usage-card {
-    min-height: 92px;
+    min-height: 86px;
     grid-template-columns: auto minmax(0, 1fr);
     align-content: center;
-    gap: 8px 10px;
+    gap: 7px 9px;
     border-color: rgba(196, 181, 253, 0.16);
     background:
       linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(3, 7, 18, 0.72)),
       rgba(3, 7, 18, 0.72);
-    padding: 10px;
+    padding: 9px;
   }
 
   .usage-card__header {
     grid-column: 1 / -1;
+    gap: 8px;
+  }
+
+  .usage-card__badge {
+    width: 28px;
+    height: 28px;
+  }
+
+  .usage-card__header span,
+  .usage-card__header strong,
+  .usage-card small {
+    font-size: 9px;
   }
 
   .usage-ring {
-    width: 50px;
-    height: 50px;
+    width: 44px;
+    height: 44px;
   }
 
   .usage-ring span {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .loop-usage .usage-card p {

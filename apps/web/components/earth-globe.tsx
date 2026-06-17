@@ -382,30 +382,30 @@ function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
 
   return [
     {
-      label: "Context left",
+      label: "Context",
       value: contextLeft === undefined ? "Unknown" : `${contextLeft}% left`,
       detail: usageStatus.context,
       percentLeft: contextLeft,
       tone: "cyan"
     },
     {
-      label: "Short window",
+      label: "Window",
       value: shortWindowLeft === undefined ? "Unknown" : `${shortWindowLeft}% left`,
       detail: usageStatus.shortWindow,
       percentLeft: shortWindowLeft,
       tone: "teal"
     },
     {
-      label: "Weekly quota",
+      label: "Week",
       value: weeklyLeft === undefined ? "Unknown" : `${weeklyLeft}% left`,
       detail: usageStatus.weekly,
       percentLeft: weeklyLeft,
       tone: "violet"
     },
     {
-      label: "Current request",
+      label: "Request",
       value: formatCurrentTokenValue(usageStatus.currentTokens),
-      detail: "Latest request token snapshot",
+      detail: "Latest token spend",
       tone: "slate"
     }
   ];
@@ -1496,13 +1496,18 @@ function LoopOverview({
                 <ListChecks size={16} />
                 <h3>Token runway</h3>
               </div>
-              {usageStatus ? <span>{usageStatus.recordedAt}</span> : null}
             </div>
             {usageStatus ? (
               <>
-                <div className="usage-snapshot" aria-label="Usage snapshot metadata">
-                  <span>Model</span>
-                  <strong>{usageStatus.model}</strong>
+                <div className="usage-meta" aria-label="Usage snapshot metadata">
+                  <div className="usage-snapshot">
+                    <span>Model</span>
+                    <strong>{usageStatus.model}</strong>
+                  </div>
+                  <div className="usage-snapshot usage-snapshot--date">
+                    <span>Latest</span>
+                    <strong>{usageStatus.recordedAt}</strong>
+                  </div>
                 </div>
                 <div className="usage-dashboard">
                   {usageMetrics.map((metric) => (
@@ -1513,7 +1518,7 @@ function LoopOverview({
                         </span>
                         <div>
                           <span>{metric.label}</span>
-                          {metric.percentLeft === undefined ? null : <strong>{metric.percentLeft}% remaining</strong>}
+                          <strong>{metric.percentLeft === undefined ? metric.detail : metric.value}</strong>
                         </div>
                       </div>
                       {metric.percentLeft === undefined ? null : (
@@ -1530,7 +1535,7 @@ function LoopOverview({
                         </div>
                       )}
                       {metric.percentLeft === undefined ? <p>{metric.value}</p> : null}
-                      <small>{metric.detail}</small>
+                      <small>{metric.percentLeft === undefined ? "Snapshot from latest status job" : metric.detail}</small>
                       {metric.percentLeft === undefined ? null : (
                         <div className="usage-meter" aria-hidden="true">
                           <span style={{ width: `${metric.percentLeft}%` }} />
