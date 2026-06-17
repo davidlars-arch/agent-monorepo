@@ -1,10 +1,10 @@
-# Project Controller Loop
+# Atlas Planner Loop
 
 ## Purpose
 
-Coordinate the project loops in this monorepo from one registry.
+Coordinate the project loops in this monorepo from one Atlas Planner registry.
 
-This loop decides which project is due, runs the matching child loop or check commands, records local state, and produces one compact report. It is the controller layer above the individual loops.
+This loop decides which project is due, selects a ticket that fits the current token window, runs the matching child loop or check commands, records local state, and produces one compact report. It is the planner layer above the individual loops.
 
 ## Cadence
 
@@ -40,7 +40,7 @@ npm run loop:projects -- --all --build
 
 ## Stop Condition
 
-The controller is healthy when:
+Atlas Planner is healthy when:
 
 - It exits `0`.
 - No project checks fail.
@@ -48,7 +48,7 @@ The controller is healthy when:
 
 ## Expansion Points
 
-- Add a scheduler once the controller has proven stable.
+- Add a scheduler once Atlas Planner has proven stable.
 - Add real child loops for crypto tax, crypto trader, RPG, and analytics.
 - Add priority scoring from issue trackers or product docs.
 - Add notification delivery after scheduled runs.

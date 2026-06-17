@@ -230,7 +230,7 @@ const projectDetails: Record<string, ProjectDetail> = {
 const loopSummaries: LoopSummary[] = [
   {
     id: "project-controller",
-    label: "Project Controller",
+    label: "Atlas Planner",
     cadence: "Runs due loops",
     permission: "registry controlled",
     commit: "c445d7d · chore: add project loop controller",
@@ -1295,10 +1295,10 @@ function LoopOverview({
       <section className="loop-panel">
         <header className="loop-panel__header">
           <div>
-            <p>Automation Loop Control</p>
+            <p>Atlas Planner</p>
             <h2 id="loop-overview-title">
               <RefreshCw size={19} />
-              Project loop overview
+              Token-aware work board
             </h2>
           </div>
           <div className="loop-panel__actions">
@@ -1369,11 +1369,11 @@ function LoopOverview({
             {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
           </section>
 
-          <section className="loop-kanban" aria-label="Token-aware loop Kanban">
+          <section className="loop-kanban" aria-label="Atlas Planner Kanban">
             <div className="loop-kanban__header">
               <div>
-                <p>Token-aware board</p>
-                <h3>Epics and loop tickets</h3>
+                <p>Atlas Planner</p>
+                <h3>Epics and tickets</h3>
               </div>
               <span>{getWindowDecisionLabel(usageStatus)}</span>
             </div>

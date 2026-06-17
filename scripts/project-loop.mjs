@@ -234,7 +234,7 @@ function updateState(currentState, results, at) {
 }
 
 function renderReport({ now, selected, results }) {
-  return `# Project Controller Report
+  return `# Atlas Planner Report
 
 - **Run:** ${now.toISOString()}
 - **Mode:** ${runBuild ? "build" : "fast"}

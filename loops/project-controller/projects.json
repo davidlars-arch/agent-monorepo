@@ -52,7 +52,7 @@
       "epics": [
         {
           "id": "atlas-loop-control",
-          "label": "Loop Control",
+          "label": "Atlas Planner",
           "tickets": [
             {
               "id": "WA-1",
