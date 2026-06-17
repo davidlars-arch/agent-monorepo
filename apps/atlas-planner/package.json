@@ -2,5 +2,15 @@
   "name": "@agent/atlas-planner",
   "private": true,
   "version": "0.1.0",
-  "description": "Token-aware agent work planner and Atlas landmark."
+  "type": "module",
+  "description": "Token-aware agent work planner and Atlas landmark.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
 }

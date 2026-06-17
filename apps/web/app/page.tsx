@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { EarthGlobe, type LoopKanbanProject, type UsageStatusSnapshot } from "@/components/earth-globe";
+import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
+import { EarthGlobe } from "@/components/earth-globe";
 
 export const dynamic = "force-dynamic";
 
