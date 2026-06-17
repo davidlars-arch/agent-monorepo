@@ -40,7 +40,7 @@
       "area": "apps/crypto-tax-sweden",
       "cadenceHours": 72,
       "permission": "build-local-and-commit",
-      "nextAction": "Improve CSV edge cases, review workflow, export path, or evidence trail while verifying tax assumptions before logic changes.",
+      "nextAction": "Build toward a real tax app: profile/password setup, CSV upload, public wallet/address imports, period transaction review, and clear Swedish tax assumptions. Message David when blocked.",
       "commands": [
         { "name": "crypto tax typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-tax-sweden"] },
         { "name": "crypto tax lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-tax-sweden"] }
@@ -55,7 +55,7 @@
       "area": "apps/crypto-trader-test",
       "cadenceHours": 72,
       "permission": "dry-run-only-and-commit",
-      "nextAction": "Improve dry-run reporting, dashboard metrics, state safety, or strategy analysis. Never run live trading from the loop.",
+      "nextAction": "Build a risk-managed paper-trading bot: low-cap bullish trend scanning, explainable entries/exits, backtest evidence, and later guarded Kraken key setup. Never run live trading; message David when blocked.",
       "commands": [
         { "name": "crypto trader typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-trader-test"] },
         { "name": "crypto trader lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-trader-test"] },
