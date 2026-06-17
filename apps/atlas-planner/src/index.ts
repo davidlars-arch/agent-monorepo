@@ -37,7 +37,7 @@ export type UsageMetric = {
   value: string;
   detail: string;
   percentLeft?: number;
-  tone: "cyan" | "teal" | "violet" | "slate";
+  tone: "cyan" | "teal" | "violet";
 };
 
 export type PlannerSubtask = {
@@ -113,12 +113,6 @@ export function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[]
       detail: usageStatus.weekly,
       percentLeft: weeklyLeft,
       tone: "violet"
-    },
-    {
-      label: "Request",
-      value: formatCurrentTokenValue(usageStatus.currentTokens),
-      detail: "Latest token spend",
-      tone: "slate"
     }
   ];
 }
@@ -325,10 +319,6 @@ export function getWindowDecisionLabel(usageStatus?: UsageStatusSnapshot | null)
 
   const shortWindowLeft = parseFirstPercent(usageStatus.shortWindow);
   return `Short window max: ${estimateBudgetForWindow(shortWindowLeft)} pts`;
-}
-
-function formatCurrentTokenValue(value: string) {
-  return value.toLowerCase().includes("not shown") ? "Unavailable" : value;
 }
 
 function formatDateInput(date: Date) {

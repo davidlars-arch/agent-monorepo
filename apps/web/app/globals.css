@@ -622,7 +622,7 @@ textarea {
 
 .usage-dashboard {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -654,10 +654,6 @@ textarea {
 
 .usage-card--violet {
   border-color: rgba(196, 181, 253, 0.34);
-}
-
-.usage-card--slate {
-  border-color: rgba(148, 163, 184, 0.22);
 }
 
 .usage-card__header {
@@ -712,12 +708,6 @@ textarea {
   border-color: rgba(196, 181, 253, 0.28);
   background: rgba(139, 92, 246, 0.16);
   color: #c4b5fd !important;
-}
-
-.usage-card--slate .usage-card__badge {
-  border-color: rgba(148, 163, 184, 0.24);
-  background: rgba(148, 163, 184, 0.12);
-  color: #cbd5e1 !important;
 }
 
 .usage-ring {
@@ -787,10 +777,6 @@ textarea {
 
 .usage-card--violet .usage-meter span {
   background: linear-gradient(90deg, #a78bfa, #22d3ee);
-}
-
-.usage-card--slate {
-  justify-content: space-between;
 }
 
 .loop-usage p {
@@ -1791,7 +1777,7 @@ textarea {
   }
 
   .usage-dashboard {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 
