@@ -947,6 +947,220 @@ textarea {
   padding: 7px 11px;
 }
 
+.loop-activity {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.72), rgba(3, 7, 18, 0.58)),
+    rgba(2, 6, 23, 0.52);
+  padding: 14px;
+}
+
+.loop-activity__header,
+.loop-activity__filters,
+.loop-activity__grid {
+  display: flex;
+  gap: 12px;
+}
+
+.loop-activity__header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.loop-activity__header p {
+  margin: 0;
+  color: rgba(125, 211, 252, 0.8);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.loop-activity__header h3 {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.loop-activity__filters {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.loop-activity__filters label {
+  display: grid;
+  gap: 5px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 10px;
+  font-weight: 830;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.loop-activity__filters input,
+.loop-activity__filters select {
+  min-height: 34px;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.68);
+  color: white;
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
+  outline: none;
+  padding: 6px 9px;
+}
+
+.loop-activity__grid {
+  align-items: stretch;
+}
+
+.loop-activity__stat,
+.loop-activity__finished,
+.loop-activity__timeline {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.52);
+  padding: 12px;
+}
+
+.loop-activity__stat {
+  display: grid;
+  min-width: 128px;
+  align-content: center;
+  gap: 8px;
+}
+
+.loop-activity__stat span,
+.loop-activity__finished > div:first-child,
+.loop-activity__timeline > div:first-child,
+.loop-activity__row,
+.loop-activity__event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-activity__stat span {
+  color: rgba(125, 211, 252, 0.82);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loop-activity__stat strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 32px;
+  line-height: 1;
+}
+
+.loop-activity__stat small,
+.loop-activity__finished small,
+.loop-activity__timeline small,
+.loop-activity__row time,
+.loop-activity__event time {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.loop-activity__finished,
+.loop-activity__timeline {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 0;
+  align-content: start;
+  gap: 8px;
+}
+
+.loop-activity__finished > div:first-child,
+.loop-activity__timeline > div:first-child {
+  justify-content: space-between;
+}
+
+.loop-activity__finished > div:first-child strong,
+.loop-activity__timeline > div:first-child strong {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.loop-activity__row {
+  min-width: 0;
+  border-top: 1px solid rgba(226, 232, 240, 0.08);
+  padding-top: 8px;
+}
+
+.loop-activity__row span {
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: rgba(20, 184, 166, 0.14);
+  padding: 4px 6px;
+  color: rgba(153, 246, 228, 0.95);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.loop-activity__row p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(241, 245, 249, 0.9);
+  font-size: 12px;
+  font-weight: 740;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-activity__row time {
+  flex: 0 0 auto;
+}
+
+.loop-activity__event {
+  align-items: flex-start;
+  position: relative;
+}
+
+.loop-activity__event > span {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #7dd3fc;
+  box-shadow: 0 0 18px rgba(125, 211, 252, 0.58);
+  margin-top: 5px;
+}
+
+.loop-activity__event > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.loop-activity__event strong {
+  overflow: hidden;
+  color: rgba(241, 245, 249, 0.92);
+  font-size: 12px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-activity__empty {
+  margin: 0;
+  border: 1px dashed rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 10px;
+  color: rgba(226, 232, 240, 0.52);
+  font-size: 12px;
+}
+
 .loop-kanban__columns {
   display: grid;
   grid-template-columns: repeat(5, minmax(150px, 1fr));
@@ -1065,6 +1279,18 @@ textarea {
   color: rgba(45, 212, 191, 0.86);
 }
 
+.loop-ticket__dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.loop-ticket__dates span {
+  color: rgba(148, 163, 184, 0.78);
+  font-size: 9px;
+  font-weight: 760;
+}
+
 .loop-ticket__tags {
   display: flex;
   flex-wrap: wrap;
@@ -1175,7 +1401,8 @@ textarea {
 
 .ticket-editor label,
 .ticket-editor__subtasks,
-.ticket-editor__tags {
+.ticket-editor__tags,
+.ticket-editor__timestamps {
   display: grid;
   gap: 7px;
   color: rgba(226, 232, 240, 0.68);
@@ -1266,6 +1493,39 @@ textarea {
   border: 0;
   background: transparent;
   padding: 0 4px;
+}
+
+.ticket-editor__timestamps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ticket-editor__timestamps > div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.48);
+  padding: 10px;
+}
+
+.ticket-editor__timestamps svg {
+  color: rgba(125, 211, 252, 0.84);
+}
+
+.ticket-editor__timestamps span {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ticket-editor__timestamps time {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .ticket-editor__subtasks > div:first-child,
@@ -1444,7 +1704,7 @@ textarea {
 
   .loop-panel__body {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     gap: 16px;
     overflow: hidden;
     padding: 16px 22px 22px;
@@ -1563,6 +1823,33 @@ textarea {
 
   .loop-usage__note {
     display: none;
+  }
+
+  .loop-activity {
+    gap: 10px;
+    border-color: rgba(125, 211, 252, 0.18);
+    background:
+      linear-gradient(120deg, rgba(15, 23, 42, 0.7), rgba(8, 13, 30, 0.76)),
+      rgba(2, 6, 23, 0.72);
+    padding: 12px;
+  }
+
+  .loop-activity__header {
+    align-items: center;
+  }
+
+  .loop-activity__header h3 {
+    font-size: 18px;
+  }
+
+  .loop-activity__grid {
+    gap: 10px;
+  }
+
+  .loop-activity__stat,
+  .loop-activity__finished,
+  .loop-activity__timeline {
+    padding: 10px;
   }
 
   .loop-kanban {
@@ -1967,6 +2254,21 @@ textarea {
     padding: 12px;
   }
 
+  .loop-activity__header,
+  .loop-activity__grid {
+    display: grid;
+  }
+
+  .loop-activity__filters {
+    justify-content: flex-start;
+  }
+
+  .loop-activity__stat,
+  .loop-activity__finished,
+  .loop-activity__timeline {
+    min-width: 0;
+  }
+
   .loop-summary-grid,
   .loop-file-map > div {
     grid-template-columns: 1fr;
@@ -2082,6 +2384,14 @@ textarea {
   .usage-card__header strong,
   .usage-card small {
     font-size: 10px;
+  }
+
+  .loop-activity__filters {
+    display: grid;
+  }
+
+  .ticket-editor__timestamps {
+    grid-template-columns: 1fr;
   }
 
   .loop-kanban {

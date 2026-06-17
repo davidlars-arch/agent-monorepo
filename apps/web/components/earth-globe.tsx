@@ -2,7 +2,10 @@
 
 import { repoNodes } from "@agent/repo-graph";
 import {
+  CalendarDays,
+  CheckCircle2,
   CircleHelp,
+  Clock3,
   ExternalLink,
   FileText,
   Gamepad2,
@@ -117,6 +120,10 @@ type KanbanTicket = LoopKanbanTicket & {
   fitLabel: string;
   description: string;
   subtasks: PlannerSubtask[];
+  createdAt: string;
+  updatedAt: string;
+  movedAt?: string;
+  completedAt?: string;
 };
 
 type PlannerSubtask = {
@@ -128,6 +135,8 @@ type PlannerSubtask = {
 type PlannerTicketDraft = Omit<KanbanTicket, "fitLabel"> & {
   fitLabel?: string;
 };
+
+type PlannerDateFilter = "created" | "updated" | "completed";
 
 const plannerTicketStorageKey = "atlas-planner:tickets:v1";
 const fibonacciEstimates = [1, 2, 3, 5, 8, 13, 21];
@@ -415,6 +424,8 @@ function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
 }
 
 function buildPlannerTickets(projects: LoopKanbanProject[]): KanbanTicket[] {
+  const now = new Date().toISOString();
+
   return projects.flatMap((project) =>
     (project.epics ?? []).flatMap((epic) =>
       epic.tickets.map((ticket) => ({
@@ -426,7 +437,11 @@ function buildPlannerTickets(projects: LoopKanbanProject[]): KanbanTicket[] {
         description: ticket.summary,
         fitLabel: "",
         subtasks: [],
-        tags: ticket.tags ?? []
+        tags: ticket.tags ?? [],
+        createdAt: now,
+        updatedAt: now,
+        movedAt: now,
+        completedAt: ticket.status === "done" ? now : undefined
       }))
     )
   );
@@ -462,10 +477,11 @@ function getKanbanColumns(tickets: KanbanTicket[], usageStatus?: UsageStatusSnap
 function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDraft {
   const project = projects[0] ?? { id: "atlas-planner", label: "Atlas Planner", epics: [] };
   const epic = project.epics?.[0] ?? { id: "general", label: "General", tickets: [] };
-  const now = Date.now().toString(36).toUpperCase();
+  const now = new Date().toISOString();
+  const ticketStamp = Date.now().toString(36).toUpperCase();
 
   return {
-    id: `AP-${now}`,
+    id: `AP-${ticketStamp}`,
     title: "New ticket",
     status: "backlog",
     estimate: 3,
@@ -476,14 +492,19 @@ function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDr
     epicId: epic.id,
     epicLabel: epic.label,
     subtasks: [],
-    tags: []
+    tags: [],
+    createdAt: now,
+    updatedAt: now,
+    movedAt: now
   };
 }
 
 function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
+  const now = new Date().toISOString();
   const uniqueTags = Array.from(
     new Set((ticket.tags ?? []).map((tag) => normalizeTicketTag(tag)).filter(Boolean))
   ).slice(0, 8);
+  const completedAt = ticket.status === "done" ? ticket.completedAt ?? now : undefined;
 
   return {
     ...ticket,
@@ -493,6 +514,10 @@ function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
     description: ticket.description.trim() || ticket.summary.trim(),
     fitLabel: ticket.fitLabel ?? "",
     tags: uniqueTags,
+    createdAt: ticket.createdAt,
+    updatedAt: now,
+    movedAt: ticket.movedAt ?? now,
+    completedAt,
     subtasks: ticket.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
       ...subtask,
       title: subtask.title.trim()
@@ -501,17 +526,85 @@ function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
 }
 
 function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
+  const now = new Date().toISOString();
+
   return tickets.map((ticket) => ({
     ...ticket,
     description: ticket.description ?? ticket.summary ?? "",
     fitLabel: ticket.fitLabel ?? "",
     subtasks: ticket.subtasks ?? [],
-    tags: ticket.tags ?? []
+    tags: ticket.tags ?? [],
+    createdAt: ticket.createdAt ?? now,
+    updatedAt: ticket.updatedAt ?? ticket.createdAt ?? now,
+    movedAt: ticket.movedAt ?? ticket.updatedAt ?? ticket.createdAt ?? now,
+    completedAt: ticket.status === "done" ? ticket.completedAt ?? ticket.updatedAt ?? now : undefined
   }));
 }
 
 function normalizeTicketTag(tag: string) {
   return tag.trim().replace(/^#/, "").replace(/\s+/g, "-");
+}
+
+function getTicketTimestamp(ticket: KanbanTicket, filter: PlannerDateFilter) {
+  if (filter === "created") {
+    return ticket.createdAt;
+  }
+  if (filter === "completed") {
+    return ticket.completedAt;
+  }
+  return ticket.updatedAt;
+}
+
+function formatDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getDefaultDateRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return { start: formatDateInput(start), end: formatDateInput(end) };
+}
+
+function getRangeBounds(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59.999`);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function isTimestampInRange(timestamp: string | undefined, startDate: string, endDate: string) {
+  if (!timestamp) {
+    return false;
+  }
+
+  const time = new Date(timestamp).getTime();
+  const range = getRangeBounds(startDate, endDate);
+  return Number.isFinite(time) && time >= range.start && time <= range.end;
+}
+
+function formatPlannerDateTime(timestamp: string | undefined) {
+  if (!timestamp) {
+    return "Not yet";
+  }
+
+  return new Intl.DateTimeFormat("en-SE", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(timestamp));
+}
+
+function formatPlannerDate(timestamp: string | undefined) {
+  if (!timestamp) {
+    return "Not yet";
+  }
+
+  return new Intl.DateTimeFormat("en-SE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(new Date(timestamp));
 }
 
 function estimateBudgetForWindow(percentLeft: number | null) {
@@ -1384,8 +1477,26 @@ function LoopOverview({
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
   const [isTicketEditorClosing, setIsTicketEditorClosing] = useState(false);
+  const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
+  const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
   const editorCloseTimeoutRef = useRef<number | null>(null);
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+  const completedTicketsInRange = plannerTickets.filter((ticket) =>
+    isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
+  );
+  const completedTickets = [...completedTicketsInRange]
+    .sort((left, right) => new Date(right.completedAt ?? 0).getTime() - new Date(left.completedAt ?? 0).getTime())
+    .slice(0, 5);
+  const activityTickets = plannerTickets
+    .filter((ticket) =>
+      isTimestampInRange(getTicketTimestamp(ticket, activityDateFilter), activityDateRange.start, activityDateRange.end)
+    )
+    .sort(
+      (left, right) =>
+        new Date(getTicketTimestamp(right, activityDateFilter) ?? 0).getTime() -
+        new Date(getTicketTimestamp(left, activityDateFilter) ?? 0).getTime()
+    )
+    .slice(0, 8);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1423,8 +1534,21 @@ function LoopOverview({
   }, []);
 
   function moveTicket(ticketId: string, status: LoopTicketStatus) {
+    const now = new Date().toISOString();
     setPlannerTickets((current) =>
-      current.map((ticket) => (ticket.id === ticketId ? { ...ticket, status } : ticket))
+      current.map((ticket) => {
+        if (ticket.id !== ticketId || ticket.status === status) {
+          return ticket;
+        }
+
+        return {
+          ...ticket,
+          status,
+          updatedAt: now,
+          movedAt: now,
+          completedAt: status === "done" ? now : undefined
+        };
+      })
     );
   }
 
@@ -1443,11 +1567,26 @@ function LoopOverview({
 
     const normalizedTicket = normalizePlannerTicket(editingTicket);
     setPlannerTickets((current) => {
-      const exists = current.some((ticket) => ticket.id === normalizedTicket.id);
+      const existingTicket = current.find((ticket) => ticket.id === normalizedTicket.id);
+      const movedAt =
+        existingTicket && existingTicket.status !== normalizedTicket.status ? normalizedTicket.updatedAt : normalizedTicket.movedAt;
+      const completedAt =
+        normalizedTicket.status === "done"
+          ? existingTicket?.status === "done"
+            ? normalizedTicket.completedAt
+            : normalizedTicket.updatedAt
+          : undefined;
+      const ticketToSave = {
+        ...normalizedTicket,
+        movedAt,
+        completedAt
+      };
+
+      const exists = Boolean(existingTicket);
       if (exists) {
-        return current.map((ticket) => (ticket.id === normalizedTicket.id ? normalizedTicket : ticket));
+        return current.map((ticket) => (ticket.id === normalizedTicket.id ? ticketToSave : ticket));
       }
-      return [normalizedTicket, ...current];
+      return [ticketToSave, ...current];
     });
     closeTicketEditor();
   }
@@ -1605,6 +1744,96 @@ function LoopOverview({
             {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
           </section>
 
+          <section className="loop-activity" aria-label="Atlas Planner activity dashboard">
+            <div className="loop-activity__header">
+              <div>
+                <p>Activity dashboard</p>
+                <h3>Latest movement</h3>
+              </div>
+              <div className="loop-activity__filters">
+                <label>
+                  Timeline
+                  <select
+                    value={activityDateFilter}
+                    onChange={(event) => setActivityDateFilter(event.target.value as PlannerDateFilter)}
+                  >
+                    <option value="updated">Updated</option>
+                    <option value="created">Created</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </label>
+                <label>
+                  From
+                  <input
+                    type="date"
+                    value={activityDateRange.start}
+                    onChange={(event) =>
+                      setActivityDateRange((current) => ({ ...current, start: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  To
+                  <input
+                    type="date"
+                    value={activityDateRange.end}
+                    onChange={(event) => setActivityDateRange((current) => ({ ...current, end: event.target.value }))}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="loop-activity__grid">
+              <article className="loop-activity__stat">
+                <span>
+                  <CheckCircle2 size={14} />
+                  Finished
+                </span>
+                <strong>{completedTicketsInRange.length}</strong>
+                <small>{activityDateRange.start} to {activityDateRange.end}</small>
+              </article>
+              <article className="loop-activity__finished">
+                <div>
+                  <strong>Latest finished tickets</strong>
+                  <small>Completed timestamp</small>
+                </div>
+                {completedTickets.length > 0 ? (
+                  completedTickets.map((ticket) => (
+                    <div key={ticket.id} className="loop-activity__row">
+                      <span>{ticket.id}</span>
+                      <p>{ticket.title}</p>
+                      <time>{formatPlannerDateTime(ticket.completedAt)}</time>
+                    </div>
+                  ))
+                ) : (
+                  <p className="loop-activity__empty">No finished tickets in this range.</p>
+                )}
+              </article>
+              <article className="loop-activity__timeline">
+                <div>
+                  <strong>{activityDateFilter} timeline</strong>
+                  <small>Last 7 days by default</small>
+                </div>
+                {activityTickets.length > 0 ? (
+                  activityTickets.map((ticket) => (
+                    <div key={`${ticket.id}-${activityDateFilter}`} className="loop-activity__event">
+                      <span />
+                      <div>
+                        <time>{formatPlannerDateTime(getTicketTimestamp(ticket, activityDateFilter))}</time>
+                        <strong>{ticket.id}: {ticket.title}</strong>
+                        <small>
+                          {ticket.projectLabel} · {ticket.status}
+                        </small>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="loop-activity__empty">No ticket activity in this range.</p>
+                )}
+              </article>
+            </div>
+          </section>
+
           <section className="loop-kanban" aria-label="Atlas Planner Kanban">
             <div className="loop-kanban__header">
               <div>
@@ -1655,6 +1884,11 @@ function LoopOverview({
                             {ticket.subtasks.filter((subtask) => subtask.done).length}/{ticket.subtasks.length} tasks ·{" "}
                             {ticket.fitLabel}
                           </small>
+                        </div>
+                        <div className="loop-ticket__dates">
+                          <span>Created {formatPlannerDate(ticket.createdAt)}</span>
+                          <span>Moved {formatPlannerDate(ticket.movedAt)}</span>
+                          {ticket.completedAt ? <span>Done {formatPlannerDate(ticket.completedAt)}</span> : null}
                         </div>
                         {(ticket.tags ?? []).length > 0 ? (
                           <div className="loop-ticket__tags" aria-label={`${ticket.id} tags`}>
@@ -1907,6 +2141,24 @@ function TicketEditor({
                 onChange={(event) => setTagInput(event.target.value)}
                 onKeyDown={handleTagKeyDown}
               />
+            </div>
+          </section>
+
+          <section className="ticket-editor__timestamps ticket-editor__wide" aria-label="Ticket timestamps">
+            <div>
+              <Clock3 size={13} />
+              <span>Created</span>
+              <time>{formatPlannerDateTime(ticket.createdAt)}</time>
+            </div>
+            <div>
+              <CalendarDays size={13} />
+              <span>Moved</span>
+              <time>{formatPlannerDateTime(ticket.movedAt)}</time>
+            </div>
+            <div>
+              <CheckCircle2 size={13} />
+              <span>Completed</span>
+              <time>{formatPlannerDateTime(ticket.completedAt)}</time>
             </div>
           </section>
 
