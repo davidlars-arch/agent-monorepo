@@ -2,6 +2,7 @@
 
 import {
   buildPlannerTickets,
+  createPlannerStateExport,
   fibonacciEstimates,
   formatPlannerDate,
   formatPlannerDateTime,
@@ -15,6 +16,7 @@ import {
   isTimestampInRange,
   normalizePlannerTicket,
   normalizeTicketTag,
+  parsePlannerStateImport,
   plannerTicketStorageKey,
   ticketStatuses,
   type KanbanTicket,
@@ -31,6 +33,7 @@ import {
   CheckCircle2,
   CircleHelp,
   Clock3,
+  Download,
   ExternalLink,
   FileText,
   Gamepad2,
@@ -41,6 +44,7 @@ import {
   RefreshCw,
   RotateCcw,
   Tags,
+  Upload,
   Workflow,
   X,
   ZoomOut
@@ -1194,6 +1198,8 @@ function LoopOverview({
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
   const editorCloseTimeoutRef = useRef<number | null>(null);
+  const plannerImportInputRef = useRef<HTMLInputElement | null>(null);
+  const [plannerStateMessage, setPlannerStateMessage] = useState("");
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
   const completedTicketsInRange = plannerTickets.filter((ticket) =>
     isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
@@ -1382,6 +1388,46 @@ function LoopOverview({
           }
         : current
     );
+  }
+
+  function exportPlannerState() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const plannerState = createPlannerStateExport(plannerTickets);
+    const stateBlob = new Blob([JSON.stringify(plannerState, null, 2)], { type: "application/json" });
+    const stateUrl = window.URL.createObjectURL(stateBlob);
+    const link = document.createElement("a");
+    link.href = stateUrl;
+    link.download = `atlas-planner-${plannerState.exportedAt.slice(0, 10)}.json`;
+    link.click();
+    window.URL.revokeObjectURL(stateUrl);
+    setPlannerStateMessage(`Exported ${plannerState.tickets.length} tickets.`);
+  }
+
+  function importPlannerState(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      try {
+        const importedTickets = parsePlannerStateImport(String(reader.result ?? ""));
+        setPlannerTickets(importedTickets);
+        setPlannerStateMessage(`Imported ${importedTickets.length} tickets.`);
+      } catch {
+        setPlannerStateMessage("Import failed. Use an Atlas Planner JSON export.");
+      }
+    });
+    reader.readAsText(file);
+  }
+
+  function resetPlannerState() {
+    const defaultTickets = buildPlannerTickets(loopKanban);
+    setPlannerTickets(defaultTickets);
+    setPlannerStateMessage(`Reset to ${defaultTickets.length} default tickets.`);
   }
 
   return (
@@ -1579,12 +1625,35 @@ function LoopOverview({
                   <CalendarDays size={14} />
                   Dashboard
                 </button>
+                <button type="button" onClick={exportPlannerState}>
+                  <Download size={14} />
+                  Export
+                </button>
+                <button type="button" onClick={() => plannerImportInputRef.current?.click()}>
+                  <Upload size={14} />
+                  Import
+                </button>
+                <button type="button" onClick={resetPlannerState}>
+                  <RotateCcw size={14} />
+                  Reset
+                </button>
                 <button type="button" onClick={() => openTicketEditor(getDefaultPlannerTicket(loopKanban))}>
                   <Plus size={14} />
                   New ticket
                 </button>
+                <input
+                  ref={plannerImportInputRef}
+                  className="loop-kanban__import"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    importPlannerState(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
               </div>
             </div>
+            {plannerStateMessage ? <p className="loop-kanban__state-message">{plannerStateMessage}</p> : null}
             <div className="loop-kanban__columns">
               {kanbanColumns.map((column) => (
                 <article

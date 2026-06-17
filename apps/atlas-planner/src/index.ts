@@ -67,7 +67,14 @@ export type PlannerTicketDraft = Omit<KanbanTicket, "fitLabel"> & {
 
 export type PlannerDateFilter = "created" | "updated" | "completed";
 
+export type PlannerStateExport = {
+  version: 1;
+  exportedAt: string;
+  tickets: KanbanTicket[];
+};
+
 export const plannerTicketStorageKey = "atlas-planner:tickets:v1";
+export const plannerStateExportVersion = 1;
 export const fibonacciEstimates = [1, 2, 3, 5, 8, 13, 21];
 export const ticketStatuses: Array<{ id: LoopTicketStatus; label: string }> = [
   { id: "backlog", label: "Backlog" },
@@ -237,6 +244,25 @@ export function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
   }));
 }
 
+export function createPlannerStateExport(tickets: KanbanTicket[]): PlannerStateExport {
+  return {
+    version: plannerStateExportVersion,
+    exportedAt: new Date().toISOString(),
+    tickets: hydratePlannerTickets(tickets)
+  };
+}
+
+export function parsePlannerStateImport(rawState: string): KanbanTicket[] {
+  const parsedState = JSON.parse(rawState) as unknown;
+  const tickets = getPlannerTicketsFromImport(parsedState);
+
+  if (!tickets) {
+    throw new Error("Atlas Planner import must contain a tickets array.");
+  }
+
+  return hydratePlannerTickets(tickets.map(coerceImportedTicket));
+}
+
 export function normalizeTicketTag(tag: string) {
   return tag.trim().replace(/^#/, "").replace(/\s+/g, "-");
 }
@@ -329,4 +355,84 @@ function getRangeBounds(startDate: string, endDate: string) {
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T23:59:59.999`);
   return { start: start.getTime(), end: end.getTime() };
+}
+
+function getPlannerTicketsFromImport(parsedState: unknown) {
+  if (Array.isArray(parsedState)) {
+    return parsedState;
+  }
+
+  if (
+    parsedState &&
+    typeof parsedState === "object" &&
+    "tickets" in parsedState &&
+    Array.isArray((parsedState as { tickets?: unknown }).tickets)
+  ) {
+    return (parsedState as { tickets: unknown[] }).tickets;
+  }
+
+  return null;
+}
+
+function coerceImportedTicket(ticket: unknown): KanbanTicket {
+  if (!ticket || typeof ticket !== "object") {
+    throw new Error("Atlas Planner import includes an invalid ticket.");
+  }
+
+  const source = ticket as Partial<KanbanTicket>;
+  const now = new Date().toISOString();
+  const status = isTicketStatus(source.status) ? source.status : "backlog";
+  const id = coerceString(source.id, `AP-${Date.now().toString(36).toUpperCase()}`);
+  const summary = coerceString(source.summary, source.description ?? "No description yet.");
+  const description = coerceString(source.description, summary);
+
+  return {
+    id,
+    title: coerceString(source.title, "Untitled ticket"),
+    status,
+    estimate: fibonacciEstimates.includes(Number(source.estimate)) ? Number(source.estimate) : 3,
+    summary,
+    tags: Array.isArray(source.tags) ? source.tags.map((tag) => normalizeTicketTag(String(tag))).filter(Boolean) : [],
+    projectId: coerceString(source.projectId, "atlas-planner"),
+    epicId: coerceString(source.epicId, "general"),
+    epicLabel: coerceString(source.epicLabel, "General"),
+    projectLabel: coerceString(source.projectLabel, "Atlas Planner"),
+    fitLabel: coerceString(source.fitLabel, ""),
+    description,
+    subtasks: Array.isArray(source.subtasks)
+      ? source.subtasks
+          .filter((subtask) => Boolean(subtask) && typeof subtask === "object")
+          .map((subtask) => subtask as Partial<PlannerSubtask>)
+          .map((subtask, index) => ({
+            id: coerceString(subtask.id, `sub-${index}`),
+            title: coerceString(subtask.title, "Imported subtask"),
+            done: Boolean(subtask.done)
+          }))
+      : [],
+    createdAt: coerceDateString(source.createdAt, now),
+    updatedAt: coerceDateString(source.updatedAt, source.createdAt ?? now),
+    movedAt: coerceDateString(source.movedAt, source.updatedAt ?? source.createdAt ?? now),
+    completedAt: status === "done" ? coerceDateString(source.completedAt, source.updatedAt ?? now) : undefined,
+    completedCommit: status === "done" ? coerceOptionalString(source.completedCommit) : undefined
+  };
+}
+
+function coerceString(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function coerceDateString(value: unknown, fallback: string) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  return Number.isFinite(new Date(value).getTime()) ? value : fallback;
+}
+
+function coerceOptionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isTicketStatus(value: unknown): value is LoopTicketStatus {
+  return ticketStatuses.some((status) => status.id === value);
 }

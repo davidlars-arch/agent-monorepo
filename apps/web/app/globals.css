@@ -901,6 +901,8 @@ textarea {
 .loop-kanban__tools {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
@@ -932,6 +934,23 @@ textarea {
   align-items: center;
   gap: 6px;
   padding: 7px 11px;
+}
+
+.loop-kanban__import {
+  display: none;
+}
+
+.loop-kanban__state-message {
+  width: fit-content;
+  max-width: 100%;
+  margin: -4px 0 0 auto;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.48);
+  padding: 6px 10px;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 11px;
+  font-weight: 760;
 }
 
 .loop-activity {
@@ -2424,11 +2443,16 @@ textarea {
   }
 
   .loop-kanban__tools {
-    width: fit-content;
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .loop-kanban__tools > span {
     width: fit-content;
+  }
+
+  .loop-kanban__state-message {
+    margin-left: 0;
   }
 
   .loop-kanban__columns {
