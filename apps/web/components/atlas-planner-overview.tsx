@@ -31,9 +31,12 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleHelp,
+  Clipboard,
   Clock3,
   Download,
   FileText,
+  FolderGit2,
+  GitBranch,
   GitCommitHorizontal,
   ListChecks,
   Network,
@@ -172,6 +175,40 @@ const loopFiles: LoopFile[] = [
     role: "Controller runner: lock, select due projects, execute commands, write state/report."
   }
 ];
+
+function getAgentRunSlug(ticket: PlannerTicketDraft) {
+  const sourceLabel = ticket.id || ticket.title || "ticket";
+  const slug = sourceLabel
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return slug || "ticket";
+}
+
+function getAgentRunSuggestions(ticket: PlannerTicketDraft) {
+  const ticketSlug = getAgentRunSlug(ticket);
+  const branch = `worktree/${ticketSlug}`;
+  const ticketArg =
+    ticket.id
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || ticketSlug;
+
+  return {
+    branch,
+    command: `node scripts/planner-agent-runner.mjs --ticket ${ticketArg} --branch ${branch}`,
+    runState:
+      ticket.status === "done"
+        ? "Complete placeholder"
+        : ticket.status === "in-progress"
+          ? "Ready placeholder"
+          : "Queued placeholder",
+    worktree: `agent-monorepo-${ticketSlug}`
+  };
+}
 
 export function AtlasPlannerOverview({
   usageStatus,
@@ -896,10 +933,31 @@ function TicketEditor({
   onRemoveSubtask: (subtaskId: string) => void;
 }) {
   const [tagInput, setTagInput] = useState("");
+  const [copiedCommand, setCopiedCommand] = useState("");
+  const [failedCommand, setFailedCommand] = useState("");
   const selectedProject = projects.find((project) => project.id === ticket.projectId) ?? projects[0];
   const selectedEpic =
     selectedProject?.epics?.find((epic) => epic.id === ticket.epicId) ?? selectedProject?.epics?.[0];
   const ticketTags = ticket.tags ?? [];
+  const agentRun = getAgentRunSuggestions(ticket);
+  const copyButtonLabel =
+    copiedCommand === agentRun.command ? "Copied" : failedCommand === agentRun.command ? "Copy failed" : "Copy runner command";
+
+  async function copyRunnerCommand() {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setFailedCommand(agentRun.command);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(agentRun.command);
+      setCopiedCommand(agentRun.command);
+      setFailedCommand("");
+      window.setTimeout(() => setCopiedCommand(""), 1600);
+    } catch {
+      setFailedCommand(agentRun.command);
+    }
+  }
 
   function updateProject(projectId: string) {
     const project = projects.find((candidate) => candidate.id === projectId);
@@ -1031,6 +1089,35 @@ function TicketEditor({
               <GitCommitHorizontal size={13} />
               <span>Commit</span>
               <time>{ticket.completedCommit ?? "Not yet"}</time>
+            </div>
+          </section>
+
+          <section className="ticket-editor__agent-run ticket-editor__wide" aria-label="Agent run">
+            <div className="agent-run__heading">
+              <div>
+                <span>Agent OS</span>
+                <strong>Agent run</strong>
+              </div>
+              <span>{agentRun.runState}</span>
+            </div>
+            <div className="agent-run__grid">
+              <div>
+                <GitBranch size={14} />
+                <span>Branch</span>
+                <code>{agentRun.branch}</code>
+              </div>
+              <div>
+                <FolderGit2 size={14} />
+                <span>Worktree</span>
+                <code>{agentRun.worktree}</code>
+              </div>
+            </div>
+            <div className="agent-run__command">
+              <code>{agentRun.command}</code>
+              <button type="button" onClick={copyRunnerCommand}>
+                <Clipboard size={14} />
+                {copyButtonLabel}
+              </button>
             </div>
           </section>
 
