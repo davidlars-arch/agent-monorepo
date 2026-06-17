@@ -15,6 +15,7 @@ import {
   X,
   ZoomOut
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -316,6 +317,10 @@ function parseFirstPercent(value: string) {
   return Math.min(100, Math.max(0, Number(match[1])));
 }
 
+function formatCurrentTokenValue(value: string) {
+  return value.toLowerCase().includes("not shown") ? "Unavailable" : value;
+}
+
 function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
   const contextUsed = parseFirstPercent(usageStatus.context);
   const contextLeft = contextUsed === null ? undefined : 100 - contextUsed;
@@ -346,7 +351,7 @@ function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
     },
     {
       label: "Current request",
-      value: usageStatus.currentTokens,
+      value: formatCurrentTokenValue(usageStatus.currentTokens),
       detail: "Latest request token snapshot",
       tone: "slate"
     }
@@ -1211,39 +1216,47 @@ function LoopOverview({
         <div className="loop-panel__body">
           <section className="loop-usage" aria-label="Latest usage status">
             <div className="loop-usage__heading">
-              <ListChecks size={16} />
-              <h3>Latest token status</h3>
+              <div>
+                <ListChecks size={16} />
+                <h3>Latest token status</h3>
+              </div>
+              {usageStatus ? <span>{usageStatus.recordedAt}</span> : null}
             </div>
             {usageStatus ? (
               <>
-                <dl className="usage-snapshot">
-                  <div>
-                    <dt>Updated</dt>
-                    <dd>{usageStatus.recordedAt}</dd>
-                  </div>
-                  <div>
-                    <dt>Model</dt>
-                    <dd>{usageStatus.model}</dd>
-                  </div>
-                </dl>
+                <div className="usage-snapshot" aria-label="Usage snapshot metadata">
+                  <span>Model</span>
+                  <strong>{usageStatus.model}</strong>
+                </div>
                 <div className="usage-dashboard">
                   {usageMetrics.map((metric) => (
                     <article key={metric.label} className={`usage-card usage-card--${metric.tone}`}>
-                      <div className="usage-card__topline">
-                        <span>{metric.label}</span>
-                        {metric.percentLeft === undefined ? null : <strong>{metric.percentLeft}%</strong>}
+                      <div className="usage-card__header">
+                        <span className="usage-card__badge" aria-hidden="true">
+                          {metric.label.slice(0, 1)}
+                        </span>
+                        <div>
+                          <span>{metric.label}</span>
+                          {metric.percentLeft === undefined ? null : <strong>{metric.percentLeft}% remaining</strong>}
+                        </div>
                       </div>
-                      <p>{metric.value}</p>
-                      <small>{metric.detail}</small>
                       {metric.percentLeft === undefined ? null : (
                         <div
-                          className="usage-meter"
+                          className="usage-ring"
                           role="meter"
                           aria-label={metric.label}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-valuenow={metric.percentLeft}
+                          style={{ "--usage-percent": `${metric.percentLeft}%` } as CSSProperties}
                         >
+                          <span>{metric.percentLeft}%</span>
+                        </div>
+                      )}
+                      {metric.percentLeft === undefined ? <p>{metric.value}</p> : null}
+                      <small>{metric.detail}</small>
+                      {metric.percentLeft === undefined ? null : (
+                        <div className="usage-meter" aria-hidden="true">
                           <span style={{ width: `${metric.percentLeft}%` }} />
                         </div>
                       )}

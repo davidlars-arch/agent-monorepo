@@ -530,17 +530,27 @@ textarea {
 
 .loop-usage {
   display: grid;
-  gap: 12px;
-  margin-bottom: 14px;
-  border: 1px solid rgba(45, 212, 191, 0.24);
+  gap: 14px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(45, 212, 191, 0.38);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(15, 23, 42, 0.48)),
-    rgba(2, 6, 23, 0.62);
-  padding: 13px;
+    linear-gradient(135deg, rgba(20, 184, 166, 0.2), rgba(59, 130, 246, 0.08) 48%, rgba(15, 23, 42, 0.72)),
+    rgba(2, 6, 23, 0.78);
+  padding: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 44px rgba(0, 0, 0, 0.24);
 }
 
 .loop-usage__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loop-usage__heading > div {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -552,56 +562,75 @@ textarea {
 
 .loop-usage h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: 0;
 }
 
+.loop-usage__heading > span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.58);
+  color: rgba(226, 232, 240, 0.72);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.1;
+}
+
 .usage-snapshot {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-  margin: 0;
-}
-
-.usage-snapshot > div,
-.usage-card {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
   border: 1px solid rgba(226, 232, 240, 0.12);
-  border-radius: 8px;
-  background: rgba(2, 6, 23, 0.48);
-  padding: 9px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.62);
+  padding: 7px 10px;
 }
 
-.loop-usage dt {
-  color: rgba(226, 232, 240, 0.58);
+.usage-snapshot span {
+  color: rgba(226, 232, 240, 0.56);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.loop-usage dd {
-  margin: 5px 0 0;
-  overflow-wrap: anywhere;
-  color: rgba(255, 255, 255, 0.88);
+.usage-snapshot strong {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
-  line-height: 1.4;
+  font-weight: 760;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-dashboard {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
 }
 
 .usage-card {
-  display: flex;
-  min-height: 128px;
-  flex-direction: column;
-  justify-content: space-between;
+  position: relative;
+  display: grid;
+  min-height: 172px;
+  align-content: start;
+  gap: 12px;
   overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.54)),
-    rgba(2, 6, 23, 0.5);
+    radial-gradient(circle at 84% 16%, rgba(255, 255, 255, 0.12), transparent 0 26%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.72)),
+    rgba(2, 6, 23, 0.72);
+  padding: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 14px 28px rgba(0, 0, 0, 0.2);
 }
 
 .usage-card--cyan {
@@ -620,34 +649,113 @@ textarea {
   border-color: rgba(148, 163, 184, 0.22);
 }
 
-.usage-card__topline {
+.usage-card__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: rgba(226, 232, 240, 0.62);
+  gap: 10px;
+}
+
+.usage-card__header > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.usage-card__header span {
+  color: rgba(226, 232, 240, 0.66);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.usage-card__topline strong {
+.usage-card__header strong {
   color: #ccfbf1;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.usage-card__badge {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.16);
+  color: #67e8f9 !important;
+  font-size: 13px !important;
+  letter-spacing: 0 !important;
+}
+
+.usage-card--teal .usage-card__badge {
+  border-color: rgba(45, 212, 191, 0.28);
+  background: rgba(20, 184, 166, 0.16);
+  color: #5eead4 !important;
+}
+
+.usage-card--violet .usage-card__badge {
+  border-color: rgba(196, 181, 253, 0.28);
+  background: rgba(139, 92, 246, 0.16);
+  color: #c4b5fd !important;
+}
+
+.usage-card--slate .usage-card__badge {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1 !important;
+}
+
+.usage-ring {
+  --usage-percent: 0%;
+  display: grid;
+  width: 78px;
+  height: 78px;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    conic-gradient(#22d3ee var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
+  box-shadow:
+    0 0 0 1px rgba(226, 232, 240, 0.08),
+    0 0 28px rgba(34, 211, 238, 0.14);
+}
+
+.usage-card--teal .usage-ring {
+  background:
+    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    conic-gradient(#2dd4bf var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
+}
+
+.usage-card--violet .usage-ring {
+  background:
+    radial-gradient(circle closest-side, #06111f 72%, transparent 74% 100%),
+    conic-gradient(#a78bfa var(--usage-percent), rgba(30, 41, 59, 0.95) 0);
+}
+
+.usage-ring span {
+  color: white;
+  font-size: 18px;
+  font-weight: 820;
   letter-spacing: 0;
 }
 
 .loop-usage .usage-card p {
+  margin: 0;
   color: white;
-  font-size: 20px;
-  font-weight: 760;
-  line-height: 1.05;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.12;
 }
 
 .usage-card small {
   overflow-wrap: anywhere;
-  color: rgba(226, 232, 240, 0.62);
+  color: rgba(226, 232, 240, 0.66);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -668,6 +776,10 @@ textarea {
 
 .usage-card--violet .usage-meter span {
   background: linear-gradient(90deg, #a78bfa, #22d3ee);
+}
+
+.usage-card--slate {
+  justify-content: space-between;
 }
 
 .loop-usage p {
@@ -1090,10 +1202,12 @@ textarea {
   }
 
   .loop-summary-grid,
-  .usage-snapshot,
-  .usage-dashboard,
   .loop-file-map > div {
     grid-template-columns: 1fr;
+  }
+
+  .usage-dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .loop-graph {
@@ -1147,6 +1261,57 @@ textarea {
 
   .loop-panel__header p {
     max-width: 18ch;
+  }
+
+  .loop-usage {
+    padding: 12px;
+  }
+
+  .loop-usage__heading {
+    display: grid;
+  }
+
+  .loop-usage__heading > span {
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .usage-dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .usage-card {
+    min-height: 150px;
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .usage-ring {
+    width: 58px;
+    height: 58px;
+  }
+
+  .usage-ring span {
+    font-size: 14px;
+  }
+
+  .usage-card__header {
+    gap: 8px;
+  }
+
+  .usage-card__badge {
+    width: 26px;
+    height: 26px;
+  }
+
+  .usage-card__header span {
+    font-size: 9px;
+  }
+
+  .usage-card__header strong,
+  .usage-card small {
+    font-size: 10px;
   }
 }
 
