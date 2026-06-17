@@ -74,6 +74,14 @@ export type UsageStatusSnapshot = {
   note?: string;
 };
 
+type UsageMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  percentLeft?: number;
+  tone: "cyan" | "teal" | "violet" | "slate";
+};
+
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
@@ -298,6 +306,52 @@ const loopFiles: LoopFile[] = [
     role: "Controller runner: lock, select due projects, execute commands, write state/report."
   }
 ];
+
+function parseFirstPercent(value: string) {
+  const match = value.match(/(\d{1,3})%/);
+  if (!match) {
+    return null;
+  }
+
+  return Math.min(100, Math.max(0, Number(match[1])));
+}
+
+function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
+  const contextUsed = parseFirstPercent(usageStatus.context);
+  const contextLeft = contextUsed === null ? undefined : 100 - contextUsed;
+  const shortWindowLeft = parseFirstPercent(usageStatus.shortWindow) ?? undefined;
+  const weeklyLeft = parseFirstPercent(usageStatus.weekly) ?? undefined;
+
+  return [
+    {
+      label: "Context left",
+      value: contextLeft === undefined ? "Unknown" : `${contextLeft}% left`,
+      detail: usageStatus.context,
+      percentLeft: contextLeft,
+      tone: "cyan"
+    },
+    {
+      label: "Short window",
+      value: shortWindowLeft === undefined ? "Unknown" : `${shortWindowLeft}% left`,
+      detail: usageStatus.shortWindow,
+      percentLeft: shortWindowLeft,
+      tone: "teal"
+    },
+    {
+      label: "Weekly quota",
+      value: weeklyLeft === undefined ? "Unknown" : `${weeklyLeft}% left`,
+      detail: usageStatus.weekly,
+      percentLeft: weeklyLeft,
+      tone: "violet"
+    },
+    {
+      label: "Current request",
+      value: usageStatus.currentTokens,
+      detail: "Latest request token snapshot",
+      tone: "slate"
+    }
+  ];
+}
 
 const getDefaultCameraPosition = () => {
   if (typeof window === "undefined") {
@@ -1129,6 +1183,8 @@ function LoopOverview({
   onToggleExplainer: () => void;
   onClose: () => void;
 }) {
+  const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
+
   return (
     <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
       <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
@@ -1159,32 +1215,42 @@ function LoopOverview({
               <h3>Latest token status</h3>
             </div>
             {usageStatus ? (
-              <dl>
-                <div>
-                  <dt>Timestamp</dt>
-                  <dd>{usageStatus.recordedAt}</dd>
+              <>
+                <dl className="usage-snapshot">
+                  <div>
+                    <dt>Updated</dt>
+                    <dd>{usageStatus.recordedAt}</dd>
+                  </div>
+                  <div>
+                    <dt>Model</dt>
+                    <dd>{usageStatus.model}</dd>
+                  </div>
+                </dl>
+                <div className="usage-dashboard">
+                  {usageMetrics.map((metric) => (
+                    <article key={metric.label} className={`usage-card usage-card--${metric.tone}`}>
+                      <div className="usage-card__topline">
+                        <span>{metric.label}</span>
+                        {metric.percentLeft === undefined ? null : <strong>{metric.percentLeft}%</strong>}
+                      </div>
+                      <p>{metric.value}</p>
+                      <small>{metric.detail}</small>
+                      {metric.percentLeft === undefined ? null : (
+                        <div
+                          className="usage-meter"
+                          role="meter"
+                          aria-label={metric.label}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={metric.percentLeft}
+                        >
+                          <span style={{ width: `${metric.percentLeft}%` }} />
+                        </div>
+                      )}
+                    </article>
+                  ))}
                 </div>
-                <div>
-                  <dt>Model</dt>
-                  <dd>{usageStatus.model}</dd>
-                </div>
-                <div>
-                  <dt>Context</dt>
-                  <dd>{usageStatus.context}</dd>
-                </div>
-                <div>
-                  <dt>Current tokens</dt>
-                  <dd>{usageStatus.currentTokens}</dd>
-                </div>
-                <div>
-                  <dt>Short window</dt>
-                  <dd>{usageStatus.shortWindow}</dd>
-                </div>
-                <div>
-                  <dt>Weekly</dt>
-                  <dd>{usageStatus.weekly}</dd>
-                </div>
-              </dl>
+              </>
             ) : (
               <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
             )}

@@ -556,14 +556,15 @@ textarea {
   letter-spacing: 0;
 }
 
-.loop-usage dl {
+.usage-snapshot {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
   margin: 0;
 }
 
-.loop-usage div {
+.usage-snapshot > div,
+.usage-card {
   border: 1px solid rgba(226, 232, 240, 0.12);
   border-radius: 8px;
   background: rgba(2, 6, 23, 0.48);
@@ -584,6 +585,89 @@ textarea {
   color: rgba(255, 255, 255, 0.88);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.usage-dashboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.usage-card {
+  display: flex;
+  min-height: 128px;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.54)),
+    rgba(2, 6, 23, 0.5);
+}
+
+.usage-card--cyan {
+  border-color: rgba(103, 232, 249, 0.32);
+}
+
+.usage-card--teal {
+  border-color: rgba(45, 212, 191, 0.38);
+}
+
+.usage-card--violet {
+  border-color: rgba(196, 181, 253, 0.34);
+}
+
+.usage-card--slate {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.usage-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.usage-card__topline strong {
+  color: #ccfbf1;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.loop-usage .usage-card p {
+  color: white;
+  font-size: 20px;
+  font-weight: 760;
+  line-height: 1.05;
+}
+
+.usage-card small {
+  overflow-wrap: anywhere;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.usage-meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.usage-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22d3ee, #2dd4bf);
+}
+
+.usage-card--violet .usage-meter span {
+  background: linear-gradient(90deg, #a78bfa, #22d3ee);
 }
 
 .loop-usage p {
@@ -1006,7 +1090,8 @@ textarea {
   }
 
   .loop-summary-grid,
-  .loop-usage dl,
+  .usage-snapshot,
+  .usage-dashboard,
   .loop-file-map > div {
     grid-template-columns: 1fr;
   }
