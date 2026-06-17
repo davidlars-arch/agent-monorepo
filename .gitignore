@@ -15,6 +15,8 @@ logs
 # Agent loop generated state/reports
 loops/**/STATE.md
 loops/**/latest-report.md
+loops/**/state.json
+loops/**/LOCK
 
 # Unity generated local state
 Library/

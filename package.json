@@ -13,6 +13,7 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "loop:projects": "node scripts/project-loop.mjs",
     "loop:repo-health": "node scripts/repo-health-loop.mjs",
     "loop:web-atlas": "node scripts/web-atlas-loop.mjs",
     "sync:unity-webgl": "node scripts/sync-unity-webgl.mjs",

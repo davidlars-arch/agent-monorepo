@@ -23,6 +23,17 @@ The web app runs from `apps/web`.
 
 ## Loops
 
+The project controller loop lives in `loops/project-controller`.
+
+```bash
+npm run loop:projects
+npm run loop:projects -- --list
+npm run loop:projects -- --project web-atlas
+npm run loop:projects -- --all --build
+```
+
+It reads the committed project registry at `loops/project-controller/projects.json`, runs due child loops or project checks, and writes ignored local state/report files for continuity.
+
 The repo health loop lives in `loops/repo-health`.
 
 ```bash

@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "defaults": {
+    "cadenceHours": 24,
+    "timeoutMs": 120000,
+    "permission": "build-local"
+  },
+  "projects": [
+    {
+      "id": "repo-health",
+      "label": "Repo Health",
+      "area": ".",
+      "cadenceHours": 24,
+      "permission": "build-local",
+      "nextAction": "Keep the monorepo green and separate dirty work before assigning agents.",
+      "commands": [
+        { "name": "repo health", "cmd": "npm", "args": ["run", "loop:repo-health"] }
+      ],
+      "buildCommands": [
+        { "name": "repo health full", "cmd": "npm", "args": ["run", "loop:repo-health", "--", "--build"] }
+      ]
+    },
+    {
+      "id": "web-atlas",
+      "label": "Project Sphere Web Atlas",
+      "area": "apps/web packages/repo-graph packages/ui",
+      "cadenceHours": 24,
+      "permission": "build-local-and-commit",
+      "nextAction": "Pick one small atlas improvement: graph truthfulness, responsive polish, route discovery, or project detail refinement.",
+      "commands": [
+        { "name": "web atlas", "cmd": "npm", "args": ["run", "loop:web-atlas"] }
+      ],
+      "buildCommands": [
+        { "name": "web atlas full", "cmd": "npm", "args": ["run", "loop:web-atlas", "--", "--build"] }
+      ]
+    },
+    {
+      "id": "crypto-tax-sweden",
+      "label": "Crypto Tax Sweden",
+      "area": "apps/crypto-tax-sweden",
+      "cadenceHours": 72,
+      "permission": "build-local-and-commit",
+      "nextAction": "Improve CSV edge cases, review workflow, export path, or evidence trail while verifying tax assumptions before logic changes.",
+      "commands": [
+        { "name": "crypto tax typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-tax-sweden"] },
+        { "name": "crypto tax lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-tax-sweden"] }
+      ],
+      "buildCommands": [
+        { "name": "crypto tax build", "cmd": "npm", "args": ["run", "build", "-w", "@agent/crypto-tax-sweden"] }
+      ]
+    },
+    {
+      "id": "crypto-trader-test",
+      "label": "Crypto Trader Test",
+      "area": "apps/crypto-trader-test",
+      "cadenceHours": 72,
+      "permission": "dry-run-only-and-commit",
+      "nextAction": "Improve dry-run reporting, dashboard metrics, state safety, or strategy analysis. Never run live trading from the loop.",
+      "commands": [
+        { "name": "crypto trader typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/crypto-trader-test"] },
+        { "name": "crypto trader lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/crypto-trader-test"] },
+        { "name": "crypto trader dry tick", "cmd": "npm", "args": ["run", "tick:dry", "-w", "@agent/crypto-trader-test"] }
+      ],
+      "buildCommands": [
+        { "name": "crypto trader build", "cmd": "npm", "args": ["run", "build", "-w", "@agent/crypto-trader-test"] }
+      ]
+    },
+    {
+      "id": "rpg-slice",
+      "label": "RPG Slice",
+      "area": "games/ff6-inspired-rpg apps/web/app/unity-rpg",
+      "cadenceHours": 72,
+      "permission": "build-local-and-commit",
+      "nextAction": "Keep the browser mock and Unity slice aligned, expand one original gameplay beat, or polish the WebGL mount.",
+      "commands": [
+        { "name": "web typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/web"] },
+        { "name": "web lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/web"] }
+      ],
+      "buildCommands": [
+        { "name": "web build", "cmd": "npm", "args": ["run", "build", "-w", "@agent/web"] }
+      ]
+    },
+    {
+      "id": "analytics-dbt",
+      "label": "Analytics dbt POC",
+      "area": "analytics/dbt-agent-poc",
+      "cadenceHours": 168,
+      "permission": "plan-until-dbt-installed",
+      "nextAction": "Install or expose dbt before running models; then seed and run local DuckDB analytics.",
+      "commands": [
+        { "name": "dbt availability", "cmd": "sh", "args": ["-lc", "command -v dbt >/dev/null"] }
+      ],
+      "allowFailure": true
+    },
+    {
+      "id": "workspace-memory",
+      "label": "OpenClaw Workspace Maintenance",
+      "area": "/Users/david/.openclaw/workspace",
+      "cadenceHours": 168,
+      "permission": "internal-edits-only",
+      "nextAction": "Maintain memory and heartbeat notes when significant context changes; avoid leaking private context.",
+      "commands": [
+        { "name": "workspace status", "cmd": "git", "args": ["-C", "/Users/david/.openclaw/workspace", "status", "--short", "--branch"] }
+      ],
+      "allowFailure": true
+    }
+  ]
+}
