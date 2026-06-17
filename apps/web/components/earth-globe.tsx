@@ -1508,6 +1508,7 @@ function LoopOverview({
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
   const [isTicketEditorClosing, setIsTicketEditorClosing] = useState(false);
+  const [isActivityDashboardOpen, setIsActivityDashboardOpen] = useState(false);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
   const editorCloseTimeoutRef = useRef<number | null>(null);
@@ -1783,7 +1784,8 @@ function LoopOverview({
             {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
           </section>
 
-          <section className="loop-activity" aria-label="Atlas Planner activity dashboard">
+          {isActivityDashboardOpen ? (
+          <section className="loop-activity loop-activity--overlay" aria-label="Atlas Planner activity dashboard">
             <div className="loop-activity__header">
               <div>
                 <p>Activity dashboard</p>
@@ -1819,6 +1821,14 @@ function LoopOverview({
                     onChange={(event) => setActivityDateRange((current) => ({ ...current, end: event.target.value }))}
                   />
                 </label>
+                <button
+                  type="button"
+                  className="loop-close-button"
+                  aria-label="Close activity dashboard"
+                  onClick={() => setIsActivityDashboardOpen(false)}
+                >
+                  <X size={18} />
+                </button>
               </div>
             </div>
 
@@ -1873,6 +1883,7 @@ function LoopOverview({
               </article>
             </div>
           </section>
+          ) : null}
 
           <section className="loop-kanban" aria-label="Atlas Planner Kanban">
             <div className="loop-kanban__header">
@@ -1882,6 +1893,10 @@ function LoopOverview({
               </div>
               <div className="loop-kanban__tools">
                 <span>{getWindowDecisionLabel(usageStatus)}</span>
+                <button type="button" onClick={() => setIsActivityDashboardOpen(true)}>
+                  <CalendarDays size={14} />
+                  Dashboard
+                </button>
                 <button type="button" onClick={() => openTicketEditor(getDefaultPlannerTicket(loopKanban))}>
                   <Plus size={14} />
                   New ticket

@@ -524,6 +524,7 @@ textarea {
 }
 
 .loop-panel__body {
+  position: relative;
   overflow: auto;
   padding: 16px;
 }
@@ -956,6 +957,20 @@ textarea {
     linear-gradient(135deg, rgba(15, 23, 42, 0.72), rgba(3, 7, 18, 0.58)),
     rgba(2, 6, 23, 0.52);
   padding: 14px;
+}
+
+.loop-activity--overlay {
+  position: absolute;
+  z-index: 30;
+  inset: 14px;
+  overflow: auto;
+  border-color: rgba(125, 211, 252, 0.32);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(168, 85, 247, 0.22), transparent 0 34%),
+    linear-gradient(135deg, rgba(8, 13, 30, 0.98), rgba(2, 6, 23, 0.98));
+  box-shadow:
+    0 26px 90px rgba(0, 0, 0, 0.68),
+    0 0 60px rgba(34, 211, 238, 0.14);
 }
 
 .loop-activity__header,
@@ -1715,7 +1730,7 @@ textarea {
 
   .loop-panel__body {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 16px;
     overflow: hidden;
     padding: 16px 22px 22px;
@@ -1843,6 +1858,11 @@ textarea {
       linear-gradient(120deg, rgba(15, 23, 42, 0.7), rgba(8, 13, 30, 0.76)),
       rgba(2, 6, 23, 0.72);
     padding: 12px;
+  }
+
+  .loop-activity--overlay {
+    inset: 16px 22px 22px;
+    padding: 18px;
   }
 
   .loop-activity__header {
@@ -2263,6 +2283,10 @@ textarea {
 
   .loop-panel__body {
     padding: 12px;
+  }
+
+  .loop-activity--overlay {
+    inset: 10px;
   }
 
   .loop-activity__header,
