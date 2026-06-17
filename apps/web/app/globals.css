@@ -1488,6 +1488,7 @@ textarea {
 .ticket-editor label,
 .ticket-editor__subtasks,
 .ticket-editor__tags,
+.ticket-editor__agent-run,
 .ticket-editor__timestamps {
   display: grid;
   gap: 7px;
@@ -1612,6 +1613,132 @@ textarea {
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
   font-weight: 760;
+}
+
+.ticket-editor__agent-run {
+  gap: 10px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(14, 165, 233, 0.08)),
+    rgba(2, 6, 23, 0.5);
+  padding: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.agent-run__heading,
+.agent-run__grid,
+.agent-run__command {
+  min-width: 0;
+}
+
+.agent-run__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-run__heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.agent-run__heading span:first-child {
+  color: rgba(94, 234, 212, 0.72);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.agent-run__heading strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.agent-run__heading > span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.14);
+  padding: 5px 8px;
+  color: rgba(204, 251, 241, 0.88);
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.agent-run__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-run__grid > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto 1fr;
+  gap: 4px 7px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 9px;
+}
+
+.agent-run__grid svg {
+  color: rgba(125, 211, 252, 0.9);
+}
+
+.agent-run__grid span {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-run__grid code {
+  grid-column: 1 / -1;
+}
+
+.agent-run__command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.66);
+  padding: 8px;
+}
+
+.agent-run__command code,
+.agent-run__grid code {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(224, 242, 254, 0.92);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-run__command code {
+  flex: 1 1 auto;
+}
+
+.agent-run__command button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border-color: rgba(45, 212, 191, 0.3);
+  background: rgba(20, 184, 166, 0.18);
+  padding: 6px 10px;
+  color: rgba(240, 253, 250, 0.98);
 }
 
 .ticket-editor__subtasks > div:first-child,
@@ -2371,6 +2498,16 @@ textarea {
 
   .loop-kanban__columns {
     grid-template-columns: repeat(5, minmax(190px, 1fr));
+  }
+
+  .agent-run__grid,
+  .agent-run__command {
+    display: grid;
+  }
+
+  .agent-run__command button {
+    width: 100%;
+    justify-content: center;
   }
 
   .usage-dashboard {
