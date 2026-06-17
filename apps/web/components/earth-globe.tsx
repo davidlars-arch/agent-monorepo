@@ -886,8 +886,14 @@ export function EarthGlobe({
           </div>
         </div>
         <div className="earth-controls">
-          <button type="button" aria-label="Open loop overview" onClick={() => setIsLoopPanelOpen(true)}>
-            <RefreshCw size={18} />
+          <button
+            type="button"
+            className="earth-control-button--loop"
+            aria-label="Open loop overview"
+            title="Loop overview"
+            onClick={() => setIsLoopPanelOpen(true)}
+          >
+            <Workflow size={18} />
           </button>
           <button type="button" aria-label="Zoom out" onClick={() => zoomBy(0.34)}>
             <ZoomOut size={18} />

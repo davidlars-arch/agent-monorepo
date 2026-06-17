@@ -169,6 +169,12 @@ textarea {
   border-radius: 8px;
 }
 
+.earth-controls .earth-control-button--loop {
+  border-color: rgba(45, 212, 191, 0.58);
+  background: rgba(13, 148, 136, 0.24);
+  color: #99f6e4;
+}
+
 .earth-controls button:hover,
 .project-strip button:hover,
 .project-strip button.is-active {
@@ -898,6 +904,7 @@ textarea {
 
   .earth-controls {
     flex-direction: column;
+    margin-top: 54px;
   }
 
   .earth-controls button {
