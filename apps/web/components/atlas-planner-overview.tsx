@@ -616,7 +616,6 @@ export function AtlasPlannerOverview({
                   <div className="usage-snapshot usage-snapshot--date">
                     <span>Updated</span>
                     <strong>{formatRelativeUsageTime(latestUsageStatus.recordedAt, usageClock)}</strong>
-                    <small>{formatPlannerDateTime(latestUsageStatus.recordedAt)}</small>
                   </div>
                 </div>
                 <div className="usage-dashboard">
