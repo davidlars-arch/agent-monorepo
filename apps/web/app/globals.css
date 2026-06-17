@@ -1201,11 +1201,58 @@ textarea {
 }
 
 .loop-kanban__column {
+  position: relative;
   min-width: 150px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.42);
   padding: 10px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.loop-kanban__column::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed transparent;
+  border-radius: 7px;
+  opacity: 0;
+  transition:
+    border-color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.loop-kanban__column--dragging {
+  border-color: rgba(125, 211, 252, 0.28);
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.loop-kanban__column--dragging::after {
+  border-color: rgba(125, 211, 252, 0.24);
+  opacity: 1;
+}
+
+.loop-kanban__column--drop-target {
+  border-color: rgba(45, 212, 191, 0.78);
+  background:
+    linear-gradient(180deg, rgba(20, 184, 166, 0.18), rgba(14, 165, 233, 0.08)),
+    rgba(15, 23, 42, 0.64);
+  box-shadow:
+    inset 0 0 0 1px rgba(45, 212, 191, 0.28),
+    0 16px 40px rgba(20, 184, 166, 0.12);
+  transform: translateY(-1px);
+}
+
+.loop-kanban__column--drop-target::after {
+  border-color: rgba(153, 246, 228, 0.72);
+  opacity: 1;
+  transform: scale(0.985);
 }
 
 .loop-kanban__column-heading {
@@ -1262,6 +1309,14 @@ textarea {
 
 .loop-ticket:active {
   cursor: grabbing;
+}
+
+.loop-ticket--dragging {
+  border-color: rgba(45, 212, 191, 0.58);
+  background: rgba(8, 13, 30, 0.92);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.36);
+  opacity: 0.62;
+  transform: scale(0.985);
 }
 
 .loop-ticket__topline,

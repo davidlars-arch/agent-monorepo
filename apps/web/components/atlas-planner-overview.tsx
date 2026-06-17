@@ -45,7 +45,7 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
 type LoopSummary = {
@@ -194,10 +194,14 @@ export function AtlasPlannerOverview({
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
   const [isTicketEditorClosing, setIsTicketEditorClosing] = useState(false);
   const [isActivityDashboardOpen, setIsActivityDashboardOpen] = useState(false);
+  const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<LoopTicketStatus | null>(null);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
   const editorCloseTimeoutRef = useRef<number | null>(null);
   const plannerImportInputRef = useRef<HTMLInputElement | null>(null);
+  const suppressTicketClickRef = useRef(false);
+  const suppressTicketClickTimeoutRef = useRef<number | null>(null);
   const [plannerStateMessage, setPlannerStateMessage] = useState("");
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
   const completedTicketsInRange = plannerTickets.filter((ticket) =>
@@ -249,6 +253,9 @@ export function AtlasPlannerOverview({
       if (editorCloseTimeoutRef.current) {
         window.clearTimeout(editorCloseTimeoutRef.current);
       }
+      if (suppressTicketClickTimeoutRef.current) {
+        window.clearTimeout(suppressTicketClickTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -272,12 +279,55 @@ export function AtlasPlannerOverview({
     );
   }
 
+  function suppressTicketClick() {
+    suppressTicketClickRef.current = true;
+    if (suppressTicketClickTimeoutRef.current) {
+      window.clearTimeout(suppressTicketClickTimeoutRef.current);
+    }
+    suppressTicketClickTimeoutRef.current = window.setTimeout(() => {
+      suppressTicketClickRef.current = false;
+      suppressTicketClickTimeoutRef.current = null;
+    }, 250);
+  }
+
+  function clearDragState() {
+    setDraggingTicketId(null);
+    setDragOverStatus(null);
+  }
+
+  function handleColumnDragOver(event: DragEvent<HTMLElement>, status: LoopTicketStatus) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverStatus(status);
+  }
+
+  function handleColumnDragLeave(event: DragEvent<HTMLElement>, status: LoopTicketStatus) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+
+    setDragOverStatus((current) => (current === status ? null : current));
+  }
+
   function handleDrop(event: DragEvent<HTMLElement>, status: LoopTicketStatus) {
     event.preventDefault();
+    suppressTicketClick();
     const ticketId = event.dataTransfer.getData("text/plain");
     if (ticketId) {
       moveTicket(ticketId, status);
     }
+    clearDragState();
+  }
+
+  function handleTicketClick(event: ReactMouseEvent<HTMLElement>, ticket: PlannerTicketDraft) {
+    if (suppressTicketClickRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    openTicketEditor(ticket);
   }
 
   function saveEditingTicket() {
@@ -657,8 +707,12 @@ export function AtlasPlannerOverview({
               {kanbanColumns.map((column) => (
                 <article
                   key={column.id}
-                  className="loop-kanban__column"
-                  onDragOver={(event) => event.preventDefault()}
+                  className={`loop-kanban__column${draggingTicketId ? " loop-kanban__column--dragging" : ""}${
+                    dragOverStatus === column.id ? " loop-kanban__column--drop-target" : ""
+                  }`}
+                  onDragEnter={() => setDragOverStatus(column.id)}
+                  onDragOver={(event) => handleColumnDragOver(event, column.id)}
+                  onDragLeave={(event) => handleColumnDragLeave(event, column.id)}
                   onDrop={(event) => handleDrop(event, column.id)}
                 >
                   <div className="loop-kanban__column-heading">
@@ -669,12 +723,19 @@ export function AtlasPlannerOverview({
                     {column.tickets.map((ticket) => (
                       <section
                         key={ticket.id}
-                        className="loop-ticket"
+                        className={`loop-ticket${draggingTicketId === ticket.id ? " loop-ticket--dragging" : ""}`}
                         draggable
-                        onClick={() => openTicketEditor(ticket)}
+                        onClick={(event) => handleTicketClick(event, ticket)}
                         onDragStart={(event) => {
+                          suppressTicketClick();
+                          setDraggingTicketId(ticket.id);
+                          setDragOverStatus(ticket.status);
                           event.dataTransfer.setData("text/plain", ticket.id);
                           event.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => {
+                          suppressTicketClick();
+                          clearDragState();
                         }}
                       >
                         <div className="loop-ticket__topline">
