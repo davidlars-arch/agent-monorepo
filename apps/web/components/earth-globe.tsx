@@ -9,13 +9,15 @@ import {
   GitCommitHorizontal,
   ListChecks,
   Network,
+  Plus,
   RefreshCw,
   RotateCcw,
+  Tags,
   Workflow,
   X,
   ZoomOut
 } from "lucide-react";
-import type { CSSProperties, DragEvent } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -73,6 +75,7 @@ export type LoopKanbanTicket = {
   status: LoopTicketStatus;
   estimate: number;
   summary: string;
+  tags?: string[];
 };
 
 export type LoopKanbanEpic = {
@@ -422,7 +425,8 @@ function buildPlannerTickets(projects: LoopKanbanProject[]): KanbanTicket[] {
         projectLabel: project.label,
         description: ticket.summary,
         fitLabel: "",
-        subtasks: []
+        subtasks: [],
+        tags: ticket.tags ?? []
       }))
     )
   );
@@ -471,11 +475,16 @@ function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDr
     projectLabel: project.label,
     epicId: epic.id,
     epicLabel: epic.label,
-    subtasks: []
+    subtasks: [],
+    tags: []
   };
 }
 
 function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
+  const uniqueTags = Array.from(
+    new Set((ticket.tags ?? []).map((tag) => normalizeTicketTag(tag)).filter(Boolean))
+  ).slice(0, 8);
+
   return {
     ...ticket,
     id: ticket.id.trim() || `AP-${Date.now().toString(36).toUpperCase()}`,
@@ -483,11 +492,26 @@ function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
     summary: ticket.description.trim() || ticket.summary.trim() || "No description yet.",
     description: ticket.description.trim() || ticket.summary.trim(),
     fitLabel: ticket.fitLabel ?? "",
+    tags: uniqueTags,
     subtasks: ticket.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
       ...subtask,
       title: subtask.title.trim()
     }))
   };
+}
+
+function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
+  return tickets.map((ticket) => ({
+    ...ticket,
+    description: ticket.description ?? ticket.summary ?? "",
+    fitLabel: ticket.fitLabel ?? "",
+    subtasks: ticket.subtasks ?? [],
+    tags: ticket.tags ?? []
+  }));
+}
+
+function normalizeTicketTag(tag: string) {
+  return tag.trim().replace(/^#/, "").replace(/\s+/g, "-");
 }
 
 function estimateBudgetForWindow(percentLeft: number | null) {
@@ -1359,6 +1383,8 @@ function LoopOverview({
   const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
+  const [isTicketEditorClosing, setIsTicketEditorClosing] = useState(false);
+  const editorCloseTimeoutRef = useRef<number | null>(null);
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
 
   useEffect(() => {
@@ -1369,7 +1395,7 @@ function LoopOverview({
     const timeoutId = window.setTimeout(() => {
       try {
         const stored = window.localStorage.getItem(plannerTicketStorageKey);
-        setPlannerTickets(stored ? (JSON.parse(stored) as KanbanTicket[]) : buildPlannerTickets(loopKanban));
+        setPlannerTickets(stored ? hydratePlannerTickets(JSON.parse(stored) as KanbanTicket[]) : buildPlannerTickets(loopKanban));
       } catch {
         setPlannerTickets(buildPlannerTickets(loopKanban));
       } finally {
@@ -1387,6 +1413,14 @@ function LoopOverview({
 
     window.localStorage.setItem(plannerTicketStorageKey, JSON.stringify(plannerTickets));
   }, [hasLoadedPlannerState, plannerTickets]);
+
+  useEffect(() => {
+    return () => {
+      if (editorCloseTimeoutRef.current) {
+        window.clearTimeout(editorCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function moveTicket(ticketId: string, status: LoopTicketStatus) {
     setPlannerTickets((current) =>
@@ -1415,7 +1449,7 @@ function LoopOverview({
       }
       return [normalizedTicket, ...current];
     });
-    setEditingTicket(null);
+    closeTicketEditor();
   }
 
   function deleteEditingTicket() {
@@ -1424,7 +1458,27 @@ function LoopOverview({
     }
 
     setPlannerTickets((current) => current.filter((ticket) => ticket.id !== editingTicket.id));
-    setEditingTicket(null);
+    closeTicketEditor();
+  }
+
+  function openTicketEditor(ticket: PlannerTicketDraft) {
+    if (editorCloseTimeoutRef.current) {
+      window.clearTimeout(editorCloseTimeoutRef.current);
+    }
+    setIsTicketEditorClosing(false);
+    setEditingTicket({ ...ticket, tags: ticket.tags ?? [] });
+  }
+
+  function closeTicketEditor() {
+    if (editorCloseTimeoutRef.current) {
+      window.clearTimeout(editorCloseTimeoutRef.current);
+    }
+    setIsTicketEditorClosing(true);
+    editorCloseTimeoutRef.current = window.setTimeout(() => {
+      setEditingTicket(null);
+      setIsTicketEditorClosing(false);
+      editorCloseTimeoutRef.current = null;
+    }, 180);
   }
 
   function updateEditingTicket(update: Partial<PlannerTicketDraft>) {
@@ -1559,7 +1613,8 @@ function LoopOverview({
               </div>
               <div className="loop-kanban__tools">
                 <span>{getWindowDecisionLabel(usageStatus)}</span>
-                <button type="button" onClick={() => setEditingTicket(getDefaultPlannerTicket(loopKanban))}>
+                <button type="button" onClick={() => openTicketEditor(getDefaultPlannerTicket(loopKanban))}>
+                  <Plus size={14} />
                   New ticket
                 </button>
               </div>
@@ -1582,7 +1637,7 @@ function LoopOverview({
                         key={ticket.id}
                         className="loop-ticket"
                         draggable
-                        onClick={() => setEditingTicket(ticket)}
+                        onClick={() => openTicketEditor(ticket)}
                         onDragStart={(event) => {
                           event.dataTransfer.setData("text/plain", ticket.id);
                           event.dataTransfer.effectAllowed = "move";
@@ -1601,6 +1656,13 @@ function LoopOverview({
                             {ticket.fitLabel}
                           </small>
                         </div>
+                        {(ticket.tags ?? []).length > 0 ? (
+                          <div className="loop-ticket__tags" aria-label={`${ticket.id} tags`}>
+                            {(ticket.tags ?? []).slice(0, 4).map((tag) => (
+                              <span key={tag}>#{tag}</span>
+                            ))}
+                          </div>
+                        ) : null}
                       </section>
                     ))}
                     {column.tickets.length === 0 ? <p className="loop-kanban__empty">No tickets here.</p> : null}
@@ -1613,11 +1675,12 @@ function LoopOverview({
           {editingTicket ? (
             <TicketEditor
               ticket={editingTicket}
+              isClosing={isTicketEditorClosing}
               projects={loopKanban}
               onChange={updateEditingTicket}
               onSave={saveEditingTicket}
               onDelete={deleteEditingTicket}
-              onClose={() => setEditingTicket(null)}
+              onClose={closeTicketEditor}
               onAddSubtask={addSubtask}
               onUpdateSubtask={updateSubtask}
               onRemoveSubtask={removeSubtask}
@@ -1710,6 +1773,7 @@ function LoopOverview({
 
 function TicketEditor({
   ticket,
+  isClosing,
   projects,
   onChange,
   onSave,
@@ -1720,6 +1784,7 @@ function TicketEditor({
   onRemoveSubtask
 }: {
   ticket: PlannerTicketDraft;
+  isClosing: boolean;
   projects: LoopKanbanProject[];
   onChange: (update: Partial<PlannerTicketDraft>) => void;
   onSave: () => void;
@@ -1729,9 +1794,11 @@ function TicketEditor({
   onUpdateSubtask: (subtaskId: string, update: Partial<PlannerSubtask>) => void;
   onRemoveSubtask: (subtaskId: string) => void;
 }) {
+  const [tagInput, setTagInput] = useState("");
   const selectedProject = projects.find((project) => project.id === ticket.projectId) ?? projects[0];
   const selectedEpic =
     selectedProject?.epics?.find((epic) => epic.id === ticket.epicId) ?? selectedProject?.epics?.[0];
+  const ticketTags = ticket.tags ?? [];
 
   function updateProject(projectId: string) {
     const project = projects.find((candidate) => candidate.id === projectId);
@@ -1758,14 +1825,46 @@ function TicketEditor({
     onChange({ epicId: epic.id, epicLabel: epic.label });
   }
 
+  function addTag(rawTag = tagInput) {
+    const nextTags = rawTag
+      .split(/[,;]/)
+      .map((tag) => normalizeTicketTag(tag))
+      .filter(Boolean);
+    if (nextTags.length === 0) {
+      return;
+    }
+
+    onChange({ tags: Array.from(new Set([...ticketTags, ...nextTags])).slice(0, 8) });
+    setTagInput("");
+  }
+
+  function removeTag(tag: string) {
+    onChange({ tags: ticketTags.filter((currentTag) => currentTag !== tag) });
+  }
+
+  function handleTagKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addTag();
+    }
+    if (event.key === "Backspace" && !tagInput && ticketTags.length > 0) {
+      removeTag(ticketTags[ticketTags.length - 1]);
+    }
+  }
+
   return (
-    <div className="ticket-editor" role="dialog" aria-modal="true" aria-labelledby="ticket-editor-title">
+    <div
+      className={`ticket-editor${isClosing ? " ticket-editor--closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ticket-editor-title"
+    >
       <button type="button" className="ticket-editor__scrim" aria-label="Close ticket editor" onClick={onClose} />
       <section className="ticket-editor__panel">
         <header className="ticket-editor__header">
           <div>
             <p>{ticket.status}</p>
-            <h3 id="ticket-editor-title">{ticket.id}</h3>
+            <h3 id="ticket-editor-title">{ticket.title || ticket.id}</h3>
           </div>
           <button type="button" className="loop-close-button" aria-label="Close ticket editor" onClick={onClose}>
             <X size={18} />
@@ -1785,6 +1884,31 @@ function TicketEditor({
             Description
             <textarea value={ticket.description} onChange={(event) => onChange({ description: event.target.value })} />
           </label>
+
+          <section className="ticket-editor__tags ticket-editor__wide" aria-label="Ticket tags">
+            <div>
+              <span>
+                <Tags size={13} />
+                Tags
+              </span>
+              <small>{ticketTags.length}/8</small>
+            </div>
+            <div className="ticket-editor__tagbox">
+              {ticketTags.map((tag) => (
+                <button key={tag} type="button" onClick={() => removeTag(tag)} aria-label={`Remove ${tag} tag`}>
+                  #{tag}
+                  <X size={12} />
+                </button>
+              ))}
+              <input
+                value={tagInput}
+                placeholder={ticketTags.length ? "Add another tag" : "Add tags"}
+                onBlur={() => addTag()}
+                onChange={(event) => setTagInput(event.target.value)}
+                onKeyDown={handleTagKeyDown}
+              />
+            </div>
+          </section>
 
           <label>
             Status
