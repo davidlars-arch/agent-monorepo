@@ -100,8 +100,8 @@ const projectDetails: Record<string, ProjectDetail> = {
     title: "Atlas Planner",
     preview: "web",
     lastBuilt: "2026-06-17 planner build",
-    commit: "b6517f6 · completion commits",
-    commitSummary: "Token-aware Jira competitor with Kanban, lifecycle timestamps, completion commits, and activity dashboard."
+    commit: "000eb3a · planner extraction",
+    commitSummary: "Token-aware Jira competitor with Kanban, lifecycle timestamps, JSON import/export, activity dashboard, and extracted planner UI."
   },
   "crypto-trader": {
     eyebrow: "Trading experiment",
