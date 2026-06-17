@@ -1024,6 +1024,236 @@ textarea {
   font-size: 12px;
 }
 
+@media (min-width: 900px) {
+  .loop-overlay {
+    padding: 24px;
+  }
+
+  .loop-overlay__scrim {
+    background:
+      radial-gradient(circle at 50% 46%, rgba(124, 58, 237, 0.28), transparent 0 38%),
+      radial-gradient(circle at 22% 20%, rgba(34, 211, 238, 0.14), transparent 0 30%),
+      radial-gradient(circle at 78% 10%, rgba(192, 132, 252, 0.18), transparent 0 34%),
+      rgba(2, 3, 10, 0.82);
+    backdrop-filter: blur(22px);
+  }
+
+  .loop-panel {
+    width: min(1440px, calc(100vw - 48px));
+    height: min(920px, calc(100vh - 48px));
+    max-height: none;
+    border-color: rgba(168, 85, 247, 0.44);
+    background:
+      radial-gradient(circle at 50% -14%, rgba(168, 85, 247, 0.24), transparent 0 42%),
+      linear-gradient(180deg, rgba(9, 8, 22, 0.96), rgba(2, 6, 23, 0.98)),
+      #02030a;
+    box-shadow:
+      0 26px 110px rgba(0, 0, 0, 0.78),
+      0 0 96px rgba(124, 58, 237, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .loop-panel__header {
+    min-height: 154px;
+    align-items: flex-start;
+    border-bottom-color: rgba(168, 85, 247, 0.22);
+    background:
+      linear-gradient(100deg, rgba(15, 23, 42, 0.52), rgba(88, 28, 135, 0.24), rgba(8, 13, 30, 0.16)),
+      rgba(3, 7, 18, 0.2);
+    padding: 28px 32px 22px;
+  }
+
+  .loop-panel__header p {
+    color: rgba(125, 211, 252, 0.76);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+  }
+
+  .loop-panel__header h2 {
+    margin-top: 8px;
+    color: rgba(255, 255, 255, 0.98);
+    font-size: clamp(56px, 7.2vw, 94px);
+    font-weight: 850;
+    line-height: 0.84;
+    text-shadow:
+      0 0 24px rgba(168, 85, 247, 0.34),
+      0 0 54px rgba(34, 211, 238, 0.12);
+  }
+
+  .loop-help-button,
+  .loop-close-button {
+    background: rgba(8, 13, 30, 0.68);
+    border-color: rgba(196, 181, 253, 0.22);
+  }
+
+  .loop-panel__body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 18px;
+    overflow: hidden;
+    padding: 18px 22px 22px;
+  }
+
+  .loop-usage {
+    grid-template-columns: minmax(170px, 0.7fr) auto minmax(0, 3fr);
+    align-items: center;
+    gap: 14px;
+    margin: 0;
+    border-color: rgba(125, 211, 252, 0.2);
+    background:
+      linear-gradient(120deg, rgba(15, 23, 42, 0.76), rgba(88, 28, 135, 0.18), rgba(6, 13, 29, 0.84)),
+      rgba(2, 6, 23, 0.78);
+    padding: 12px 14px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 12px 44px rgba(2, 6, 23, 0.28);
+  }
+
+  .loop-usage__heading {
+    display: grid;
+    gap: 7px;
+  }
+
+  .loop-usage__heading > div {
+    gap: 7px;
+  }
+
+  .loop-usage h3 {
+    font-size: 14px;
+    font-weight: 830;
+  }
+
+  .loop-usage__heading > span {
+    width: fit-content;
+    color: rgba(226, 232, 240, 0.62);
+    font-size: 10px;
+  }
+
+  .usage-snapshot {
+    align-self: center;
+    padding: 8px 11px;
+  }
+
+  .usage-dashboard {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .usage-card {
+    min-height: 92px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: center;
+    gap: 8px 10px;
+    border-color: rgba(196, 181, 253, 0.16);
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(3, 7, 18, 0.72)),
+      rgba(3, 7, 18, 0.72);
+    padding: 10px;
+  }
+
+  .usage-card__header {
+    grid-column: 1 / -1;
+  }
+
+  .usage-ring {
+    width: 50px;
+    height: 50px;
+  }
+
+  .usage-ring span {
+    font-size: 13px;
+  }
+
+  .loop-usage .usage-card p {
+    align-self: center;
+    font-size: 17px;
+  }
+
+  .usage-card small {
+    align-self: center;
+    font-size: 10px;
+  }
+
+  .usage-meter {
+    grid-column: 1 / -1;
+    height: 4px;
+  }
+
+  .loop-usage__note {
+    display: none;
+  }
+
+  .loop-kanban {
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 14px;
+    border-color: rgba(168, 85, 247, 0.24);
+    background:
+      radial-gradient(circle at 50% 0%, rgba(168, 85, 247, 0.16), transparent 0 44%),
+      linear-gradient(180deg, rgba(8, 13, 30, 0.74), rgba(2, 6, 23, 0.82));
+    padding: 18px;
+  }
+
+  .loop-kanban__header h3 {
+    font-size: 22px;
+    font-weight: 820;
+  }
+
+  .loop-kanban__header > span {
+    border-color: rgba(34, 211, 238, 0.28);
+    background: rgba(34, 211, 238, 0.08);
+    color: rgba(207, 250, 254, 0.9);
+  }
+
+  .loop-kanban__columns {
+    min-height: 0;
+    grid-template-columns: repeat(4, minmax(250px, 1fr));
+    gap: 14px;
+    overflow-x: auto;
+  }
+
+  .loop-kanban__column {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    border-color: rgba(196, 181, 253, 0.14);
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.68), rgba(3, 7, 18, 0.8)),
+      rgba(3, 7, 18, 0.72);
+    padding: 14px;
+  }
+
+  .loop-kanban__column-heading strong {
+    font-size: 13px;
+  }
+
+  .loop-kanban__cards {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .loop-ticket {
+    border-color: rgba(148, 163, 184, 0.14);
+    background:
+      linear-gradient(180deg, rgba(10, 16, 32, 0.9), rgba(3, 7, 18, 0.82)),
+      rgba(3, 7, 18, 0.76);
+    padding: 12px;
+  }
+
+  .loop-ticket h4 {
+    font-size: 13px;
+  }
+
+  .loop-ticket p {
+    font-size: 12px;
+  }
+
+  .loop-summary-grid {
+    display: none;
+  }
+}
+
 .loop-explainer {
   display: grid;
   gap: 14px;

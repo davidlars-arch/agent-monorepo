@@ -1295,11 +1295,8 @@ function LoopOverview({
       <section className="loop-panel">
         <header className="loop-panel__header">
           <div>
-            <p>Atlas Planner</p>
-            <h2 id="loop-overview-title">
-              <RefreshCw size={19} />
-              Token-aware work board
-            </h2>
+            <p>Token-aware work board</p>
+            <h2 id="loop-overview-title">Atlas Planner</h2>
           </div>
           <div className="loop-panel__actions">
             <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
@@ -1317,7 +1314,7 @@ function LoopOverview({
             <div className="loop-usage__heading">
               <div>
                 <ListChecks size={16} />
-                <h3>Latest token status</h3>
+                <h3>Token runway</h3>
               </div>
               {usageStatus ? <span>{usageStatus.recordedAt}</span> : null}
             </div>
