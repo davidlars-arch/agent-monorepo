@@ -256,6 +256,7 @@ export function AtlasPlannerOverview({
 }) {
   const [latestUsageStatus, setLatestUsageStatus] = useState<UsageStatusSnapshot | null>(usageStatus ?? null);
   const [usageClock, setUsageClock] = useState(() => Date.now());
+  const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
   const usageMetrics = latestUsageStatus ? getUsageMetrics(latestUsageStatus) : [];
   const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
@@ -327,36 +328,23 @@ export function AtlasPlannerOverview({
     };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function refreshUsageStatus() {
-      try {
-        const response = await fetch("/api/usage-status", { cache: "no-store" });
-        if (!response.ok) {
-          return;
-        }
-
-        const nextUsageStatus = (await response.json()) as UsageStatusSnapshot | null;
-        if (isMounted) {
-          setLatestUsageStatus(nextUsageStatus);
-          setUsageClock(Date.now());
-        }
-      } catch {
-        // Keep the latest known snapshot visible if the local status file is temporarily unavailable.
+  async function refreshUsageStatus() {
+    setIsUsageRefreshing(true);
+    try {
+      const response = await fetch("/api/usage-status", { cache: "no-store" });
+      if (!response.ok) {
+        return;
       }
+
+      const nextUsageStatus = (await response.json()) as UsageStatusSnapshot | null;
+      setLatestUsageStatus(nextUsageStatus);
+      setUsageClock(Date.now());
+    } catch {
+      // Keep the latest known snapshot visible if the local status file is temporarily unavailable.
+    } finally {
+      setIsUsageRefreshing(false);
     }
-
-    refreshUsageStatus();
-    const refreshInterval = window.setInterval(refreshUsageStatus, 60_000);
-    const clockInterval = window.setInterval(() => setUsageClock(Date.now()), 30_000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(refreshInterval);
-      window.clearInterval(clockInterval);
-    };
-  }, []);
+  }
 
   function moveTicket(ticketId: string, status: LoopTicketStatus) {
     const now = new Date().toISOString();
@@ -605,6 +593,16 @@ export function AtlasPlannerOverview({
                 <ListChecks size={16} />
                 <h3>Token runway</h3>
               </div>
+              <button
+                type="button"
+                className="loop-usage__refresh"
+                onClick={refreshUsageStatus}
+                disabled={isUsageRefreshing}
+                aria-label="Refresh token runway"
+              >
+                <RefreshCw size={14} />
+                <span>{isUsageRefreshing ? "Refreshing" : "Refresh"}</span>
+              </button>
             </div>
             {latestUsageStatus ? (
               <>
