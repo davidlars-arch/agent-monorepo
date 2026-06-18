@@ -31,6 +31,18 @@ export const repoNodes: RepoNode[] = [
     summary: "Project Sphere web UI with the 3D repo globe and runnable project surfaces."
   },
   {
+    id: "atlas-planner",
+    label: "apps/atlas-planner",
+    shortLabel: "atlas-planner",
+    group: "apps",
+    kind: "app",
+    x: 46,
+    y: 43,
+    status: "poc",
+    summary: "Token-aware agent work planner: Kanban, ticket lifecycle, runway, completion commits, and activity dashboard.",
+    featured: true
+  },
+  {
     id: "crypto-trader",
     label: "apps/crypto-trader-test",
     shortLabel: "crypto-trader",
@@ -124,6 +136,8 @@ export const repoNodes: RepoNode[] = [
 ];
 
 export const repoEdges: RepoEdge[] = [
+  { from: "atlas-planner", to: "web" },
+  { from: "atlas-planner", to: "repo-graph" },
   { from: "web", to: "ui" },
   { from: "web", to: "crypto-trader" },
   { from: "web", to: "crypto-tax" },

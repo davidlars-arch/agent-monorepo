@@ -1,9 +1,14 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { EarthGlobe, type LoopKanbanProject, type UsageStatusSnapshot } from "@/components/earth-globe";
+import { promisify } from "node:util";
+import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
+import { EarthGlobe } from "@/components/earth-globe";
 
 export const dynamic = "force-dynamic";
+
+const execFileAsync = promisify(execFile);
 
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
   const candidates = [
@@ -40,6 +45,17 @@ async function readLoopKanban(): Promise<LoopKanbanProject[]> {
   }
 }
 
+async function readCurrentCommit() {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: resolve(process.cwd(), "../..")
+    });
+    return stdout.trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 export default async function Home({
   searchParams
 }: {
@@ -49,12 +65,14 @@ export default async function Home({
   const requestedOpen = Array.isArray(params.open) ? params.open[0] : params.open;
   const usageStatus = await readUsageStatus();
   const loopKanban = await readLoopKanban();
+  const currentCommit = await readCurrentCommit();
   return (
     <EarthGlobe
       initialOpenProjectId={requestedOpen}
       initialLoopOpen={requestedOpen === "loops"}
       usageStatus={usageStatus}
       loopKanban={loopKanban}
+      currentCommit={currentCommit}
     />
   );
 }

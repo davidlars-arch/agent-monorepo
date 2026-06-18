@@ -1,21 +1,16 @@
 "use client";
 
+import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
+import { AtlasPlannerOverview } from "./atlas-planner-overview";
 import { repoNodes } from "@agent/repo-graph";
 import {
-  CircleHelp,
   ExternalLink,
-  FileText,
   Gamepad2,
-  GitCommitHorizontal,
-  ListChecks,
-  Network,
-  RefreshCw,
   RotateCcw,
   Workflow,
   X,
   ZoomOut
 } from "lucide-react";
-import type { CSSProperties, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -50,94 +45,9 @@ type CameraMove = {
   hasRevealedDetail: boolean;
 };
 
-type LoopSummary = {
-  id: string;
-  label: string;
-  cadence: string;
-  permission: string;
-  commit: string;
-  summary: string;
-  status: "ready" | "registered" | "blocked";
-};
-
-type LoopFile = {
-  path: string;
-  role: string;
-};
-
-export type LoopTicketStatus = "backlog" | "in-progress" | "review" | "done" | "blocked";
-
-export type LoopKanbanTicket = {
-  id: string;
-  title: string;
-  status: LoopTicketStatus;
-  estimate: number;
-  summary: string;
-};
-
-export type LoopKanbanEpic = {
-  id: string;
-  label: string;
-  tickets: LoopKanbanTicket[];
-};
-
-export type LoopKanbanProject = {
-  id: string;
-  label: string;
-  nextAction: string;
-  epics?: LoopKanbanEpic[];
-};
-
-export type UsageStatusSnapshot = {
-  recordedAt: string;
-  model: string;
-  context: string;
-  currentTokens: string;
-  shortWindow: string;
-  weekly: string;
-  note?: string;
-};
-
-type UsageMetric = {
-  label: string;
-  value: string;
-  detail: string;
-  percentLeft?: number;
-  tone: "cyan" | "teal" | "violet" | "slate";
-};
-
-type KanbanTicket = LoopKanbanTicket & {
-  projectId: string;
-  epicId: string;
-  epicLabel: string;
-  projectLabel: string;
-  fitLabel: string;
-  description: string;
-  subtasks: PlannerSubtask[];
-};
-
-type PlannerSubtask = {
-  id: string;
-  title: string;
-  done: boolean;
-};
-
-type PlannerTicketDraft = Omit<KanbanTicket, "fitLabel"> & {
-  fitLabel?: string;
-};
-
-const plannerTicketStorageKey = "atlas-planner:tickets:v1";
-const fibonacciEstimates = [1, 2, 3, 5, 8, 13, 21];
-const ticketStatuses: Array<{ id: LoopTicketStatus; label: string }> = [
-  { id: "backlog", label: "Backlog" },
-  { id: "in-progress", label: "In progress" },
-  { id: "review", label: "Review" },
-  { id: "blocked", label: "Blocked" },
-  { id: "done", label: "Done" }
-];
-
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
+  "atlas-planner": { lat: 19, lon: -44, color: "#f0abfc" },
   "crypto-trader": { lat: 46, lon: -26, color: "#22c55e" },
   "crypto-tax": { lat: -8, lon: -34, color: "#14b8a6" },
   ui: { lat: 24, lon: 42, color: "#67e8f9" },
@@ -184,6 +94,14 @@ const projectDetails: Record<string, ProjectDetail> = {
     lastBuilt: "2026-06-16 workspace build",
     commit: "52394b5 · 2026-06-15",
     commitSummary: "Initial scaffold with the web app, shared packages, Unity slot, analytics POC, and docs."
+  },
+  "atlas-planner": {
+    eyebrow: "Agent planning app",
+    title: "Atlas Planner",
+    preview: "web",
+    lastBuilt: "2026-06-17 planner build",
+    commit: "000eb3a · planner extraction",
+    commitSummary: "Token-aware Jira competitor with Kanban, lifecycle timestamps, JSON import/export, activity dashboard, and extracted planner UI."
   },
   "crypto-trader": {
     eyebrow: "Trading experiment",
@@ -251,271 +169,16 @@ const projectDetails: Record<string, ProjectDetail> = {
   }
 };
 
-const loopSummaries: LoopSummary[] = [
-  {
-    id: "project-controller",
-    label: "Atlas Planner",
-    cadence: "Runs due loops",
-    permission: "registry controlled",
-    commit: "c445d7d · chore: add project loop controller",
-    summary: "Adds the central registry, lock, local state, latest report, project selection, dry-run mode, and build-mode execution.",
-    status: "ready"
-  },
-  {
-    id: "repo-health",
-    label: "Repo Health",
-    cadence: "Every 24h",
-    permission: "build-local",
-    commit: "65ff02e · chore: organize project sphere workspace tooling",
-    summary: "Keeps the monorepo green with typecheck, lint, optional build, dirty-worktree detection, and TODO sampling.",
-    status: "ready"
-  },
-  {
-    id: "web-atlas",
-    label: "Web Atlas",
-    cadence: "Every 24h",
-    permission: "build-local-and-commit",
-    commit: "9b8cdc7 · chore: add web atlas loop",
-    summary: "Checks the Project Sphere web surface, repo graph metadata, shared UI package, and atlas surface files.",
-    status: "ready"
-  },
-  {
-    id: "crypto-tax-sweden",
-    label: "Crypto Tax Sweden",
-    cadence: "Every 72h",
-    permission: "build-local-and-commit",
-    commit: "c445d7d · registered in project controller",
-    summary: "Runs the tax app checks and queues focused work around CSV edge cases, review flow, exports, and evidence trails.",
-    status: "registered"
-  },
-  {
-    id: "crypto-trader-test",
-    label: "Crypto Trader Test",
-    cadence: "Every 72h",
-    permission: "dry-run-only-and-commit",
-    commit: "c445d7d · registered in project controller",
-    summary: "Runs safe trader checks and dry-run-only automation. Live trading is deliberately excluded from the loop.",
-    status: "registered"
-  },
-  {
-    id: "rpg-slice",
-    label: "RPG Slice",
-    cadence: "Every 72h",
-    permission: "build-local-and-commit",
-    commit: "c445d7d · registered in project controller",
-    summary: "Tracks the Unity/WebGL slice, browser mock parity, and original JRPG-style gameplay increments.",
-    status: "registered"
-  },
-  {
-    id: "analytics-dbt",
-    label: "Analytics dbt POC",
-    cadence: "Every 168h",
-    permission: "plan-until-dbt-installed",
-    commit: "c445d7d · registered in project controller",
-    summary: "Records the dbt analytics loop as blocked until dbt is available on PATH, then runs local DuckDB models.",
-    status: "blocked"
-  },
-  {
-    id: "workspace-memory",
-    label: "Workspace Maintenance",
-    cadence: "Every 168h",
-    permission: "internal-edits-only",
-    commit: "c445d7d · registered in project controller",
-    summary: "Keeps OpenClaw memory and heartbeat notes maintained without leaking private workspace context.",
-    status: "registered"
+function getProjectDetail(projectId: string, currentCommit: string) {
+  const detail = projectDetails[projectId];
+  if (!detail || currentCommit === "unknown") {
+    return detail;
   }
-];
-
-const loopFiles: LoopFile[] = [
-  {
-    path: "loops/project-controller/projects.json",
-    role: "Committed registry: project ids, cadence, permissions, commands, build commands, and next actions."
-  },
-  {
-    path: "loops/project-controller/LOOP.md",
-    role: "Human-readable controller contract: purpose, cadence, state files, and expansion points."
-  },
-  {
-    path: "loops/project-controller/PROMPT.md",
-    role: "Agent runbook for operating the controller and choosing the next build slice."
-  },
-  {
-    path: "loops/project-controller/state.json",
-    role: "Ignored local memory: last run time, status, command counts, and short run history."
-  },
-  {
-    path: "loops/project-controller/latest-report.md",
-    role: "Ignored latest report: selected projects, pass/block/fail state, and next controller action."
-  },
-  {
-    path: "loops/*/LOOP.md",
-    role: "Durable child-loop contract for one project area."
-  },
-  {
-    path: "loops/*/PROMPT.md",
-    role: "Agent prompt/runbook for executing that child loop safely."
-  },
-  {
-    path: "scripts/project-loop.mjs",
-    role: "Controller runner: lock, select due projects, execute commands, write state/report."
-  }
-];
-
-function parseFirstPercent(value: string) {
-  const match = value.match(/(\d{1,3})%/);
-  if (!match) {
-    return null;
-  }
-
-  return Math.min(100, Math.max(0, Number(match[1])));
-}
-
-function formatCurrentTokenValue(value: string) {
-  return value.toLowerCase().includes("not shown") ? "Unavailable" : value;
-}
-
-function getUsageMetrics(usageStatus: UsageStatusSnapshot): UsageMetric[] {
-  const contextUsed = parseFirstPercent(usageStatus.context);
-  const contextLeft = contextUsed === null ? undefined : 100 - contextUsed;
-  const shortWindowLeft = parseFirstPercent(usageStatus.shortWindow) ?? undefined;
-  const weeklyLeft = parseFirstPercent(usageStatus.weekly) ?? undefined;
-
-  return [
-    {
-      label: "Context left",
-      value: contextLeft === undefined ? "Unknown" : `${contextLeft}% left`,
-      detail: usageStatus.context,
-      percentLeft: contextLeft,
-      tone: "cyan"
-    },
-    {
-      label: "Short window",
-      value: shortWindowLeft === undefined ? "Unknown" : `${shortWindowLeft}% left`,
-      detail: usageStatus.shortWindow,
-      percentLeft: shortWindowLeft,
-      tone: "teal"
-    },
-    {
-      label: "Weekly quota",
-      value: weeklyLeft === undefined ? "Unknown" : `${weeklyLeft}% left`,
-      detail: usageStatus.weekly,
-      percentLeft: weeklyLeft,
-      tone: "violet"
-    },
-    {
-      label: "Current request",
-      value: formatCurrentTokenValue(usageStatus.currentTokens),
-      detail: "Latest request token snapshot",
-      tone: "slate"
-    }
-  ];
-}
-
-function buildPlannerTickets(projects: LoopKanbanProject[]): KanbanTicket[] {
-  return projects.flatMap((project) =>
-    (project.epics ?? []).flatMap((epic) =>
-      epic.tickets.map((ticket) => ({
-        ...ticket,
-        projectId: project.id,
-        epicId: epic.id,
-        epicLabel: epic.label,
-        projectLabel: project.label,
-        description: ticket.summary,
-        fitLabel: "",
-        subtasks: []
-      }))
-    )
-  );
-}
-
-function getKanbanColumns(tickets: KanbanTicket[], usageStatus?: UsageStatusSnapshot | null) {
-  const maxEstimate = estimateBudgetForWindow(usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null);
-  const columns: Array<{ id: LoopTicketStatus; label: string; tickets: KanbanTicket[] }> = [
-    { id: "backlog", label: "Backlog", tickets: [] },
-    { id: "in-progress", label: "In progress", tickets: [] },
-    { id: "review", label: "Review", tickets: [] },
-    { id: "blocked", label: "Blocked", tickets: [] },
-    { id: "done", label: "Done", tickets: [] }
-  ];
-
-  for (const ticket of tickets) {
-    const column = columns.find((candidate) => candidate.id === ticket.status);
-    if (column) {
-      column.tickets.push({
-        ...ticket,
-        fitLabel: ticket.estimate <= maxEstimate ? `fits <= ${maxEstimate}` : `over ${maxEstimate}`
-      });
-    }
-  }
-
-  for (const column of columns) {
-    column.tickets.sort((left, right) => left.estimate - right.estimate || left.id.localeCompare(right.id));
-  }
-
-  return columns;
-}
-
-function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDraft {
-  const project = projects[0] ?? { id: "atlas-planner", label: "Atlas Planner", epics: [] };
-  const epic = project.epics?.[0] ?? { id: "general", label: "General", tickets: [] };
-  const now = Date.now().toString(36).toUpperCase();
 
   return {
-    id: `AP-${now}`,
-    title: "New ticket",
-    status: "backlog",
-    estimate: 3,
-    summary: "",
-    description: "",
-    projectId: project.id,
-    projectLabel: project.label,
-    epicId: epic.id,
-    epicLabel: epic.label,
-    subtasks: []
+    ...detail,
+    commit: `${currentCommit} · current workspace`
   };
-}
-
-function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket {
-  return {
-    ...ticket,
-    id: ticket.id.trim() || `AP-${Date.now().toString(36).toUpperCase()}`,
-    title: ticket.title.trim() || "Untitled ticket",
-    summary: ticket.description.trim() || ticket.summary.trim() || "No description yet.",
-    description: ticket.description.trim() || ticket.summary.trim(),
-    fitLabel: ticket.fitLabel ?? "",
-    subtasks: ticket.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
-      ...subtask,
-      title: subtask.title.trim()
-    }))
-  };
-}
-
-function estimateBudgetForWindow(percentLeft: number | null) {
-  if (percentLeft === null) {
-    return 8;
-  }
-  if (percentLeft >= 70) {
-    return 21;
-  }
-  if (percentLeft >= 45) {
-    return 13;
-  }
-  if (percentLeft >= 25) {
-    return 8;
-  }
-  if (percentLeft >= 12) {
-    return 5;
-  }
-  return 3;
-}
-
-function getWindowDecisionLabel(usageStatus?: UsageStatusSnapshot | null) {
-  if (!usageStatus) {
-    return "No token snapshot: max 8";
-  }
-
-  const shortWindowLeft = parseFirstPercent(usageStatus.shortWindow);
-  return `Short window max: ${estimateBudgetForWindow(shortWindowLeft)} pts`;
 }
 
 const getDefaultCameraPosition = () => {
@@ -542,12 +205,14 @@ export function EarthGlobe({
   initialOpenProjectId,
   initialLoopOpen = false,
   usageStatus,
-  loopKanban
+  loopKanban,
+  currentCommit = "unknown"
 }: {
   initialOpenProjectId?: string;
   initialLoopOpen?: boolean;
   usageStatus?: UsageStatusSnapshot | null;
   loopKanban?: LoopKanbanProject[];
+  currentCommit?: string;
 }) {
   const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
   const initialProjectId = hasInitialProject && initialOpenProjectId ? initialOpenProjectId : "web";
@@ -581,14 +246,14 @@ export function EarthGlobe({
     []
   );
   const activeProject = projects.find((project) => project.id === detailProjectId);
-  const activeDetail = detailProjectId ? projectDetails[detailProjectId] : undefined;
+  const activeDetail = detailProjectId ? getProjectDetail(detailProjectId, currentCommit) : undefined;
   const fallbackProjectData = useMemo(
     () =>
       projects.map((project) => ({
         ...project,
-        detail: projectDetails[project.id]
+        detail: getProjectDetail(project.id, currentCommit)
       })),
-    [projects]
+    [currentCommit, projects]
   );
 
   const focusProject = useCallback((projectId: string, revealDetail = false) => {
@@ -1178,6 +843,12 @@ export function EarthGlobe({
                 Open RPG
               </button>
             ) : null}
+            {activeProject.id === "atlas-planner" ? (
+              <button type="button" className="project-popover__action" onClick={() => setIsLoopPanelOpen(true)}>
+                <Workflow size={16} />
+                Open planner
+              </button>
+            ) : null}
             {activeProject.id === "crypto-tax" ? (
               <button type="button" className="project-popover__action" onClick={openCryptoTax}>
                 <ExternalLink size={16} />
@@ -1194,9 +865,10 @@ export function EarthGlobe({
         </aside>
       ) : null}
       {isLoopPanelOpen ? (
-        <LoopOverview
+        <AtlasPlannerOverview
           usageStatus={usageStatus}
           loopKanban={loopKanban ?? []}
+          currentCommit={currentCommit}
           showExplainer={isLoopExplainerOpen}
           onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
           onClose={() => setIsLoopPanelOpen(false)}
@@ -1310,6 +982,14 @@ export function EarthGlobe({
         body.append(link);
       }
 
+      if (project.id === "atlas-planner") {
+        const link = document.createElement("a");
+        link.className = "project-popover__action";
+        link.href = "/?open=loops";
+        link.textContent = "Open planner";
+        body.append(link);
+      }
+
       if (project.id === "crypto-tax") {
         const link = document.createElement("a");
         link.className = "project-popover__action";
@@ -1339,540 +1019,6 @@ export function EarthGlobe({
         }}
       />
     </main>
-  );
-}
-
-function LoopOverview({
-  usageStatus,
-  loopKanban,
-  showExplainer,
-  onToggleExplainer,
-  onClose
-}: {
-  usageStatus?: UsageStatusSnapshot | null;
-  loopKanban: LoopKanbanProject[];
-  showExplainer: boolean;
-  onToggleExplainer: () => void;
-  onClose: () => void;
-}) {
-  const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
-  const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
-  const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
-  const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
-  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const stored = window.localStorage.getItem(plannerTicketStorageKey);
-        setPlannerTickets(stored ? (JSON.parse(stored) as KanbanTicket[]) : buildPlannerTickets(loopKanban));
-      } catch {
-        setPlannerTickets(buildPlannerTickets(loopKanban));
-      } finally {
-        setHasLoadedPlannerState(true);
-      }
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [loopKanban]);
-
-  useEffect(() => {
-    if (!hasLoadedPlannerState || typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(plannerTicketStorageKey, JSON.stringify(plannerTickets));
-  }, [hasLoadedPlannerState, plannerTickets]);
-
-  function moveTicket(ticketId: string, status: LoopTicketStatus) {
-    setPlannerTickets((current) =>
-      current.map((ticket) => (ticket.id === ticketId ? { ...ticket, status } : ticket))
-    );
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, status: LoopTicketStatus) {
-    event.preventDefault();
-    const ticketId = event.dataTransfer.getData("text/plain");
-    if (ticketId) {
-      moveTicket(ticketId, status);
-    }
-  }
-
-  function saveEditingTicket() {
-    if (!editingTicket) {
-      return;
-    }
-
-    const normalizedTicket = normalizePlannerTicket(editingTicket);
-    setPlannerTickets((current) => {
-      const exists = current.some((ticket) => ticket.id === normalizedTicket.id);
-      if (exists) {
-        return current.map((ticket) => (ticket.id === normalizedTicket.id ? normalizedTicket : ticket));
-      }
-      return [normalizedTicket, ...current];
-    });
-    setEditingTicket(null);
-  }
-
-  function deleteEditingTicket() {
-    if (!editingTicket) {
-      return;
-    }
-
-    setPlannerTickets((current) => current.filter((ticket) => ticket.id !== editingTicket.id));
-    setEditingTicket(null);
-  }
-
-  function updateEditingTicket(update: Partial<PlannerTicketDraft>) {
-    setEditingTicket((current) => (current ? { ...current, ...update } : current));
-  }
-
-  function addSubtask() {
-    setEditingTicket((current) =>
-      current
-        ? {
-            ...current,
-            subtasks: [
-              ...current.subtasks,
-              { id: `sub-${Date.now().toString(36)}`, title: "", done: false }
-            ]
-          }
-        : current
-    );
-  }
-
-  function updateSubtask(subtaskId: string, update: Partial<PlannerSubtask>) {
-    setEditingTicket((current) =>
-      current
-        ? {
-            ...current,
-            subtasks: current.subtasks.map((subtask) =>
-              subtask.id === subtaskId ? { ...subtask, ...update } : subtask
-            )
-          }
-        : current
-    );
-  }
-
-  function removeSubtask(subtaskId: string) {
-    setEditingTicket((current) =>
-      current
-        ? {
-            ...current,
-            subtasks: current.subtasks.filter((subtask) => subtask.id !== subtaskId)
-          }
-        : current
-    );
-  }
-
-  return (
-    <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
-      <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
-      <section className="loop-panel">
-        <header className="loop-panel__header">
-          <div>
-            <p>Token-aware work board</p>
-            <h2 id="loop-overview-title">Atlas Planner</h2>
-          </div>
-          <div className="loop-panel__actions">
-            <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
-              <CircleHelp size={16} />
-              {showExplainer ? "Loop list" : "How it works"}
-            </button>
-            <button type="button" className="loop-close-button" aria-label="Close loop overview" onClick={onClose}>
-              <X size={18} />
-            </button>
-          </div>
-        </header>
-
-        <div className="loop-panel__body">
-          <section className="loop-usage" aria-label="Latest usage status">
-            <div className="loop-usage__heading">
-              <div>
-                <ListChecks size={16} />
-                <h3>Token runway</h3>
-              </div>
-              {usageStatus ? <span>{usageStatus.recordedAt}</span> : null}
-            </div>
-            {usageStatus ? (
-              <>
-                <div className="usage-snapshot" aria-label="Usage snapshot metadata">
-                  <span>Model</span>
-                  <strong>{usageStatus.model}</strong>
-                </div>
-                <div className="usage-dashboard">
-                  {usageMetrics.map((metric) => (
-                    <article key={metric.label} className={`usage-card usage-card--${metric.tone}`}>
-                      <div className="usage-card__header">
-                        <span className="usage-card__badge" aria-hidden="true">
-                          {metric.label.slice(0, 1)}
-                        </span>
-                        <div>
-                          <span>{metric.label}</span>
-                          {metric.percentLeft === undefined ? null : <strong>{metric.percentLeft}% remaining</strong>}
-                        </div>
-                      </div>
-                      {metric.percentLeft === undefined ? null : (
-                        <div
-                          className="usage-ring"
-                          role="meter"
-                          aria-label={metric.label}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={metric.percentLeft}
-                          style={{ "--usage-percent": `${metric.percentLeft}%` } as CSSProperties}
-                        >
-                          <span>{metric.percentLeft}%</span>
-                        </div>
-                      )}
-                      {metric.percentLeft === undefined ? <p>{metric.value}</p> : null}
-                      <small>{metric.detail}</small>
-                      {metric.percentLeft === undefined ? null : (
-                        <div className="usage-meter" aria-hidden="true">
-                          <span style={{ width: `${metric.percentLeft}%` }} />
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
-            )}
-            {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
-          </section>
-
-          <section className="loop-kanban" aria-label="Atlas Planner Kanban">
-            <div className="loop-kanban__header">
-              <div>
-                <p>Atlas Planner</p>
-                <h3>Epics and tickets</h3>
-              </div>
-              <div className="loop-kanban__tools">
-                <span>{getWindowDecisionLabel(usageStatus)}</span>
-                <button type="button" onClick={() => setEditingTicket(getDefaultPlannerTicket(loopKanban))}>
-                  New ticket
-                </button>
-              </div>
-            </div>
-            <div className="loop-kanban__columns">
-              {kanbanColumns.map((column) => (
-                <article
-                  key={column.id}
-                  className="loop-kanban__column"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => handleDrop(event, column.id)}
-                >
-                  <div className="loop-kanban__column-heading">
-                    <strong>{column.label}</strong>
-                    <span>{column.tickets.length}</span>
-                  </div>
-                  <div className="loop-kanban__cards">
-                    {column.tickets.map((ticket) => (
-                      <section
-                        key={ticket.id}
-                        className="loop-ticket"
-                        draggable
-                        onClick={() => setEditingTicket(ticket)}
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData("text/plain", ticket.id);
-                          event.dataTransfer.effectAllowed = "move";
-                        }}
-                      >
-                        <div className="loop-ticket__topline">
-                          <span>{ticket.projectLabel}</span>
-                          <strong>{ticket.estimate}</strong>
-                        </div>
-                        <h4>{ticket.id}: {ticket.title}</h4>
-                        <p>{ticket.description || ticket.summary}</p>
-                        <div className="loop-ticket__meta">
-                          <span>{ticket.epicLabel}</span>
-                          <small>
-                            {ticket.subtasks.filter((subtask) => subtask.done).length}/{ticket.subtasks.length} tasks ·{" "}
-                            {ticket.fitLabel}
-                          </small>
-                        </div>
-                      </section>
-                    ))}
-                    {column.tickets.length === 0 ? <p className="loop-kanban__empty">No tickets here.</p> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          {editingTicket ? (
-            <TicketEditor
-              ticket={editingTicket}
-              projects={loopKanban}
-              onChange={updateEditingTicket}
-              onSave={saveEditingTicket}
-              onDelete={deleteEditingTicket}
-              onClose={() => setEditingTicket(null)}
-              onAddSubtask={addSubtask}
-              onUpdateSubtask={updateSubtask}
-              onRemoveSubtask={removeSubtask}
-            />
-          ) : null}
-
-          <section className="loop-summary-grid" aria-label="Loop commit summaries">
-            {loopSummaries.map((loop) => (
-              <article key={loop.id} className={`loop-summary loop-summary--${loop.status}`}>
-                <div className="loop-summary__topline">
-                  <span>{loop.status}</span>
-                  <small>{loop.cadence}</small>
-                </div>
-                <h3>{loop.label}</h3>
-                <p>{loop.summary}</p>
-                <dl>
-                  <div>
-                    <dt>
-                      <GitCommitHorizontal size={13} />
-                      Latest commit
-                    </dt>
-                    <dd>{loop.commit}</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <ListChecks size={13} />
-                      Permission
-                    </dt>
-                    <dd>{loop.permission}</dd>
-                  </div>
-                </dl>
-              </article>
-            ))}
-          </section>
-
-          {showExplainer ? (
-            <section className="loop-explainer" aria-label="Loop architecture overview">
-              <div className="loop-explainer__intro">
-                <p>
-                  The controller is the only part that decides what is due. Child loops stay small: they run checks,
-                  write a report, and hand back one next action. The point is repeatable movement without turning the
-                  repo into scheduled chaos.
-                </p>
-              </div>
-
-              <div className="loop-graph" aria-label="Architecture graph">
-                <div className="loop-node loop-node--source">
-                  <Workflow size={18} />
-                  <strong>project-loop.mjs</strong>
-                  <span>locks and selects due work</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <Network size={18} />
-                  <strong>projects.json</strong>
-                  <span>registry, cadence, permissions</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <RefreshCw size={18} />
-                  <strong>child loops</strong>
-                  <span>repo-health, web-atlas, project checks</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node loop-node--output">
-                  <FileText size={18} />
-                  <strong>state + report</strong>
-                  <span>local memory and next action</span>
-                </div>
-              </div>
-
-              <div className="loop-file-map">
-                <h3>Markdown and state map</h3>
-                <div>
-                  {loopFiles.map((file) => (
-                    <article key={file.path}>
-                      <code>{file.path}</code>
-                      <p>{file.role}</p>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TicketEditor({
-  ticket,
-  projects,
-  onChange,
-  onSave,
-  onDelete,
-  onClose,
-  onAddSubtask,
-  onUpdateSubtask,
-  onRemoveSubtask
-}: {
-  ticket: PlannerTicketDraft;
-  projects: LoopKanbanProject[];
-  onChange: (update: Partial<PlannerTicketDraft>) => void;
-  onSave: () => void;
-  onDelete: () => void;
-  onClose: () => void;
-  onAddSubtask: () => void;
-  onUpdateSubtask: (subtaskId: string, update: Partial<PlannerSubtask>) => void;
-  onRemoveSubtask: (subtaskId: string) => void;
-}) {
-  const selectedProject = projects.find((project) => project.id === ticket.projectId) ?? projects[0];
-  const selectedEpic =
-    selectedProject?.epics?.find((epic) => epic.id === ticket.epicId) ?? selectedProject?.epics?.[0];
-
-  function updateProject(projectId: string) {
-    const project = projects.find((candidate) => candidate.id === projectId);
-    const epic = project?.epics?.[0];
-    if (!project) {
-      return;
-    }
-
-    onChange({
-      projectId: project.id,
-      projectLabel: project.label,
-      epicId: epic?.id ?? "general",
-      epicLabel: epic?.label ?? "General"
-    });
-  }
-
-  function updateEpic(epicId: string) {
-    const epic = selectedProject?.epics?.find((candidate) => candidate.id === epicId);
-    if (!epic) {
-      onChange({ epicId: "custom", epicLabel: epicId || "General" });
-      return;
-    }
-
-    onChange({ epicId: epic.id, epicLabel: epic.label });
-  }
-
-  return (
-    <div className="ticket-editor" role="dialog" aria-modal="true" aria-labelledby="ticket-editor-title">
-      <button type="button" className="ticket-editor__scrim" aria-label="Close ticket editor" onClick={onClose} />
-      <section className="ticket-editor__panel">
-        <header className="ticket-editor__header">
-          <div>
-            <p>{ticket.status}</p>
-            <h3 id="ticket-editor-title">{ticket.id}</h3>
-          </div>
-          <button type="button" className="loop-close-button" aria-label="Close ticket editor" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className="ticket-editor__body">
-          <label>
-            Ticket id
-            <input value={ticket.id} onChange={(event) => onChange({ id: event.target.value })} />
-          </label>
-          <label>
-            Title
-            <input value={ticket.title} onChange={(event) => onChange({ title: event.target.value })} />
-          </label>
-          <label className="ticket-editor__wide">
-            Description
-            <textarea value={ticket.description} onChange={(event) => onChange({ description: event.target.value })} />
-          </label>
-
-          <label>
-            Status
-            <select
-              value={ticket.status}
-              onChange={(event) => onChange({ status: event.target.value as LoopTicketStatus })}
-            >
-              {ticketStatuses.map((status) => (
-                <option key={status.id} value={status.id}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Estimate
-            <select value={ticket.estimate} onChange={(event) => onChange({ estimate: Number(event.target.value) })}>
-              {fibonacciEstimates.map((estimate) => (
-                <option key={estimate} value={estimate}>
-                  {estimate}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Project
-            <select value={ticket.projectId} onChange={(event) => updateProject(event.target.value)}>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Epic
-            <select value={selectedEpic?.id ?? ticket.epicId} onChange={(event) => updateEpic(event.target.value)}>
-              {(selectedProject?.epics ?? []).map((epic) => (
-                <option key={epic.id} value={epic.id}>
-                  {epic.label}
-                </option>
-              ))}
-              {selectedEpic ? null : <option value={ticket.epicId}>{ticket.epicLabel}</option>}
-            </select>
-          </label>
-
-          <section className="ticket-editor__subtasks ticket-editor__wide">
-            <div>
-              <strong>Subtasks</strong>
-              <button type="button" onClick={onAddSubtask}>
-                Add subtask
-              </button>
-            </div>
-            {ticket.subtasks.map((subtask) => (
-              <div key={subtask.id} className="ticket-editor__subtask">
-                <input
-                  type="checkbox"
-                  checked={subtask.done}
-                  onChange={(event) => onUpdateSubtask(subtask.id, { done: event.target.checked })}
-                  aria-label={`Mark ${subtask.title || "subtask"} done`}
-                />
-                <input
-                  value={subtask.title}
-                  placeholder="Subtask"
-                  onChange={(event) => onUpdateSubtask(subtask.id, { title: event.target.value })}
-                />
-                <button type="button" onClick={() => onRemoveSubtask(subtask.id)}>
-                  Remove
-                </button>
-              </div>
-            ))}
-            {ticket.subtasks.length === 0 ? <p>No subtasks yet.</p> : null}
-          </section>
-        </div>
-
-        <footer className="ticket-editor__footer">
-          <button type="button" onClick={onDelete}>
-            Delete
-          </button>
-          <div>
-            <button type="button" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" onClick={onSave}>
-              Save ticket
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>
   );
 }
 

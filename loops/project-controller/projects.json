@@ -86,6 +86,57 @@
       ]
     },
     {
+      "id": "atlas-planner",
+      "label": "Atlas Planner",
+      "area": "apps/atlas-planner apps/web/components/atlas-planner-overview.tsx apps/web/app/globals.css scripts loops/project-controller",
+      "cadenceHours": 24,
+      "permission": "build-local-and-commit",
+      "nextAction": "Grow Atlas Planner as its own agent-work planning product: token runway, lifecycle history, finished-ticket evidence, and later extraction from the web atlas shell.",
+      "epics": [
+        {
+          "id": "planner-product",
+          "label": "Planner Product",
+          "tickets": [
+            {
+              "id": "AP-1",
+              "title": "Promote Atlas Planner to first-class landmark",
+              "status": "done",
+              "estimate": 3,
+              "summary": "Give the planner its own workspace identity and map landmark."
+            },
+            {
+              "id": "AP-2",
+              "title": "Extract planner UI from web atlas shell",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Move planner-specific state, dashboard, and ticket editor into an owned app surface."
+            },
+            {
+              "id": "AP-3",
+              "title": "Design agent-token planning workflows",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Make token burn, agent commits, completion evidence, and date-range reporting feel like core product behavior."
+            },
+            {
+              "id": "AP-4",
+              "title": "Agent worktree runner MVP",
+              "status": "in-progress",
+              "estimate": 21,
+              "summary": "Link planner tickets to worktree branches, agent run evidence, verification output, and commit history."
+            }
+          ]
+        }
+      ],
+      "commands": [
+        { "name": "atlas planner web typecheck", "cmd": "npm", "args": ["run", "typecheck", "-w", "@agent/web"] },
+        { "name": "atlas planner web lint", "cmd": "npm", "args": ["run", "lint", "-w", "@agent/web"] }
+      ],
+      "buildCommands": [
+        { "name": "atlas planner web build", "cmd": "npm", "args": ["run", "build", "-w", "@agent/web"] }
+      ]
+    },
+    {
       "id": "crypto-tax-sweden",
       "label": "Crypto Tax Sweden",
       "area": "apps/crypto-tax-sweden",
