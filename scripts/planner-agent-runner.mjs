@@ -15,25 +15,28 @@ try {
     process.exit(0);
   }
 
-  if (existsSync(plan.worktreePath)) {
-    fail(`Worktree path already exists: ${plan.worktreePath}`);
-  }
+  if (!options.resume) {
+    if (existsSync(plan.worktreePath)) {
+      fail(`Worktree path already exists: ${plan.worktreePath}`);
+    }
 
-  const git = spawnSync("git", plan.commands[0].args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  if (git.status !== 0) {
-    fail("git worktree add failed", {
-      exitCode: git.status,
-      stdout: git.stdout.trim(),
-      stderr: git.stderr.trim()
+    const git = spawnSync("git", plan.commands[0].args, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
     });
+
+    if (git.status !== 0) {
+      fail("git worktree add failed", {
+        exitCode: git.status,
+        stdout: git.stdout.trim(),
+        stderr: git.stderr.trim()
+      });
+    }
+
+    writeRunFiles(plan);
   }
 
-  writeRunFiles(plan);
   const execution = maybeRunAgentLoop(plan);
 
   printJson({
@@ -46,6 +49,7 @@ try {
     files: plan.files,
     stage: execution.stage,
     repairAttempts: execution.repairAttempts,
+    mode: options.resume ? "resume" : "create",
     createdAt: new Date().toISOString()
   });
 } catch (error) {
@@ -57,7 +61,8 @@ function parseArgs(rawArgs) {
     base: "HEAD",
     dryRun: false,
     goalTitle: "",
-    maxRepairs: 0
+    maxRepairs: 0,
+    resume: false
   };
 
   for (let index = 0; index < rawArgs.length; index += 1) {
@@ -65,6 +70,11 @@ function parseArgs(rawArgs) {
 
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--resume") {
+      options.resume = true;
       continue;
     }
 
@@ -119,12 +129,20 @@ function parseArgs(rawArgs) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  requireNonEmpty(options.ticketId, "--ticket");
-  requireNonEmpty(options.branch, "--branch");
-  requireNonEmpty(options.base, "--base");
+  if (options.resume) {
+    requireNonEmpty(options.handoffDir, "--handoff-dir");
+  } else {
+    requireNonEmpty(options.ticketId, "--ticket");
+    requireNonEmpty(options.branch, "--branch");
+    requireNonEmpty(options.base, "--base");
+  }
 
-  validateRefValue(options.branch, "--branch");
-  validateRefValue(options.base, "--base");
+  if (options.branch) {
+    validateRefValue(options.branch, "--branch");
+  }
+  if (options.base) {
+    validateRefValue(options.base, "--base");
+  }
   if (options.runId) {
     validateIdValue(options.runId, "--run-id");
   }
@@ -139,6 +157,10 @@ function parseArgs(rawArgs) {
 }
 
 function buildPlan(options) {
+  if (options.resume) {
+    return buildResumePlan(options);
+  }
+
   const sanitizedBranch = sanitizeName(options.branch);
   const ticketSlug = sanitizeName(options.ticketId);
   const runId = options.runId ?? `run-${ticketSlug}-${Date.now().toString(36)}`;
@@ -189,6 +211,47 @@ function buildPlan(options) {
         args: [
           `If checker records blockers, run at most ${options.maxRepairs} repair attempt${options.maxRepairs === 1 ? "" : "s"} before stopping.`
         ]
+      }
+    ]
+  };
+}
+
+function buildResumePlan(options) {
+  const handoffDir = resolve(process.cwd(), options.handoffDir);
+  const statePath = join(handoffDir, "runner-state.json");
+  const state = readJson(statePath);
+  const worktreePath = state.worktreePath;
+
+  if (!worktreePath || !existsSync(worktreePath)) {
+    throw new Error(`Cannot resume; worktree path does not exist: ${worktreePath ?? "(missing)"}`);
+  }
+
+  return {
+    ticketId: state.ticketId,
+    runId: state.runId,
+    goalTitle: state.goalTitle ?? "",
+    branch: state.branch,
+    base: state.base,
+    worktreePath,
+    handoffDir,
+    makerCommand: options.makerCommand,
+    checkerCommand: options.checkerCommand,
+    repairCommand: options.repairCommand,
+    maxRepairs: options.maxRepairs,
+    files: state.files ?? {
+      state: relative(process.cwd(), statePath),
+      makerPrompt: relative(process.cwd(), join(handoffDir, "maker-prompt.md")),
+      checkerPrompt: relative(process.cwd(), join(handoffDir, "checker-prompt.md")),
+      evidence: relative(process.cwd(), join(handoffDir, "evidence.json"))
+    },
+    commands: [
+      {
+        command: "maker-agent",
+        args: [`Read ${relative(process.cwd(), join(handoffDir, "maker-prompt.md"))} and continue the run in ${worktreePath}.`]
+      },
+      {
+        command: "checker-agent",
+        args: [`Read ${relative(process.cwd(), join(handoffDir, "checker-prompt.md"))}, review ${state.branch}, and update evidence.`]
       }
     ]
   };

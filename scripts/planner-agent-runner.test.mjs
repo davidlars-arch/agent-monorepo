@@ -168,6 +168,52 @@ test("runner stops after bounded repair attempts and records checker blockers", 
   assert.equal(repairLog, "1\n");
 });
 
+test("runner resumes an existing handoff without recreating the worktree", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-resume-");
+
+  await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-9",
+      "--branch",
+      "worktree/ap-9-runner-test",
+      "--run-id",
+      "run-ap-9",
+      "--worktree-dir",
+      worktreePath
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--resume",
+      "--handoff-dir",
+      "loops/project-controller/runs/run-ap-9",
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "resumed\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("resumed") || process.exit(4)\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9/evidence.json"), "utf8"));
+
+  assert.equal(result.mode, "resume");
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.worktreePath, worktreePath);
+  assert.equal(state.stage, "checker-passed");
+  assert.equal(evidence.status, "checker-passed");
+  assert.equal(evidence.checks.length, 2);
+});
+
 async function createGitFixture(prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   const worktreePath = await mkdtemp(join(tmpdir(), `${prefix}worktree-`));

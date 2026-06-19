@@ -6,6 +6,7 @@ This branch continues AP-6: Agent worktree runner MVP.
 
 - `npm run planner:agent-runner -- ...` creates an isolated git worktree for a selected ticket.
 - The runner can execute a maker command, checker command, and optional bounded repair command.
+- Existing handoffs can be resumed with `--resume --handoff-dir ...` so the first command can prepare and later commands can execute without recreating the worktree.
 - The runner writes local handoff files under `loops/project-controller/runs/<run-id>/`:
   - `runner-state.json`
   - `maker-prompt.md`
@@ -36,6 +37,16 @@ npm run planner:agent-runner -- \
   --ticket AP-DEMO \
   --branch worktree/ap-demo \
   --run-id run-ap-demo \
+  --maker-command 'node -e '"'"'require("fs").writeFileSync("maker-output.txt", "done\n")'"'"'' \
+  --checker-command 'node -e '"'"'require("fs").existsSync("maker-output.txt") || process.exit(2)'"'"''
+```
+
+Resume demo after running the normal prepare command:
+
+```sh
+npm run planner:agent-runner -- \
+  --resume \
+  --handoff-dir loops/project-controller/runs/<run-id> \
   --maker-command 'node -e '"'"'require("fs").writeFileSync("maker-output.txt", "done\n")'"'"'' \
   --checker-command 'node -e '"'"'require("fs").existsSync("maker-output.txt") || process.exit(2)'"'"''
 ```
