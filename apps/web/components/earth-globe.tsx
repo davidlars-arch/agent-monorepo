@@ -64,6 +64,13 @@ type CurrentLoopRunSummary = {
   claimedAt: string;
   updatedAt: string;
   baseCommit: string;
+  branchName?: string;
+  worktreePath?: string;
+  handoffDir?: string;
+  runnerCommand?: string;
+  makerPromptPath?: string;
+  checkerPromptPath?: string;
+  evidencePath?: string;
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {

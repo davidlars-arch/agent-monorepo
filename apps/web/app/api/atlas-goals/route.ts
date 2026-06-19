@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -223,7 +223,6 @@ function resolveProjectRoot() {
 
 function isProjectRoot(candidate: string) {
   if (
-    basename(candidate) !== "agent-monorepo-agent-os-reporting" ||
     !existsSync(join(candidate, "loops/project-controller/projects.json")) ||
     !existsSync(join(candidate, "apps/web/package.json"))
   ) {
@@ -232,7 +231,8 @@ function isProjectRoot(candidate: string) {
 
   try {
     const packageJson = JSON.parse(readFileSync(join(candidate, "package.json"), "utf8")) as { name?: string; workspaces?: unknown };
-    return packageJson.name === "project-sphere" && Array.isArray(packageJson.workspaces);
+    const webPackageJson = JSON.parse(readFileSync(join(candidate, "apps/web/package.json"), "utf8")) as { name?: string };
+    return packageJson.name === "project-sphere" && Array.isArray(packageJson.workspaces) && webPackageJson.name === "@agent/web";
   } catch {
     return false;
   }

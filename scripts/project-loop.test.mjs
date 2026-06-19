@@ -93,8 +93,18 @@ test("--claim-goal writes current-run state and moves the queued goal to running
   assert.equal(queue.goals[0].status, "in-progress");
   assert.equal(currentRun.goalId, "GOAL-CLAIM");
   assert.equal(currentRun.stage, "claimed");
-  assert.equal(currentRun.timeline[2].stage, "planning");
+  assert.equal(currentRun.branchName, "worktree/goal-claim");
+  assert.equal(currentRun.worktreePath, "../agent-monorepo-goal-claim");
+  assert.match(currentRun.runnerCommand, /scripts\/planner-agent-runner\.mjs/);
+  assert.equal(currentRun.handoffDir, `loops/project-controller/runs/${currentRun.id}`);
+  assert.equal(currentRun.makerPromptPath, `loops/project-controller/runs/${currentRun.id}/maker-prompt.md`);
+  assert.equal(currentRun.checkerPromptPath, `loops/project-controller/runs/${currentRun.id}/checker-prompt.md`);
+  assert.equal(currentRun.evidencePath, `loops/project-controller/runs/${currentRun.id}/evidence.json`);
+  assert.equal(currentRun.timeline[2].stage, "prepare");
+  assert.equal(currentRun.timeline[3].stage, "maker");
   assert.match(report, /Goal claim: `GOAL-CLAIM` claimed/);
+  assert.match(report, /branch `worktree\/goal-claim`/);
+  assert.match(report, /planner-agent-runner\.mjs/);
 });
 
 test("--dry-run --claim-goal is read-only and does not write current-run state", async () => {

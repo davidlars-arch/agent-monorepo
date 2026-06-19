@@ -134,6 +134,13 @@ type CurrentLoopRunSummary = {
   claimedAt: string;
   updatedAt: string;
   baseCommit: string;
+  branchName?: string;
+  worktreePath?: string;
+  handoffDir?: string;
+  runnerCommand?: string;
+  makerPromptPath?: string;
+  checkerPromptPath?: string;
+  evidencePath?: string;
 };
 
 const goalLifecycleStages: Array<{ id: GoalLifecycleStatus; label: string; detail: string }> = [
@@ -1494,6 +1501,30 @@ export function AtlasPlannerOverview({
                     <dt>Base</dt>
                     <dd>{currentLoopRun.baseCommit}</dd>
                   </div>
+                  {currentLoopRun.branchName ? (
+                    <div>
+                      <dt>Branch</dt>
+                      <dd>{currentLoopRun.branchName}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.worktreePath ? (
+                    <div>
+                      <dt>Worktree</dt>
+                      <dd>{currentLoopRun.worktreePath}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.handoffDir ? (
+                    <div>
+                      <dt>Handoff</dt>
+                      <dd>{currentLoopRun.handoffDir}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.runnerCommand ? (
+                    <div>
+                      <dt>Runner</dt>
+                      <dd>{currentLoopRun.runnerCommand}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               ) : (
                 <p>Claiming an approved queued goal writes `loops/project-controller/current-run.json`.</p>

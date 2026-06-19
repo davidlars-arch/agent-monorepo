@@ -29,6 +29,13 @@ type CurrentLoopRunSummary = {
   claimedAt: string;
   updatedAt: string;
   baseCommit: string;
+  branchName?: string;
+  worktreePath?: string;
+  handoffDir?: string;
+  runnerCommand?: string;
+  makerPromptPath?: string;
+  checkerPromptPath?: string;
+  evidencePath?: string;
 };
 
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {

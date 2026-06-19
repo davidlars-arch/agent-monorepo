@@ -225,6 +225,8 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
 
   const claimedAt = startedAt.toISOString();
   const runId = `run-${queuedGoal.id.toLowerCase()}-${startedAt.getTime().toString(36)}`;
+  const baseCommit = await readCurrentCommit();
+  const agentRun = buildAgentRunPlan({ runId, goal: queuedGoal, plannedTask, baseCommit });
   const claimedGoal = {
     ...queuedGoal,
     lifecycleStatus: "running",
@@ -250,7 +252,14 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     stage: "claimed",
     claimedAt,
     updatedAt: claimedAt,
-    baseCommit: await readCurrentCommit(),
+    baseCommit,
+    branchName: agentRun.branchName,
+    worktreePath: agentRun.worktreePath,
+    handoffDir: agentRun.handoffDir,
+    runnerCommand: agentRun.command,
+    makerPromptPath: agentRun.makerPromptPath,
+    checkerPromptPath: agentRun.checkerPromptPath,
+    evidencePath: agentRun.evidencePath,
     selectedTask: {
       id: plannedTask.id,
       title: plannedTask.title,
@@ -262,7 +271,9 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     timeline: [
       { stage: "queued", status: "done", at: claimedAt, detail: "Goal was present in goal-queue.json." },
       { stage: "claimed", status: "done", at: claimedAt, detail: "Controller claimed the goal for the next run." },
-      { stage: "planning", status: "next", at: null, detail: "Next slice refinement has not run yet." }
+      { stage: "prepare", status: "next", at: null, detail: "Run the agent runner command to create the branch, worktree, and handoff files." },
+      { stage: "maker", status: "locked", at: null, detail: "Maker work starts after the handoff worktree exists." },
+      { stage: "checker", status: "locked", at: null, detail: "Checker review starts only after maker evidence exists." }
     ]
   };
 
@@ -275,7 +286,45 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     goalId: claimedGoal.id,
     goalTitle: claimedGoal.title,
     stage: currentRun.stage,
+    branchName: agentRun.branchName,
+    worktreePath: agentRun.worktreePath,
+    runnerCommand: agentRun.command,
     currentRunPath: relative(currentRunPath)
+  };
+}
+
+function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
+  const ticketSlug = sanitizeForBranch(plannedTask.id);
+  const branchName = `worktree/${ticketSlug}`;
+  const worktreePath = `../agent-monorepo-${ticketSlug}`;
+  const handoffDir = join("loops", "project-controller", "runs", runId);
+  const command = [
+    shellQuote("node"),
+    shellQuote("scripts/planner-agent-runner.mjs"),
+    "--ticket",
+    shellQuote(plannedTask.id),
+    "--branch",
+    shellQuote(branchName),
+    "--base",
+    shellQuote(baseCommit),
+    "--run-id",
+    shellQuote(runId),
+    "--goal-title",
+    shellQuote(goal.title),
+    "--worktree-dir",
+    shellQuote(worktreePath),
+    "--handoff-dir",
+    shellQuote(handoffDir)
+  ].join(" ");
+
+  return {
+    branchName,
+    worktreePath,
+    handoffDir,
+    command,
+    makerPromptPath: join(handoffDir, "maker-prompt.md"),
+    checkerPromptPath: join(handoffDir, "checker-prompt.md"),
+    evidencePath: join(handoffDir, "evidence.json")
   };
 }
 
@@ -471,7 +520,9 @@ function renderGoalClaim(goalClaim) {
     return "none";
   }
 
-  return `\`${goalClaim.goalId}\` claimed as \`${goalClaim.runId}\` (${goalClaim.stage}); state at \`${goalClaim.currentRunPath}\``;
+  const runner = goalClaim.runnerCommand ? `; runner \`${goalClaim.runnerCommand}\`` : "";
+  const branch = goalClaim.branchName ? `; branch \`${goalClaim.branchName}\`` : "";
+  return `\`${goalClaim.goalId}\` claimed as \`${goalClaim.runId}\` (${goalClaim.stage}); state at \`${goalClaim.currentRunPath}\`${branch}${runner}`;
 }
 
 function renderGoalSummary(goal) {
@@ -575,6 +626,22 @@ function isRunnableQueuedGoal(goal) {
     goal.lifecycleStatus === "approved" &&
     !["done", "archived", "blocked"].includes(goal.status)
   );
+}
+
+function sanitizeForBranch(value) {
+  const sanitized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 64);
+
+  return sanitized || "planner-ticket";
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 async function writeJsonAtomically(path, value) {
