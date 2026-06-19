@@ -845,6 +845,7 @@ export function AtlasPlannerOverview({
   const [dragOverStatus, setDragOverStatus] = useState<LoopTicketStatus | null>(null);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
+  const [queuedGoalState, setQueuedGoalState] = useState<QueuedGoalSummary[]>(() => queuedGoals ?? []);
   const editorCloseTimeoutRef = useRef<number | null>(null);
   const plannerImportInputRef = useRef<HTMLInputElement | null>(null);
   const suppressTicketClickRef = useRef(false);
@@ -854,7 +855,7 @@ export function AtlasPlannerOverview({
   const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus);
   const loopGoalSummary = getLoopGoalSummary(loopKanban);
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
-  const durableQueuedGoals = queuedGoals ?? [];
+  const durableQueuedGoals = queuedGoalState;
   const completedTicketsInRange = plannerTickets.filter((ticket) =>
     isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
   );
@@ -1318,6 +1319,47 @@ export function AtlasPlannerOverview({
     closeGoalComposer();
   }
 
+  async function updateQueuedGoalLifecycle(goal: QueuedGoalSummary, lifecycleStatus: GoalLifecycleStatus) {
+    const previousGoals = queuedGoalState;
+    const approvedToRun = lifecycleStatus === "approved" || lifecycleStatus === "running";
+    const nextStatus = getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun);
+    const updatedGoal: QueuedGoalSummary = {
+      ...goal,
+      lifecycleStatus,
+      approvedToRun,
+      status: nextStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    setQueuedGoalState((current) => current.map((candidate) => (candidate.id === goal.id ? updatedGoal : candidate)));
+    setPlannerStateMessage(`${goal.id} moved to ${lifecycleStatus}.`);
+
+    try {
+      const response = await fetch("/api/atlas-goals", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: goal.id,
+          lifecycleStatus,
+          approvedToRun
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Goal lifecycle update failed.");
+      }
+
+      const payload = (await response.json()) as { goal?: QueuedGoalSummary };
+      if (payload.goal) {
+        setQueuedGoalState((current) => current.map((candidate) => (candidate.id === goal.id ? payload.goal! : candidate)));
+      }
+    } catch (error) {
+      setQueuedGoalState(previousGoals);
+      setPlannerStateMessage(error instanceof Error ? error.message : "Goal lifecycle update failed.");
+    }
+  }
+
   return (
     <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
       <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
@@ -1514,6 +1556,28 @@ export function AtlasPlannerOverview({
                         {goal.id} · {goal.status} · {goal.estimate} pts
                         {goal.approvedToRun ? " · approved" : ""}
                       </p>
+                      <div className="loop-goal-queue__actions">
+                        {goal.lifecycleStatus === "draft" || goal.lifecycleStatus === "refined" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "approved")}>
+                            Approve
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "blocked" && goal.lifecycleStatus !== "satisfied" && goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "blocked")}>
+                            Block
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "satisfied" && goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "satisfied")}>
+                            Satisfy
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "archived")}>
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
                     </article>
                   ))}
                 </div>

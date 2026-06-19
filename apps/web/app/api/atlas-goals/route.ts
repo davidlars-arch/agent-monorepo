@@ -26,7 +26,7 @@ type GoalQueue = {
   goals: QueuedGoal[];
 };
 
-const allowedLifecycleStatuses = new Set(["draft", "approved"]);
+const allowedLifecycleStatuses = new Set(["draft", "refined", "approved", "running", "blocked", "satisfied", "archived"]);
 const projectRoot = resolveProjectRoot();
 const controllerDir = join(projectRoot, "loops/project-controller");
 const queuePath = join(controllerDir, "goal-queue.json");
@@ -72,6 +72,62 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  const accessError = validateWriteAccess(request);
+  if (accessError) {
+    return accessError;
+  }
+
+  const body = (await request.json().catch(() => null)) as { id?: unknown; lifecycleStatus?: unknown; approvedToRun?: unknown } | null;
+  if (!body || typeof body.id !== "string" || typeof body.lifecycleStatus !== "string") {
+    return NextResponse.json({ error: "Goal id and lifecycleStatus are required." }, { status: 400 });
+  }
+
+  if (!allowedLifecycleStatuses.has(body.lifecycleStatus)) {
+    return NextResponse.json({ error: "Unsupported lifecycle status." }, { status: 400 });
+  }
+
+  const lock = await acquireQueueLock();
+  if (!lock.ok) {
+    return NextResponse.json({ error: "The project loop is busy. Try again after the current run finishes." }, { status: 409 });
+  }
+
+  try {
+    const queue = await readGoalQueue();
+    const goalIndex = queue.goals.findIndex((goal) => goal.id === body.id);
+    if (goalIndex === -1) {
+      return NextResponse.json({ error: "Goal not found." }, { status: 404 });
+    }
+
+    const now = new Date().toISOString();
+    const previous = queue.goals[goalIndex];
+    const lifecycleStatus = body.lifecycleStatus;
+    const approvedToRun = lifecycleStatus === "approved" || lifecycleStatus === "running" ? body.approvedToRun !== false : false;
+    const updatedGoal: QueuedGoal = {
+      ...previous,
+      lifecycleStatus,
+      approvedToRun,
+      status: getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun),
+      tags: sanitizeTags(previous.tags, approvedToRun, lifecycleStatus),
+      updatedAt: now
+    };
+    const nextGoals = [...queue.goals];
+    nextGoals[goalIndex] = updatedGoal;
+
+    const nextQueue: GoalQueue = {
+      version: 1,
+      updatedAt: now,
+      goals: nextGoals
+    };
+
+    await writeJsonAtomically(queuePath, nextQueue);
+
+    return NextResponse.json({ ok: true, goal: updatedGoal, queueLength: nextQueue.goals.length });
+  } finally {
+    await releaseQueueLock(lock.file);
+  }
+}
+
 function validateGoalInput(body: Partial<QueuedGoal> | null): { ok: true; goal: QueuedGoal } | { ok: false; error: string } {
   if (!body || typeof body !== "object") {
     return { ok: false, error: "Goal JSON is required." };
@@ -85,8 +141,8 @@ function validateGoalInput(body: Partial<QueuedGoal> | null): { ok: true; goal: 
     typeof body.lifecycleStatus === "string" && allowedLifecycleStatuses.has(body.lifecycleStatus)
       ? body.lifecycleStatus
       : "draft";
-  const approvedToRun = body.approvedToRun === true && lifecycleStatus === "approved";
-  const status = approvedToRun ? "in-progress" : "backlog";
+  const approvedToRun = body.approvedToRun === true && (lifecycleStatus === "approved" || lifecycleStatus === "running");
+  const status = getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun);
   const now = new Date().toISOString();
   const estimate = clampInteger(Number(body.estimate ?? 8), 1, 21);
 
@@ -140,6 +196,19 @@ function sanitizeTags(value: unknown, approvedToRun: boolean, lifecycleStatus: s
     tags.push("approved-to-run");
   }
   return Array.from(new Set(tags)).slice(0, 12);
+}
+
+function getTicketStatusForGoalLifecycle(lifecycleStatus: string, approvedToRun: boolean) {
+  if (lifecycleStatus === "blocked") {
+    return "blocked";
+  }
+  if (lifecycleStatus === "satisfied" || lifecycleStatus === "archived") {
+    return "done";
+  }
+  if (lifecycleStatus === "approved" || lifecycleStatus === "running" || approvedToRun) {
+    return "in-progress";
+  }
+  return "backlog";
 }
 
 function sanitizeSubtasks(value: unknown) {
