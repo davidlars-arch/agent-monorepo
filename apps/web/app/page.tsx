@@ -38,6 +38,49 @@ type CurrentLoopRunSummary = {
   evidencePath?: string;
 };
 
+type RunnerTimelineEvent = {
+  stage: string;
+  status: string;
+  at: string | null;
+  detail: string;
+};
+
+type RunnerStateSummary = {
+  status: string;
+  stage: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  updatedAt: string;
+  timeline: RunnerTimelineEvent[];
+};
+
+type RunnerEvidenceCheck = {
+  stage: string;
+  command: string;
+  exitCode: number;
+  startedAt: string;
+  finishedAt: string;
+  repairAttempt: number;
+};
+
+type RunnerEvidenceFinding = {
+  severity: string;
+  stage: string;
+  summary: string;
+  file?: string;
+  line?: number;
+  recommendation?: string;
+  at?: string;
+};
+
+type RunnerEvidenceSummary = {
+  status: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  checks: RunnerEvidenceCheck[];
+  findings: RunnerEvidenceFinding[];
+};
+
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
   const candidates = [
     join(process.cwd(), "loops/usage-status/latest-status.json"),
@@ -108,6 +151,64 @@ async function readCurrentLoopRun(): Promise<CurrentLoopRunSummary | null> {
   }
 }
 
+async function readCurrentRunnerState(currentLoopRun: CurrentLoopRunSummary | null): Promise<RunnerStateSummary | null> {
+  if (!currentLoopRun?.handoffDir) {
+    return null;
+  }
+
+  const statePath = resolveRepoPath(join(currentLoopRun.handoffDir, "runner-state.json"));
+  if (!existsSync(statePath)) {
+    return null;
+  }
+
+  try {
+    const state = JSON.parse(await readFile(statePath, "utf8")) as RunnerStateSummary;
+    return {
+      status: state.status,
+      stage: state.stage,
+      repairAttempts: state.repairAttempts ?? 0,
+      maxRepairs: state.maxRepairs ?? 0,
+      updatedAt: state.updatedAt,
+      timeline: Array.isArray(state.timeline) ? state.timeline.slice(-8) : []
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readCurrentRunnerEvidence(currentLoopRun: CurrentLoopRunSummary | null): Promise<RunnerEvidenceSummary | null> {
+  const evidencePath = currentLoopRun?.evidencePath ?? (currentLoopRun?.handoffDir ? join(currentLoopRun.handoffDir, "evidence.json") : "");
+  if (!evidencePath) {
+    return null;
+  }
+
+  const resolvedEvidencePath = resolveRepoPath(evidencePath);
+  if (!existsSync(resolvedEvidencePath)) {
+    return null;
+  }
+
+  try {
+    const evidence = JSON.parse(await readFile(resolvedEvidencePath, "utf8")) as RunnerEvidenceSummary;
+    return {
+      status: evidence.status,
+      repairAttempts: evidence.repairAttempts ?? 0,
+      maxRepairs: evidence.maxRepairs ?? 0,
+      checks: Array.isArray(evidence.checks) ? evidence.checks.slice(-8) : [],
+      findings: Array.isArray(evidence.findings) ? evidence.findings.slice(-8) : []
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveRepoPath(path: string) {
+  if (path.startsWith("/")) {
+    return path;
+  }
+
+  return resolve(process.cwd(), "../..", path);
+}
+
 async function readCurrentCommit() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
@@ -131,6 +232,8 @@ export default async function Home({
   const loopKanban = await readLoopKanban();
   const queuedGoals = await readQueuedGoals();
   const currentLoopRun = await readCurrentLoopRun();
+  const currentRunnerState = await readCurrentRunnerState(currentLoopRun);
+  const currentRunnerEvidence = await readCurrentRunnerEvidence(currentLoopRun);
   const currentCommit = await readCurrentCommit();
   return (
     <EarthGlobe
@@ -141,6 +244,8 @@ export default async function Home({
       loopKanban={loopKanban}
       queuedGoals={queuedGoals}
       currentLoopRun={currentLoopRun}
+      currentRunnerState={currentRunnerState}
+      currentRunnerEvidence={currentRunnerEvidence}
       currentCommit={currentCommit}
     />
   );
