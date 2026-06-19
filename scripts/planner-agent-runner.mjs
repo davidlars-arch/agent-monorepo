@@ -58,6 +58,7 @@ try {
 
 function parseArgs(rawArgs) {
   const options = {
+    agentCommand: process.env.ATLAS_AGENT_COMMAND ?? "",
     base: "HEAD",
     dryRun: false,
     goalTitle: "",
@@ -87,6 +88,7 @@ function parseArgs(rawArgs) {
         "--run-id",
         "--goal-title",
         "--handoff-dir",
+        "--agent-command",
         "--maker-command",
         "--checker-command",
         "--repair-command",
@@ -112,6 +114,8 @@ function parseArgs(rawArgs) {
         options.goalTitle = value;
       } else if (arg === "--handoff-dir") {
         options.handoffDir = value;
+      } else if (arg === "--agent-command") {
+        options.agentCommand = value;
       } else if (arg === "--maker-command") {
         options.makerCommand = value;
       } else if (arg === "--checker-command") {
@@ -188,6 +192,7 @@ function buildPlan(options) {
     base: options.base,
     worktreePath,
     handoffDir,
+    agentCommand: options.agentCommand,
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
@@ -234,6 +239,7 @@ function buildResumePlan(options) {
     base: state.base,
     worktreePath,
     handoffDir,
+    agentCommand: options.agentCommand,
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
@@ -357,17 +363,20 @@ function writeRunFiles(plan) {
 }
 
 function maybeRunAgentLoop(plan) {
-  if (!plan.makerCommand && !plan.checkerCommand) {
+  const makerCommand = resolveStageCommand("maker", plan);
+  const checkerCommand = resolveStageCommand("checker", plan);
+
+  if (!makerCommand && !checkerCommand) {
     return { status: "created", stage: "maker-handoff", repairAttempts: 0 };
   }
 
-  if (!plan.makerCommand || !plan.checkerCommand) {
-    throw new Error("--maker-command and --checker-command must be supplied together to execute the runner loop");
+  if (!makerCommand || !checkerCommand) {
+    throw new Error("maker and checker commands must both be available; pass --agent-command or explicit --maker-command and --checker-command");
   }
 
-  const maker = runLoopCommand("maker", plan.makerCommand, plan);
+  const maker = runLoopCommand("maker", makerCommand, plan);
   appendEvidenceEvent(plan, maker);
-  if (maker.exitCode !== 0) {
+  if (!isCommandPassed(maker)) {
     updateRunnerState(plan, {
       status: "blocked",
       stage: "maker-failed",
@@ -384,9 +393,9 @@ function maybeRunAgentLoop(plan) {
     timelineEvent: { stage: "maker", status: "done", at: maker.finishedAt, detail: maker.command }
   });
 
-  let checker = runLoopCommand("checker", plan.checkerCommand, plan);
+  let checker = runLoopCommand("checker", checkerCommand, plan);
   appendEvidenceEvent(plan, checker);
-  if (checker.exitCode === 0) {
+  if (isCommandPassed(checker)) {
     updateEvidenceStatus(plan, "checker-passed", 0);
     updateRunnerState(plan, {
       status: "satisfied",
@@ -399,7 +408,8 @@ function maybeRunAgentLoop(plan) {
 
   let repairAttempts = 0;
   for (let attempt = 1; attempt <= plan.maxRepairs; attempt += 1) {
-    if (!plan.repairCommand) {
+    const repairCommand = resolveStageCommand("repair", plan);
+    if (!repairCommand) {
       break;
     }
     repairAttempts = attempt;
@@ -411,9 +421,9 @@ function maybeRunAgentLoop(plan) {
       timelineEvent: { stage: "checker", status: "failed", at: checker.finishedAt, detail: checker.command }
     });
 
-    const repair = runLoopCommand("repair", plan.repairCommand, plan, { attempt });
+    const repair = runLoopCommand("repair", repairCommand, plan, { attempt });
     appendEvidenceEvent(plan, repair);
-    if (repair.exitCode !== 0) {
+    if (!isCommandPassed(repair)) {
       updateEvidenceStatus(plan, "repair-failed", attempt);
       updateRunnerState(plan, {
         status: "blocked",
@@ -424,9 +434,9 @@ function maybeRunAgentLoop(plan) {
       return { status: "blocked", stage: "repair-failed", repairAttempts: attempt };
     }
 
-    checker = runLoopCommand("checker", plan.checkerCommand, plan, { attempt });
+    checker = runLoopCommand("checker", checkerCommand, plan, { attempt });
     appendEvidenceEvent(plan, checker);
-    if (checker.exitCode === 0) {
+    if (isCommandPassed(checker)) {
       updateEvidenceStatus(plan, "checker-passed-after-repair", attempt);
       updateRunnerState(plan, {
         status: "satisfied",
@@ -448,9 +458,48 @@ function maybeRunAgentLoop(plan) {
   return { status: "blocked", stage: "checker-blocked", repairAttempts };
 }
 
+function resolveStageCommand(stage, plan) {
+  if (stage === "maker") {
+    return plan.makerCommand || plan.agentCommand || "";
+  }
+  if (stage === "checker") {
+    return plan.checkerCommand || plan.agentCommand || "";
+  }
+  if (stage === "repair") {
+    return plan.repairCommand || plan.agentCommand || "";
+  }
+
+  return "";
+}
+
+function isCommandPassed(event) {
+  return event.exitCode === 0 && !hasBlockerFindings(event);
+}
+
+function hasBlockerFindings(event) {
+  return Boolean(
+    event.structuredStatus === "blocked" ||
+      event.structuredStatus === "failed" ||
+      event.structuredFindings?.some((finding) => finding.severity === "blocker")
+  );
+}
+
 function runLoopCommand(stage, command, plan, details = {}) {
   const startedAt = new Date().toISOString();
-  const result = spawnSync(command, {
+  const promptPath = getStagePromptPath(stage, plan);
+  const prompt = promptPath && existsSync(promptPath) ? readFileSync(promptPath, "utf8") : "";
+  const expandedCommand = expandCommandTemplate(command, {
+    evidencePath: join(plan.handoffDir, "evidence.json"),
+    handoffDir: plan.handoffDir,
+    prompt,
+    promptPath,
+    repairAttempt: String(details.attempt ?? 0),
+    runId: plan.runId,
+    stage,
+    ticketId: plan.ticketId,
+    worktreePath: plan.worktreePath
+  });
+  const result = spawnSync(expandedCommand, {
     cwd: plan.worktreePath,
     encoding: "utf8",
     shell: true,
@@ -459,6 +508,8 @@ function runLoopCommand(stage, command, plan, details = {}) {
       ...process.env,
       ATLAS_RUN_ID: plan.runId,
       ATLAS_TICKET_ID: plan.ticketId,
+      ATLAS_STAGE: stage,
+      ATLAS_PROMPT_PATH: promptPath,
       ATLAS_HANDOFF_DIR: plan.handoffDir,
       ATLAS_EVIDENCE_PATH: join(plan.handoffDir, "evidence.json"),
       ATLAS_REPAIR_ATTEMPT: String(details.attempt ?? 0)
@@ -467,14 +518,106 @@ function runLoopCommand(stage, command, plan, details = {}) {
 
   return {
     stage,
-    command,
+    command: expandedCommand,
     exitCode: result.status ?? 1,
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
     startedAt,
     finishedAt: new Date().toISOString(),
-    repairAttempt: details.attempt ?? 0
+    repairAttempt: details.attempt ?? 0,
+    ...parseStructuredCheckerOutput(stage, result.stdout, result.stderr)
   };
+}
+
+function getStagePromptPath(stage, plan) {
+  if (stage === "maker" || stage === "repair") {
+    return join(plan.handoffDir, "maker-prompt.md");
+  }
+  if (stage === "checker") {
+    return join(plan.handoffDir, "checker-prompt.md");
+  }
+
+  return "";
+}
+
+function expandCommandTemplate(command, values) {
+  return command.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) => {
+    if (!(key in values)) {
+      return match;
+    }
+    return shellQuote(values[key]);
+  });
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function parseStructuredCheckerOutput(stage, stdout, stderr) {
+  if (stage !== "checker") {
+    return {};
+  }
+
+  const parsed = parseJsonBlock(stdout) ?? parseJsonBlock(stderr);
+  if (!parsed) {
+    return {};
+  }
+
+  const findings = Array.isArray(parsed) ? parsed : parsed.findings;
+  const structuredFindings = Array.isArray(findings)
+    ? findings.map((finding) => normalizeCheckerFinding(finding)).filter(Boolean)
+    : [];
+
+  return {
+    structuredStatus: typeof parsed.status === "string" ? parsed.status : undefined,
+    structuredSummary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+    structuredFindings
+  };
+}
+
+function parseJsonBlock(output) {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const marked = trimmed.match(/ATLAS_CHECKER_JSON_START\s*([\s\S]*?)\s*ATLAS_CHECKER_JSON_END/);
+  const candidate = marked?.[1]?.trim() ?? trimmed;
+  if (!candidate.startsWith("{") && !candidate.startsWith("[")) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCheckerFinding(finding) {
+  if (!finding || typeof finding !== "object") {
+    return null;
+  }
+
+  const summary = firstString(finding.summary, finding.message, finding.title);
+  if (!summary) {
+    return null;
+  }
+
+  const severity = (firstString(finding.severity, finding.level) ?? "info").toLowerCase();
+  const normalizedSeverity = ["blocker", "warning", "info"].includes(severity) ? severity : "info";
+
+  return {
+    severity: normalizedSeverity,
+    summary,
+    file: firstString(finding.file, finding.path),
+    line: Number.isInteger(finding.line) ? finding.line : undefined,
+    recommendation: firstString(finding.recommendation, finding.fix, finding.detail)
+  };
+}
+
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim() !== "")?.trim();
 }
 
 function appendEvidenceEvent(plan, event) {
@@ -498,9 +641,36 @@ function appendEvidenceEvent(plan, event) {
     events: [...(evidence.events ?? []), event]
   };
 
+  if (event.structuredFindings?.length) {
+    next.findings = [
+      ...(next.findings ?? evidence.findings ?? []),
+      ...event.structuredFindings.map((finding) => ({
+        ...finding,
+        stage: event.stage,
+        command: event.command,
+        repairAttempt: event.repairAttempt,
+        at: event.finishedAt
+      }))
+    ];
+  }
+
+  if (hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
+    next.findings = [
+      ...(next.findings ?? evidence.findings ?? []),
+      {
+        severity: "blocker",
+        stage: event.stage,
+        summary: event.structuredSummary ?? "Checker reported blocked status",
+        command: event.command,
+        repairAttempt: event.repairAttempt,
+        at: event.finishedAt
+      }
+    ];
+  }
+
   if (event.exitCode !== 0) {
     next.findings = [
-      ...(evidence.findings ?? []),
+      ...(next.findings ?? evidence.findings ?? []),
       {
         severity: "blocker",
         stage: event.stage,
@@ -553,6 +723,12 @@ function renderMakerPrompt(plan) {
 - Base: \`${plan.base}\`
 
 Implement one bounded slice for this ticket in the worktree. Keep the diff scoped, run the relevant checks, and update \`${plan.files.evidence}\` with changed files, verification commands, and a short summary.
+
+Runtime env:
+
+- \`ATLAS_STAGE=maker\`
+- \`ATLAS_PROMPT_PATH\` points at this file.
+- \`ATLAS_EVIDENCE_PATH\` points at the shared evidence JSON.
 `;
 }
 
@@ -566,6 +742,25 @@ function renderCheckerPrompt(plan) {
 - Evidence: \`${plan.files.evidence}\`
 
 Review the maker diff and verification evidence. Record blocker findings before any merge or satisfaction decision. Do not mark the run satisfied from maker output alone.
+
+If you find blockers, print structured JSON to stdout so the runner can record it:
+
+\`\`\`json
+{
+  "status": "blocked",
+  "findings": [
+    {
+      "severity": "blocker",
+      "summary": "Describe the concrete blocking issue.",
+      "file": "relative/path.ts",
+      "line": 1,
+      "recommendation": "Describe the smallest repair."
+    }
+  ]
+}
+\`\`\`
+
+Use \`status: "passed"\` with an empty \`findings\` array when the diff satisfies the goal and evidence requirements.
 `;
 }
 

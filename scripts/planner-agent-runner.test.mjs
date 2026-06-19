@@ -214,6 +214,54 @@ test("runner resumes an existing handoff without recreating the worktree", async
   assert.equal(evidence.checks.length, 2);
 });
 
+test("runner adapter uses stage env vars and records structured checker findings", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-agent-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "blocked", findings: [{ severity: "blocker", summary: "Missing verification evidence", file: "maker-output.txt", line: 1, recommendation: "Record the checker evidence." }] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-10",
+      "--branch",
+      "worktree/ap-10-runner-test",
+      "--run-id",
+      "run-ap-10",
+      "--worktree-dir",
+      worktreePath,
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-10/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-10/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(evidence.status, "checker-blocked");
+  assert.deepEqual(
+    evidence.checks.map((check) => check.stage),
+    ["maker", "checker"]
+  );
+  assert.equal(evidence.events[1].exitCode, 0);
+  assert.equal(evidence.events[1].structuredStatus, "blocked");
+  assert.equal(evidence.findings[0].summary, "Missing verification evidence");
+  assert.equal(evidence.findings[0].severity, "blocker");
+  assert.equal(evidence.findings[0].file, "maker-output.txt");
+});
+
 async function createGitFixture(prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   const worktreePath = await mkdtemp(join(tmpdir(), `${prefix}worktree-`));

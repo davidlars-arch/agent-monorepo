@@ -6,6 +6,8 @@ This branch continues AP-6: Agent worktree runner MVP.
 
 - `npm run planner:agent-runner -- ...` creates an isolated git worktree for a selected ticket.
 - The runner can execute a maker command, checker command, and optional bounded repair command.
+- The runner can also execute a shared `--agent-command` adapter. The adapter receives stage-specific env vars such as `ATLAS_STAGE`, `ATLAS_PROMPT_PATH`, `ATLAS_HANDOFF_DIR`, `ATLAS_EVIDENCE_PATH`, and `ATLAS_REPAIR_ATTEMPT`.
+- Checker output can be structured JSON. Blocker findings are recorded into `evidence.json` even when the checker process exits `0`.
 - Existing handoffs can be resumed with `--resume --handoff-dir ...` so the first command can prepare and later commands can execute without recreating the worktree.
 - The runner writes local handoff files under `loops/project-controller/runs/<run-id>/`:
   - `runner-state.json`
@@ -41,6 +43,45 @@ npm run planner:agent-runner -- \
   --checker-command 'node -e '"'"'require("fs").existsSync("maker-output.txt") || process.exit(2)'"'"''
 ```
 
+Shared agent adapter demo:
+
+```sh
+npm run planner:agent-runner -- \
+  --ticket AP-AGENT \
+  --branch worktree/ap-agent \
+  --run-id run-ap-agent \
+  --agent-command 'openclaw agent --local --message {prompt}'
+```
+
+The command template can use these shell-quoted placeholders:
+
+- `{prompt}`
+- `{promptPath}`
+- `{stage}`
+- `{handoffDir}`
+- `{evidencePath}`
+- `{worktreePath}`
+- `{ticketId}`
+- `{runId}`
+- `{repairAttempt}`
+
+Checker agents should print JSON when they block a run:
+
+```json
+{
+  "status": "blocked",
+  "findings": [
+    {
+      "severity": "blocker",
+      "summary": "The diff is missing verification evidence.",
+      "file": "scripts/example.mjs",
+      "line": 12,
+      "recommendation": "Run the focused test and record it in evidence.json."
+    }
+  ]
+}
+```
+
 Resume demo after running the normal prepare command:
 
 ```sh
@@ -66,5 +107,4 @@ npm run planner:agent-runner -- \
 
 ## Intentional limits
 
-- The runner does not autonomously choose a maker/checker runtime yet; commands are explicit so the PR does not couple to one local agent CLI.
-- Merge remains human-gated.
+- The runner still keeps merge human-gated and does not auto-open or auto-merge PRs.
