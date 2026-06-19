@@ -202,7 +202,7 @@
     {
       "id": "atlas-planner",
       "label": "Atlas Planner",
-      "area": "apps/atlas-planner apps/web/components/earth-globe.tsx loops/project-controller",
+      "area": "apps/atlas-planner apps/web/components/atlas-planner-overview.tsx apps/web/app/globals.css scripts loops/project-controller",
       "cadenceHours": 24,
       "permission": "build-local-and-commit",
       "nextAction": "Grow Atlas Planner as its own agent-work planning product: token runway, lifecycle history, finished-ticket evidence, and later extraction from the web atlas shell.",
@@ -310,6 +310,14 @@
               "estimate": 5,
               "summary": "Make maker/checker handoff explicit before a loop can mark a ticket done.",
               "tags": ["maker-checker", "verification"]
+            },
+            {
+              "id": "AP-6",
+              "title": "Agent worktree runner MVP",
+              "status": "in-progress",
+              "estimate": 21,
+              "summary": "Link planner tickets to worktree branches, agent run evidence, verification output, and commit history.",
+              "tags": ["worktree", "agent-runner", "evidence"]
             }
           ]
         }

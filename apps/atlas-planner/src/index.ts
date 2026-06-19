@@ -1,5 +1,8 @@
 export type LoopTicketStatus = "backlog" | "in-progress" | "review" | "done" | "blocked";
 
+export * from "./reporting.ts";
+export * from "./runs.ts";
+
 export type LoopKanbanTicket = {
   id: string;
   title: string;

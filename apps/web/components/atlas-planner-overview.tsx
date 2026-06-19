@@ -36,10 +36,12 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleHelp,
+  Clipboard,
   Clock3,
   GitBranch,
   Download,
   FileText,
+  FolderGit2,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -690,6 +692,69 @@ function getGoalContractPreview(draft: GoalDraft) {
   };
 }
 
+function getAgentRunSlug(ticket: PlannerTicketDraft) {
+  const sourceLabel = ticket.id || ticket.title || "ticket";
+  const slug = sourceLabel
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return slug || "ticket";
+}
+
+function getAgentRunSuggestions(ticket: PlannerTicketDraft) {
+  const ticketSlug = getAgentRunSlug(ticket);
+  const branch = `worktree/${ticketSlug}`;
+  const ticketArg =
+    ticket.id
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || ticketSlug;
+
+  return {
+    branch,
+    command: `node scripts/planner-agent-runner.mjs --ticket ${ticketArg} --branch ${branch}`,
+    runState:
+      ticket.status === "done"
+        ? "Complete placeholder"
+        : ticket.status === "in-progress"
+          ? "Ready placeholder"
+          : "Queued placeholder",
+    worktree: `agent-monorepo-${ticketSlug}`
+  };
+}
+
+function formatRelativeUsageTime(timestamp: string | undefined, now: number) {
+  if (!timestamp) {
+    return "Updated unknown";
+  }
+
+  const recordedAt = new Date(timestamp).getTime();
+  if (!Number.isFinite(recordedAt)) {
+    return "Updated unknown";
+  }
+
+  const diffSeconds = Math.max(0, Math.floor((now - recordedAt) / 1000));
+  if (diffSeconds < 45) {
+    return "Updated just now";
+  }
+
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `Updated ${diffMinutes} min ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) {
+    return `Updated ${diffHours} hr ago`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  return `Updated ${diffDays} d ago`;
+}
+
 export function AtlasPlannerOverview({
   usageStatus,
   loopKanban,
@@ -711,7 +776,10 @@ export function AtlasPlannerOverview({
   onToggleExplainer: () => void;
   onClose: () => void;
 }) {
-  const usageMetrics = usageStatus ? getUsageMetrics(usageStatus) : [];
+  const [latestUsageStatus, setLatestUsageStatus] = useState<UsageStatusSnapshot | null>(usageStatus ?? null);
+  const [usageClock, setUsageClock] = useState(() => Date.now());
+  const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
+  const usageMetrics = latestUsageStatus ? getUsageMetrics(latestUsageStatus) : [];
   const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
   const [editingTicket, setEditingTicket] = useState<PlannerTicketDraft | null>(null);
@@ -728,8 +796,8 @@ export function AtlasPlannerOverview({
   const suppressTicketClickRef = useRef(false);
   const suppressTicketClickTimeoutRef = useRef<number | null>(null);
   const [plannerStateMessage, setPlannerStateMessage] = useState("");
-  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
-  const loopPlannerCommand = getLoopPlannerCommand(loopKanban, usageStatus);
+  const kanbanColumns = getKanbanColumns(plannerTickets, latestUsageStatus);
+  const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus);
   const loopGoalSummary = getLoopGoalSummary(loopKanban);
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
   const durableQueuedGoals = queuedGoals ?? [];
@@ -795,6 +863,24 @@ export function AtlasPlannerOverview({
       }
     };
   }, []);
+
+  async function refreshUsageStatus() {
+    setIsUsageRefreshing(true);
+    try {
+      const response = await fetch("/api/usage-status", { cache: "no-store" });
+      if (!response.ok) {
+        return;
+      }
+
+      const nextUsageStatus = (await response.json()) as UsageStatusSnapshot | null;
+      setLatestUsageStatus(nextUsageStatus);
+      setUsageClock(Date.now());
+    } catch {
+      // Keep the latest known snapshot visible if the local status file is temporarily unavailable.
+    } finally {
+      setIsUsageRefreshing(false);
+    }
+  }
 
   function moveTicket(ticketId: string, status: LoopTicketStatus) {
     const now = new Date().toISOString();
@@ -1205,17 +1291,27 @@ export function AtlasPlannerOverview({
                 <ListChecks size={16} />
                 <h3>Token runway</h3>
               </div>
+              <button
+                type="button"
+                className="loop-usage__refresh"
+                onClick={refreshUsageStatus}
+                disabled={isUsageRefreshing}
+                aria-label="Refresh token runway"
+              >
+                <RefreshCw size={14} />
+                <span>{isUsageRefreshing ? "Refreshing" : "Refresh"}</span>
+              </button>
             </div>
-            {usageStatus ? (
+            {latestUsageStatus ? (
               <>
                 <div className="usage-meta" aria-label="Usage snapshot metadata">
                   <div className="usage-snapshot">
                     <span>Model</span>
-                    <strong>{usageStatus.model}</strong>
+                    <strong>{latestUsageStatus.model}</strong>
                   </div>
                   <div className="usage-snapshot usage-snapshot--date">
-                    <span>Latest</span>
-                    <strong>{usageStatus.recordedAt}</strong>
+                    <span>Updated</span>
+                    <strong>{formatRelativeUsageTime(latestUsageStatus.recordedAt, usageClock)}</strong>
                   </div>
                 </div>
                 <div className="usage-dashboard">
@@ -1257,7 +1353,7 @@ export function AtlasPlannerOverview({
             ) : (
               <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
             )}
-            {usageStatus?.note ? <p className="loop-usage__note">{usageStatus.note}</p> : null}
+            {latestUsageStatus?.note ? <p className="loop-usage__note">{latestUsageStatus.note}</p> : null}
           </section>
 
           <section className="loop-reliability" aria-label="Reliable loop planner">
@@ -1641,7 +1737,7 @@ export function AtlasPlannerOverview({
                 <h3>Epics and tickets</h3>
               </div>
               <div className="loop-kanban__tools">
-                <span>{getWindowDecisionLabel(usageStatus)}</span>
+                <span>{getWindowDecisionLabel(latestUsageStatus)}</span>
                 <button type="button" onClick={() => setIsActivityDashboardOpen(true)}>
                   <CalendarDays size={14} />
                   Dashboard
@@ -2335,10 +2431,31 @@ function TicketEditor({
   onRemoveSubtask: (subtaskId: string) => void;
 }) {
   const [tagInput, setTagInput] = useState("");
+  const [copiedCommand, setCopiedCommand] = useState("");
+  const [failedCommand, setFailedCommand] = useState("");
   const selectedProject = projects.find((project) => project.id === ticket.projectId) ?? projects[0];
   const selectedEpic =
     selectedProject?.epics?.find((epic) => epic.id === ticket.epicId) ?? selectedProject?.epics?.[0];
   const ticketTags = ticket.tags ?? [];
+  const agentRun = getAgentRunSuggestions(ticket);
+  const copyButtonLabel =
+    copiedCommand === agentRun.command ? "Copied" : failedCommand === agentRun.command ? "Copy failed" : "Copy runner command";
+
+  async function copyRunnerCommand() {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setFailedCommand(agentRun.command);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(agentRun.command);
+      setCopiedCommand(agentRun.command);
+      setFailedCommand("");
+      window.setTimeout(() => setCopiedCommand(""), 1600);
+    } catch {
+      setFailedCommand(agentRun.command);
+    }
+  }
 
   function updateProject(projectId: string) {
     const project = projects.find((candidate) => candidate.id === projectId);
@@ -2470,6 +2587,35 @@ function TicketEditor({
               <GitCommitHorizontal size={13} />
               <span>Commit</span>
               <time>{ticket.completedCommit ?? "Not yet"}</time>
+            </div>
+          </section>
+
+          <section className="ticket-editor__agent-run ticket-editor__wide" aria-label="Agent run">
+            <div className="agent-run__heading">
+              <div>
+                <span>Agent OS</span>
+                <strong>Agent run</strong>
+              </div>
+              <span>{agentRun.runState}</span>
+            </div>
+            <div className="agent-run__grid">
+              <div>
+                <GitBranch size={14} />
+                <span>Branch</span>
+                <code>{agentRun.branch}</code>
+              </div>
+              <div>
+                <FolderGit2 size={14} />
+                <span>Worktree</span>
+                <code>{agentRun.worktree}</code>
+              </div>
+            </div>
+            <div className="agent-run__command">
+              <code>{agentRun.command}</code>
+              <button type="button" onClick={copyRunnerCommand}>
+                <Clipboard size={14} />
+                {copyButtonLabel}
+              </button>
             </div>
           </section>
 

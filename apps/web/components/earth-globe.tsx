@@ -190,6 +190,18 @@ const projectDetails: Record<string, ProjectDetail> = {
   }
 };
 
+function getProjectDetail(projectId: string, currentCommit: string) {
+  const detail = projectDetails[projectId];
+  if (!detail || currentCommit === "unknown") {
+    return detail;
+  }
+
+  return {
+    ...detail,
+    commit: `${currentCommit} · current workspace`
+  };
+}
+
 const getDefaultCameraPosition = () => {
   if (typeof window === "undefined") {
     return new THREE.Vector3(0, 0.35, 3.45);
@@ -265,14 +277,14 @@ export function EarthGlobe({
     []
   );
   const activeProject = projects.find((project) => project.id === detailProjectId);
-  const activeDetail = detailProjectId ? projectDetails[detailProjectId] : undefined;
+  const activeDetail = detailProjectId ? getProjectDetail(detailProjectId, currentCommit) : undefined;
   const fallbackProjectData = useMemo(
     () =>
       projects.map((project) => ({
         ...project,
-        detail: projectDetails[project.id]
+        detail: getProjectDetail(project.id, currentCommit)
       })),
-    [projects]
+    [currentCommit, projects]
   );
 
   const focusProject = useCallback((projectId: string, revealDetail = false) => {

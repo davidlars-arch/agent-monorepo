@@ -23,6 +23,7 @@ if (runBuild) {
 
 const startedAt = new Date();
 const gitStatus = await run("git", ["status", "--short"]);
+const dirtyEntries = parseGitStatus(gitStatus.stdout);
 const workspaces = await discoverWorkspaces();
 const todos = await scanTodos();
 const checks = [];
@@ -37,6 +38,7 @@ for (const check of checkCommands) {
 const report = renderReport({
   startedAt,
   gitStatus,
+  dirtyEntries,
   workspaces,
   todos,
   checks,
@@ -45,7 +47,7 @@ const report = renderReport({
 
 await mkdir(dirname(reportPath), { recursive: true });
 await writeFile(reportPath, report);
-await writeFile(statePath, renderState({ startedAt, gitStatus, workspaces, todos, checks, runBuild }));
+await writeFile(statePath, renderState({ startedAt, gitStatus, dirtyEntries, workspaces, todos, checks, runBuild }));
 
 const failed = checks.filter((check) => check.exitCode !== 0);
 console.log(`Repo health loop wrote ${relative(reportPath)} and ${relative(statePath)}.`);
@@ -75,6 +77,76 @@ async function run(command, args, options = {}) {
       stderr: String(error.stderr ?? error.message ?? "").trim()
     };
   }
+}
+
+function parseGitStatus(output) {
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map(parseGitStatusLine);
+}
+
+function parseGitStatusLine(line) {
+  if (line.startsWith("?? ") || line.startsWith("!! ")) {
+    return dirtyEntry(line.slice(0, 2), line.slice(3));
+  }
+
+  if (line.length > 2 && line[2] === " ") {
+    return dirtyEntry(line.slice(0, 2).trim(), line.slice(3));
+  }
+
+  const match = line.match(/^([A-Z?]{1,2})\s+(.+)$/);
+  if (match) {
+    return dirtyEntry(match[1], match[2]);
+  }
+
+  return dirtyEntry("changed", line);
+}
+
+function dirtyEntry(status, path) {
+  return {
+    status,
+    path,
+    kind: classifyDirtyKind(status),
+    owner: classifyDirtyOwner(path),
+    needsReview: !isGeneratedArtifact(path)
+  };
+}
+
+function classifyDirtyKind(status) {
+  if (status === "??") {
+    return "untracked";
+  }
+  if (status.includes("U") || ["AA", "DD"].includes(status)) {
+    return "conflict";
+  }
+  if (status.includes("D")) {
+    return "deleted";
+  }
+  if (status.includes("R")) {
+    return "renamed";
+  }
+  if (status.includes("A")) {
+    return "added";
+  }
+  if (status.includes("M")) {
+    return "modified";
+  }
+  return "changed";
+}
+
+function classifyDirtyOwner(path) {
+  if (isGeneratedArtifact(path)) {
+    return "generated artifact";
+  }
+  if (path.startsWith("loops/") && (path.endsWith("/latest-report.md") || path.endsWith("/state.json") || path.endsWith("/STATE.md"))) {
+    return "loop state";
+  }
+  return "review before assignment";
+}
+
+function isGeneratedArtifact(path) {
+  return path.startsWith(".run/");
 }
 
 async function discoverWorkspaces() {
@@ -138,7 +210,7 @@ async function scanTodos() {
     });
 }
 
-function renderReport({ startedAt, gitStatus, workspaces, todos, checks, runBuild }) {
+function renderReport({ startedAt, gitStatus, dirtyEntries, workspaces, todos, checks, runBuild }) {
   const failed = checks.filter((check) => check.exitCode !== 0);
   return `# Repo Health Loop Report
 
@@ -158,6 +230,8 @@ ${checks.map(renderCheckSummary).join("\n")}
 
 ${codeBlock(gitStatus.stdout || "clean")}
 
+${renderDirtyClassification(dirtyEntries)}
+
 ## Workspaces
 
 ${workspaces
@@ -170,8 +244,9 @@ ${todos.length === 0 ? "No TODO/FIXME/HACK/XXX markers found." : todos.map((todo
 `;
 }
 
-function renderState({ startedAt, gitStatus, workspaces, todos, checks, runBuild }) {
+function renderState({ startedAt, gitStatus, dirtyEntries, workspaces, todos, checks, runBuild }) {
   const failed = checks.filter((check) => check.exitCode !== 0);
+  const reviewCount = dirtyEntries.filter((entry) => entry.needsReview).length;
   return `# Repo Health Loop State
 
 This file is written by \`npm run loop:repo-health\`. Agents should read it before acting and update it only through the loop runner unless recording a manual decision.
@@ -183,7 +258,8 @@ This file is written by \`npm run loop:repo-health\`. Agents should read it befo
 - Check status: ${failed.length === 0 ? "green" : `failed: ${failed.map((check) => check.name).join(", ")}`}
 - Workspaces: ${workspaces.length}
 - TODO markers sampled: ${todos.length}
-- Dirty entries: ${gitStatus.stdout ? gitStatus.stdout.split("\n").filter(Boolean).length : 0}
+- Dirty entries: ${dirtyEntries.length}
+- Dirty entries needing review: ${reviewCount}
 
 ## Recommended Next Step
 
@@ -199,6 +275,23 @@ ${todos.length > 0 ? "\n- Triage TODO-like markers and decide which are real wor
 
 See \`loops/repo-health/latest-report.md\`.
 `;
+}
+
+function renderDirtyClassification(dirtyEntries) {
+  if (dirtyEntries.length === 0) {
+    return "No dirty entries to classify.";
+  }
+
+  return `### Dirty Classification
+
+${dirtyEntries
+  .map(
+    (entry) =>
+      `- \`${entry.path}\` (${entry.status.trim() || "changed"}): ${entry.kind}; ${entry.owner}${
+        entry.needsReview ? "; hold before spawning agents" : "; safe to ignore unless checks fail"
+      }`
+  )
+  .join("\n")}`;
 }
 
 function nextAction({ gitStatus, todos, checks }) {
