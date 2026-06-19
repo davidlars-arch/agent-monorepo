@@ -45,6 +45,27 @@ type CameraMove = {
   hasRevealedDetail: boolean;
 };
 
+type QueuedGoalSummary = {
+  id: string;
+  title: string;
+  lifecycleStatus: string;
+  approvedToRun: boolean;
+  status: string;
+  estimate: number;
+  updatedAt: string;
+};
+
+type CurrentLoopRunSummary = {
+  id: string;
+  goalId: string;
+  goalTitle: string;
+  status: string;
+  stage: string;
+  claimedAt: string;
+  updatedAt: string;
+  baseCommit: string;
+};
+
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "atlas-planner": { lat: 19, lon: -44, color: "#f0abfc" },
@@ -191,11 +212,15 @@ const getDefaultCameraPosition = () => {
   ).matches;
 
   if (isClassicSeViewport) {
-    return new THREE.Vector3(0, 0.2, 4.65);
+    return new THREE.Vector3(0, 0.1, 6.55);
   }
 
   if (window.matchMedia("(max-width: 380px) and (max-height: 700px)").matches) {
-    return new THREE.Vector3(0, 0.24, 4.35);
+    return new THREE.Vector3(0, 0.1, 6.7);
+  }
+
+  if (window.matchMedia("(max-width: 430px)").matches) {
+    return new THREE.Vector3(0, 0.12, 6.9);
   }
 
   return new THREE.Vector3(0, 0.35, 3.45);
@@ -204,14 +229,20 @@ const getDefaultCameraPosition = () => {
 export function EarthGlobe({
   initialOpenProjectId,
   initialLoopOpen = false,
+  initialGoalComposerOpen = false,
   usageStatus,
   loopKanban,
+  queuedGoals,
+  currentLoopRun,
   currentCommit = "unknown"
 }: {
   initialOpenProjectId?: string;
   initialLoopOpen?: boolean;
+  initialGoalComposerOpen?: boolean;
   usageStatus?: UsageStatusSnapshot | null;
   loopKanban?: LoopKanbanProject[];
+  queuedGoals?: QueuedGoalSummary[];
+  currentLoopRun?: CurrentLoopRunSummary | null;
   currentCommit?: string;
 }) {
   const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
@@ -351,7 +382,7 @@ export function EarthGlobe({
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
     controls.minDistance = 1.45;
-    controls.maxDistance = 5.2;
+    controls.maxDistance = 12.5;
     controls.rotateSpeed = 0.55;
     controls.zoomSpeed = 0.85;
     controlsRef.current = controls;
@@ -665,6 +696,8 @@ export function EarthGlobe({
 
     renderer.setAnimationLoop(animate);
     resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(container);
     window.addEventListener("resize", resize);
     renderer.domElement.addEventListener("pointerdown", handleTouchPointerDown, { capture: true });
     renderer.domElement.addEventListener("pointermove", handleTouchPointerMove, { capture: true });
@@ -679,6 +712,7 @@ export function EarthGlobe({
 
     return () => {
       renderer.setAnimationLoop(null);
+      resizeObserver.disconnect();
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", handleTouchPointerDown, { capture: true });
       renderer.domElement.removeEventListener("pointermove", handleTouchPointerMove, { capture: true });
@@ -868,7 +902,10 @@ export function EarthGlobe({
         <AtlasPlannerOverview
           usageStatus={usageStatus}
           loopKanban={loopKanban ?? []}
+          queuedGoals={queuedGoals ?? []}
+          currentLoopRun={currentLoopRun}
           currentCommit={currentCommit}
+          initialGoalComposerOpen={initialGoalComposerOpen}
           showExplainer={isLoopExplainerOpen}
           onToggleExplainer={() => setIsLoopExplainerOpen((current) => !current)}
           onClose={() => setIsLoopPanelOpen(false)}

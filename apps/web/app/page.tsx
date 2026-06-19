@@ -10,6 +10,27 @@ export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
 
+type QueuedGoalSummary = {
+  id: string;
+  title: string;
+  lifecycleStatus: string;
+  approvedToRun: boolean;
+  status: string;
+  estimate: number;
+  updatedAt: string;
+};
+
+type CurrentLoopRunSummary = {
+  id: string;
+  goalId: string;
+  goalTitle: string;
+  status: string;
+  stage: string;
+  claimedAt: string;
+  updatedAt: string;
+  baseCommit: string;
+};
+
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
   const candidates = [
     join(process.cwd(), "loops/usage-status/latest-status.json"),
@@ -45,6 +66,41 @@ async function readLoopKanban(): Promise<LoopKanbanProject[]> {
   }
 }
 
+async function readQueuedGoals(): Promise<QueuedGoalSummary[]> {
+  const candidates = [
+    join(process.cwd(), "loops/project-controller/goal-queue.json"),
+    resolve(process.cwd(), "../..", "loops/project-controller/goal-queue.json")
+  ];
+  const queuePath = candidates.find((candidate) => existsSync(candidate));
+  if (!queuePath) {
+    return [];
+  }
+
+  try {
+    const queue = JSON.parse(await readFile(queuePath, "utf8")) as { goals?: QueuedGoalSummary[] };
+    return Array.isArray(queue.goals) ? queue.goals : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readCurrentLoopRun(): Promise<CurrentLoopRunSummary | null> {
+  const candidates = [
+    join(process.cwd(), "loops/project-controller/current-run.json"),
+    resolve(process.cwd(), "../..", "loops/project-controller/current-run.json")
+  ];
+  const runPath = candidates.find((candidate) => existsSync(candidate));
+  if (!runPath) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await readFile(runPath, "utf8")) as CurrentLoopRunSummary;
+  } catch {
+    return null;
+  }
+}
+
 async function readCurrentCommit() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
@@ -59,19 +115,25 @@ async function readCurrentCommit() {
 export default async function Home({
   searchParams
 }: {
-  searchParams: Promise<{ open?: string }>;
+  searchParams: Promise<{ open?: string; goal?: string }>;
 }) {
   const params = await searchParams;
   const requestedOpen = Array.isArray(params.open) ? params.open[0] : params.open;
+  const requestedGoal = Array.isArray(params.goal) ? params.goal[0] : params.goal;
   const usageStatus = await readUsageStatus();
   const loopKanban = await readLoopKanban();
+  const queuedGoals = await readQueuedGoals();
+  const currentLoopRun = await readCurrentLoopRun();
   const currentCommit = await readCurrentCommit();
   return (
     <EarthGlobe
       initialOpenProjectId={requestedOpen}
       initialLoopOpen={requestedOpen === "loops"}
+      initialGoalComposerOpen={requestedGoal === "create"}
       usageStatus={usageStatus}
       loopKanban={loopKanban}
+      queuedGoals={queuedGoals}
+      currentLoopRun={currentLoopRun}
       currentCommit={currentCommit}
     />
   );
