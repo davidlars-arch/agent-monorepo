@@ -33,6 +33,84 @@
               "summary": "Turn broad repo checks into one concrete next action per run."
             }
           ]
+        },
+        {
+          "id": "loop-setup-ui",
+          "label": "Loop Setup UI",
+          "tickets": [
+            {
+              "id": "AP-6",
+              "title": "Add goal lifecycle states",
+              "status": "done",
+              "estimate": 5,
+              "summary": "Represent draft, refined, approved, running, blocked, satisfied, and archived goal states in the planner UI.",
+              "tags": ["goal-lifecycle", "loop-setup"]
+            },
+            {
+              "id": "AP-7",
+              "title": "Build goal refinement preview",
+              "status": "done",
+              "estimate": 8,
+              "summary": "Show how a rough human goal becomes a strict loop contract with outcome, stop condition, scope, layers, verification, and safety settings.",
+              "tags": ["goal-refinement", "loop-setup"]
+            },
+            {
+              "id": "AP-8",
+              "title": "Add satisfaction layer editor",
+              "status": "done",
+              "estimate": 8,
+              "summary": "Let users add, edit, and classify goal satisfaction layers with criteria, evidence, and human-gated flags.",
+              "tags": ["satisfaction-layers", "loop-setup"]
+            },
+            {
+              "id": "AP-9",
+              "title": "Add verification command builder",
+              "status": "done",
+              "estimate": 8,
+              "summary": "Let users choose verification commands from project presets instead of typing them manually.",
+              "tags": ["verification", "loop-setup"]
+            },
+            {
+              "id": "AP-10",
+              "title": "Add loop safety settings panel",
+              "status": "done",
+              "estimate": 8,
+              "summary": "Expose max iterations, repair attempts, token budget, time budget, allowed paths, and external action policy.",
+              "tags": ["safety", "loop-setup"]
+            },
+            {
+              "id": "AP-11",
+              "title": "Add decision preview and approve-to-run",
+              "status": "done",
+              "estimate": 5,
+              "summary": "Preview selected ticket, score, deferred work, risk, and verification path before a loop starts.",
+              "tags": ["decision-preview", "loop-setup"]
+            },
+            {
+              "id": "AP-12",
+              "title": "Add run timeline view",
+              "status": "done",
+              "estimate": 13,
+              "summary": "Show live loop phases: goal, branch, maker, checker, repair, PR, merge, sync, and current evidence.",
+              "tags": ["run-timeline", "loop-setup"]
+            },
+            {
+              "id": "AP-13",
+              "title": "Add evidence viewer",
+              "status": "done",
+              "estimate": 8,
+              "summary": "Render latest report, decision log, command summaries, screenshots, reviewer findings, and PR links.",
+              "tags": ["evidence", "loop-setup"]
+            },
+            {
+              "id": "AP-14",
+              "title": "Scaffold PR and merge gates",
+              "status": "done",
+              "estimate": 13,
+              "summary": "Model PR creation, CI, subagent review, repair loops, gated merge, pull main, cleanup, and next branch creation.",
+              "tags": ["github", "merge-gates", "loop-setup"]
+            }
+          ]
         }
       ],
       "commands": [
@@ -86,12 +164,110 @@
       ]
     },
     {
+      "id": "usage-status",
+      "label": "Usage Status",
+      "area": "loops/usage-status scripts/usage-status.mjs apps/atlas-planner",
+      "cadenceHours": 4,
+      "permission": "local-state-only",
+      "nextAction": "Keep Atlas Planner usage status cheap: write cached JSON from explicit values or preserve unknown fallback; never call an LLM to estimate usage.",
+      "epics": [
+        {
+          "id": "usage-runway",
+          "label": "Usage Runway",
+          "tickets": [
+            {
+              "id": "US-1",
+              "title": "Write cheap usage status updater",
+              "status": "in-progress",
+              "estimate": 3,
+              "summary": "Add a non-LLM script that writes latest-status.json for Atlas Planner.",
+              "tags": ["cost-control", "usage"]
+            },
+            {
+              "id": "US-2",
+              "title": "Connect real provider usage source",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Replace manual/env values with a trusted low-cost usage source when available.",
+              "tags": ["usage-source", "connector"]
+            }
+          ]
+        }
+      ],
+      "commands": [
+        { "name": "usage status", "cmd": "npm", "args": ["run", "usage:status"] }
+      ],
+      "allowFailure": true
+    },
+    {
       "id": "atlas-planner",
       "label": "Atlas Planner",
       "area": "apps/atlas-planner apps/web/components/earth-globe.tsx loops/project-controller",
       "cadenceHours": 24,
       "permission": "build-local-and-commit",
       "nextAction": "Grow Atlas Planner as its own agent-work planning product: token runway, lifecycle history, finished-ticket evidence, and later extraction from the web atlas shell.",
+      "goal": {
+        "id": "atlas-loop-goal",
+        "title": "Loop until strict goal satisfaction",
+        "statement": "Atlas Planner can run bounded agent loops that select the highest-scoring task for the current token window and stop only when layered satisfaction criteria are met.",
+        "stopCondition": "All layers are satisfied, verification passes, decision evidence is recorded, and the remaining next action needs David's judgment or a new explicit goal.",
+        "layers": [
+          {
+            "id": "goal-contract",
+            "label": "Goal contract",
+            "status": "scaffolded",
+            "criteria": [
+              "A goal has a concrete statement.",
+              "The goal has an explicit stop condition.",
+              "The goal names layered satisfaction criteria."
+            ],
+            "evidence": ["projects.json goal block"]
+          },
+          {
+            "id": "budgeted-selection",
+            "label": "Budgeted selection",
+            "status": "scaffolded",
+            "criteria": [
+              "The planner reads the current usage/window snapshot.",
+              "The planner maps the window to a max Fibonacci estimate.",
+              "The planner selects the highest-scoring actionable ticket that fits the window."
+            ],
+            "evidence": ["getLoopPlannerDecision", "project-loop.mjs scoring"]
+          },
+          {
+            "id": "maker-checker",
+            "label": "Maker/checker",
+            "status": "pending",
+            "criteria": [
+              "The maker command and verifier command are separate.",
+              "A loop cannot mark the goal satisfied from maker output alone."
+            ],
+            "evidence": ["planned verification command"]
+          },
+          {
+            "id": "evidence-memory",
+            "label": "Evidence memory",
+            "status": "scaffolded",
+            "criteria": [
+              "latest-report.md records the selected ticket and result.",
+              "decisions.jsonl records score, budget, reason, and deferred larger work.",
+              "state.json records enough run history for the next loop to continue."
+            ],
+            "evidence": ["latest-report.md", "decisions.jsonl", "state.json"]
+          },
+          {
+            "id": "human-gate",
+            "label": "Human gate",
+            "status": "pending",
+            "criteria": [
+              "The loop stops when remaining work needs David's judgment.",
+              "The loop refuses external actions without approval.",
+              "The loop asks for a new explicit goal before continuing beyond scope."
+            ],
+            "evidence": ["LOOP.md reliability contract"]
+          }
+        ]
+      },
       "epics": [
         {
           "id": "planner-product",
@@ -113,10 +289,27 @@
             },
             {
               "id": "AP-3",
-              "title": "Design agent-token planning workflows",
+              "title": "Build reliable loop control panel",
+              "status": "in-progress",
+              "estimate": 8,
+              "summary": "Expose the next loop command, token fit, stop condition, maker/checker split, and state-memory contract in Atlas Planner.",
+              "tags": ["loop-engineering", "reliability"]
+            },
+            {
+              "id": "AP-4",
+              "title": "Persist controller run evidence",
               "status": "backlog",
               "estimate": 8,
-              "summary": "Make token burn, agent commits, completion evidence, and date-range reporting feel like core product behavior."
+              "summary": "Read latest-report.md and state.json into the planner so completed work has command, status, and verification evidence.",
+              "tags": ["state-memory", "evidence"]
+            },
+            {
+              "id": "AP-5",
+              "title": "Add verifier handoff workflow",
+              "status": "backlog",
+              "estimate": 5,
+              "summary": "Make maker/checker handoff explicit before a loop can mark a ticket done.",
+              "tags": ["maker-checker", "verification"]
             }
           ]
         }

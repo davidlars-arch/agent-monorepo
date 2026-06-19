@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
-import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const root = process.cwd();
+const root = process.env.PROJECT_LOOP_ROOT ? resolve(process.env.PROJECT_LOOP_ROOT) : process.cwd();
 const controllerDir = join(root, "loops", "project-controller");
 const registryPath = join(controllerDir, "projects.json");
 const statePath = join(controllerDir, "state.json");
 const reportPath = join(controllerDir, "latest-report.md");
+const decisionsPath = join(controllerDir, "decisions.jsonl");
+const goalQueuePath = join(controllerDir, "goal-queue.json");
+const currentRunPath = join(controllerDir, "current-run.json");
 const lockPath = join(controllerDir, "LOCK");
 const usageStatusPath = join(root, "loops", "usage-status", "latest-status.json");
 const args = process.argv.slice(2);
@@ -21,15 +24,31 @@ const allProjects = flags.has("--all");
 const dryRun = flags.has("--dry-run");
 const runBuild = flags.has("--build");
 const forceDue = flags.has("--force");
+const claimGoal = flags.has("--claim-goal");
 const projectIds = valuesFor("--project");
 
 const registry = JSON.parse(await readFile(registryPath, "utf8"));
 const state = await readState();
 const usageStatus = await readUsageStatus();
+let goalQueue = { version: 1, updatedAt: null, goals: [] };
 const now = new Date();
 
 if (listOnly) {
   console.log(renderList(registry));
+  process.exit(0);
+}
+
+if (dryRun) {
+  goalQueue = await readGoalQueue();
+  const selected = selectProjects(registry.projects, state, now);
+  const results = [];
+
+  for (const project of selected) {
+    results.push(await runProject(project));
+  }
+
+  console.log(renderReport({ now, selected, results, dryRun, runBuild }));
+  console.log("Project controller dry run completed; no files written.");
   process.exit(0);
 }
 
@@ -43,6 +62,7 @@ try {
 }
 
 try {
+  goalQueue = await readGoalQueue();
   const selected = selectProjects(registry.projects, state, now);
   const results = [];
 
@@ -54,6 +74,7 @@ try {
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(reportPath, renderReport({ now, selected, results, dryRun, runBuild }));
   await writeFile(statePath, `${JSON.stringify(nextState, null, 2)}\n`);
+  await appendPlannerDecisions(now, results);
 
   const failed = results.filter((result) => result.status === "failed");
   console.log(`Project controller wrote ${relative(reportPath)} and ${relative(statePath)}.`);
@@ -92,6 +113,19 @@ async function readUsageStatus() {
     return JSON.parse(await readFile(usageStatusPath, "utf8"));
   } catch {
     return null;
+  }
+}
+
+async function readGoalQueue() {
+  try {
+    const parsed = JSON.parse(await readFile(goalQueuePath, "utf8"));
+    return {
+      version: 1,
+      updatedAt: parsed.updatedAt,
+      goals: Array.isArray(parsed.goals) ? parsed.goals : []
+    };
+  } catch {
+    return { version: 1, updatedAt: null, goals: [] };
   }
 }
 
@@ -136,6 +170,7 @@ async function runProject(project) {
   const commands = commandsFor(project);
   const startedAt = new Date();
   const plannedTask = chooseTaskForWindow(project, usageStatus);
+  const goalClaim = await maybeClaimQueuedGoal(project, plannedTask, startedAt);
 
   if (dryRun) {
     return {
@@ -143,6 +178,7 @@ async function runProject(project) {
       label: project.label,
       status: "planned",
       plannedTask,
+      goalClaim,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       commands: commands.map((command) => ({ ...command, exitCode: null }))
@@ -166,10 +202,92 @@ async function runProject(project) {
     label: project.label,
     status: failed && !project.allowFailure ? "failed" : failed ? "blocked" : "passed",
     plannedTask,
+    goalClaim,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     commands: commandResults
   };
+}
+
+async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
+  if (!claimGoal || project.id !== "atlas-planner" || !plannedTask?.tags?.includes("queued-goal")) {
+    return null;
+  }
+
+  if (dryRun) {
+    return null;
+  }
+
+  const queuedGoal = goalQueue.goals.find((goal) => goal.id === plannedTask.id);
+  if (!queuedGoal || !isRunnableQueuedGoal(queuedGoal)) {
+    return null;
+  }
+
+  const claimedAt = startedAt.toISOString();
+  const runId = `run-${queuedGoal.id.toLowerCase()}-${startedAt.getTime().toString(36)}`;
+  const claimedGoal = {
+    ...queuedGoal,
+    lifecycleStatus: "running",
+    status: "in-progress",
+    updatedAt: claimedAt
+  };
+  const nextQueue = {
+    version: 1,
+    updatedAt: claimedAt,
+    goals: goalQueue.goals.map((goal) => (goal.id === queuedGoal.id ? claimedGoal : goal))
+  };
+  goalQueue.updatedAt = nextQueue.updatedAt;
+  goalQueue.goals = nextQueue.goals;
+
+  const currentRun = {
+    version: 1,
+    id: runId,
+    projectId: project.id,
+    projectLabel: project.label,
+    goalId: claimedGoal.id,
+    goalTitle: claimedGoal.title,
+    status: "running",
+    stage: "claimed",
+    claimedAt,
+    updatedAt: claimedAt,
+    baseCommit: await readCurrentCommit(),
+    selectedTask: {
+      id: plannedTask.id,
+      title: plannedTask.title,
+      estimate: plannedTask.estimate,
+      score: plannedTask.score,
+      maxEstimate: plannedTask.maxEstimate,
+      reason: plannedTask.reason
+    },
+    timeline: [
+      { stage: "queued", status: "done", at: claimedAt, detail: "Goal was present in goal-queue.json." },
+      { stage: "claimed", status: "done", at: claimedAt, detail: "Controller claimed the goal for the next run." },
+      { stage: "planning", status: "next", at: null, detail: "Next slice refinement has not run yet." }
+    ]
+  };
+
+  await mkdir(dirname(goalQueuePath), { recursive: true });
+  await writeJsonAtomically(goalQueuePath, nextQueue);
+  await writeJsonAtomically(currentRunPath, currentRun);
+
+  return {
+    runId,
+    goalId: claimedGoal.id,
+    goalTitle: claimedGoal.title,
+    stage: currentRun.stage,
+    currentRunPath: relative(currentRunPath)
+  };
+}
+
+async function readCurrentCommit() {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: root
+    });
+    return stdout.trim();
+  } catch {
+    return "unknown";
+  }
 }
 
 function commandsFor(project) {
@@ -219,7 +337,8 @@ function updateState(currentState, results, at) {
       lastRunAt: result.finishedAt,
       lastStatus: result.status,
       lastCommandCount: result.commands.length,
-      lastPlannedTask: result.plannedTask
+      lastPlannedTask: result.plannedTask,
+      lastGoalClaim: result.goalClaim
     };
   }
 
@@ -247,6 +366,14 @@ function renderReport({ now, selected, results }) {
 
 ${nextControllerAction(selected, results)}
 
+## Planner Decisions
+
+${results.length === 0 ? "No planner decision was needed." : results.map(renderPlannerDecision).join("\n")}
+
+## Durable Goal Queue
+
+${renderGoalQueue()}
+
 ## Project Results
 
 ${results.length === 0 ? "No projects were due." : results.map(renderProjectResult).join("\n")}
@@ -259,6 +386,70 @@ ${registry.projects
 `;
 }
 
+async function appendPlannerDecisions(at, results) {
+  const decisions = results
+    .filter((result) => result.plannedTask)
+    .map((result) => ({
+      recordedAt: at.toISOString(),
+      mode: runBuild ? "build" : "fast",
+      dryRun,
+      projectId: result.id,
+      projectLabel: result.label,
+      status: result.status,
+      goalClaim: result.goalClaim,
+      selectedTicket: {
+        id: result.plannedTask.id,
+        title: result.plannedTask.title,
+        status: result.plannedTask.status,
+        estimate: result.plannedTask.estimate,
+        score: result.plannedTask.score,
+        scoreBreakdown: result.plannedTask.scoreBreakdown
+      },
+      tokenWindow: {
+        shortWindowLeft: result.plannedTask.shortWindowLeft,
+        maxEstimate: result.plannedTask.maxEstimate
+      },
+      reason: result.plannedTask.reason,
+      skipped: result.plannedTask.skipped ?? []
+    }));
+
+  if (decisions.length === 0) {
+    return;
+  }
+
+  await mkdir(dirname(decisionsPath), { recursive: true });
+  await appendFile(decisionsPath, `${decisions.map((decision) => JSON.stringify(decision)).join("\n")}\n`);
+}
+
+function renderPlannerDecision(result) {
+  if (!result.plannedTask) {
+    return `- \`${result.id}\`: no registered ticket.`;
+  }
+
+  const skipped = result.plannedTask.skipped?.length
+    ? ` Skipped larger work: ${result.plannedTask.skipped.map((ticket) => `\`${ticket.id}\` (${ticket.estimate} pts)`).join(", ")}.`
+    : "";
+  const claim = result.goalClaim
+    ? ` Claimed goal run \`${result.goalClaim.runId}\` at \`${result.goalClaim.currentRunPath}\`.`
+    : "";
+
+  return `- \`${result.id}\`: selected \`${result.plannedTask.id}\` (${result.plannedTask.estimate} pts, score ${result.plannedTask.score}, max ${result.plannedTask.maxEstimate}). ${result.plannedTask.reason}${skipped}${claim}`;
+}
+
+function renderGoalQueue() {
+  if (goalQueue.goals.length === 0) {
+    return "No queued goals yet. Create one from Atlas Planner to seed the runner.";
+  }
+
+  return goalQueue.goals
+    .slice(0, 10)
+    .map(
+      (goal) =>
+        `- \`${goal.id}\` (${goal.lifecycleStatus}, ${goal.status}, ${goal.estimate} pts): ${goal.title}${goal.approvedToRun ? " — approved" : ""}`
+    )
+    .join("\n");
+}
+
 function renderProjectResult(result) {
   const project = registry.projects.find((candidate) => candidate.id === result.id);
   return `### ${result.label}
@@ -267,10 +458,39 @@ function renderProjectResult(result) {
 - Status: ${result.status}
 - Permission: ${project?.permission ?? registry.defaults.permission}
 - Planned ticket: ${renderPlannedTask(result.plannedTask)}
+- Goal claim: ${renderGoalClaim(result.goalClaim)}
 - Next action: ${project?.nextAction ?? "No next action recorded."}
+${renderGoalSummary(project?.goal)}
 
 ${result.commands.map(renderCommandResult).join("\n")}
 `;
+}
+
+function renderGoalClaim(goalClaim) {
+  if (!goalClaim) {
+    return "none";
+  }
+
+  return `\`${goalClaim.goalId}\` claimed as \`${goalClaim.runId}\` (${goalClaim.stage}); state at \`${goalClaim.currentRunPath}\``;
+}
+
+function renderGoalSummary(goal) {
+  if (!goal) {
+    return "- Goal: no strict goal registered.";
+  }
+
+  const counts = goal.layers.reduce(
+    (summary, layer) => ({
+      ...summary,
+      [layer.status]: (summary[layer.status] ?? 0) + 1
+    }),
+    { pending: 0, scaffolded: 0, satisfied: 0, blocked: 0 }
+  );
+
+  return `- Goal: ${goal.title}
+- Goal stop condition: ${goal.stopCondition}
+- Goal layers: ${goal.layers.length}; satisfied ${counts.satisfied}; scaffolded ${counts.scaffolded}; pending ${counts.pending}; blocked ${counts.blocked}
+${goal.layers.map((layer) => `  - ${layer.status}: ${layer.label} - ${layer.criteria[0]}`).join("\n")}`;
 }
 
 function chooseTaskForWindow(project, currentUsageStatus) {
@@ -281,53 +501,41 @@ function chooseTaskForWindow(project, currentUsageStatus) {
 
   const shortWindowLeft = parseFirstPercent(currentUsageStatus?.shortWindow);
   const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
-  const activeTickets = tickets.filter((ticket) => ticket.status === "in-progress" || ticket.status === "review");
-  const backlogTickets = tickets.filter((ticket) => ticket.status === "backlog");
-  const activeFits = activeTickets.find((ticket) => ticket.estimate <= maxEstimate);
+  const candidates = tickets
+    .filter((ticket) => ticket.status !== "done" && ticket.status !== "blocked")
+    .map((ticket) => {
+      const scoreBreakdown = getPlannerScoreBreakdown(ticket, project, maxEstimate);
+      return {
+        ...ticket,
+        score: scoreBreakdown.total,
+        scoreBreakdown,
+        reason: getPlannerScoreReason(ticket, scoreBreakdown, maxEstimate),
+        shortWindowLeft,
+        maxEstimate
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.estimate - left.estimate || left.id.localeCompare(right.id));
 
-  if (activeFits) {
-    return {
-      ...activeFits,
-      reason: `Continue active work because estimate ${activeFits.estimate} fits the current token window.`,
-      shortWindowLeft,
-      maxEstimate
-    };
-  }
+  const selected = candidates[0] ?? tickets.find((ticket) => ticket.status !== "done") ?? tickets[0];
+  const selectedBreakdown = selected.scoreBreakdown ?? getPlannerScoreBreakdown(selected, project, maxEstimate);
 
-  const easiestBacklog = [...backlogTickets].sort((left, right) => left.estimate - right.estimate)[0];
-  if (easiestBacklog && activeTickets.length > 0) {
-    return {
-      ...easiestBacklog,
-      reason: `Active work is too large for this token window, so choose the smallest backlog ticket.`,
-      shortWindowLeft,
-      maxEstimate
-    };
-  }
-
-  const firstBacklogThatFits = backlogTickets.find((ticket) => ticket.estimate <= maxEstimate) ?? easiestBacklog;
-  if (firstBacklogThatFits) {
-    return {
-      ...firstBacklogThatFits,
-      reason:
-        firstBacklogThatFits.estimate <= maxEstimate
-          ? `Choose the first backlog ticket that fits the token window.`
-          : `No backlog ticket fits cleanly, so surface the smallest available ticket and avoid implementation sprawl.`,
-      shortWindowLeft,
-      maxEstimate
-    };
-  }
-
-  const fallbackTicket = tickets.find((ticket) => ticket.status !== "done") ?? tickets[0];
   return {
-    ...fallbackTicket,
-    reason: "No actionable backlog ticket was available; review the board before starting work.",
+    ...selected,
+    score: selected.score ?? selectedBreakdown.total,
+    scoreBreakdown: selectedBreakdown,
+    reason: selected.reason ?? getPlannerScoreReason(selected, selectedBreakdown, maxEstimate),
     shortWindowLeft,
-    maxEstimate
+    maxEstimate,
+    skipped: tickets
+      .filter((ticket) => ticket.status !== "done" && ticket.status !== "blocked" && ticket.estimate > maxEstimate)
+      .sort((left, right) => right.estimate - left.estimate || left.id.localeCompare(right.id))
+      .slice(0, 4)
+      .map((ticket) => ({ id: ticket.id, title: ticket.title, estimate: ticket.estimate }))
   };
 }
 
 function flattenTickets(project) {
-  return (project.epics ?? []).flatMap((epic) =>
+  const registryTickets = (project.epics ?? []).flatMap((epic) =>
     (epic.tickets ?? []).map((ticket) => ({
       ...ticket,
       epicId: epic.id,
@@ -336,6 +544,83 @@ function flattenTickets(project) {
       projectLabel: project.label
     }))
   );
+
+  if (project.id !== "atlas-planner") {
+    return registryTickets;
+  }
+
+  return [...queuedGoalTickets(project), ...registryTickets];
+}
+
+function queuedGoalTickets(project) {
+  return goalQueue.goals
+    .filter(isRunnableQueuedGoal)
+    .map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      status: goal.status,
+      estimate: goal.estimate,
+      summary: goal.summary,
+      tags: [...(goal.tags ?? []), "queued-goal"],
+      epicId: "queued-goals",
+      epicLabel: "Queued Goals",
+      projectId: project.id,
+      projectLabel: project.label
+    }));
+}
+
+function isRunnableQueuedGoal(goal) {
+  return (
+    goal.approvedToRun === true &&
+    goal.lifecycleStatus === "approved" &&
+    !["done", "archived", "blocked"].includes(goal.status)
+  );
+}
+
+async function writeJsonAtomically(path, value) {
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`);
+  await rename(tempPath, path);
+}
+
+function getPlannerScoreBreakdown(ticket, project, maxEstimate) {
+  const tags = ticket.tags ?? [];
+  const fit =
+    ticket.estimate <= maxEstimate
+      ? 40 + Math.round((ticket.estimate / Math.max(1, maxEstimate)) * 30)
+      : -40 - (ticket.estimate - maxEstimate) * 8;
+  const baseValue = tags.some((tag) => ["loop-engineering", "reliability", "usage", "evidence", "goal"].includes(tag))
+    ? 8
+    : 0;
+  const queueValue = (tags.includes("queued-goal") ? 18 : 0) + (tags.includes("approved-to-run") ? 18 : 0);
+  const value = baseValue + queueValue;
+  const readiness =
+    (ticket.summary ? 8 : 0) +
+    ((project.commands?.length ?? 0) > 0 ? 6 : 0) +
+    (tags.length > 0 ? 3 : 0);
+  const freshness = ticket.status === "in-progress" ? 20 : ticket.status === "review" ? 14 : 4;
+  const riskyText = `${project.permission ?? ""} ${tags.join(" ")} ${ticket.title}`.toLowerCase();
+  const risk =
+    (riskyText.includes("live trading") || riskyText.includes("migration") || riskyText.includes("auth") ? -24 : 0) +
+    (ticket.estimate > maxEstimate ? -12 : 0);
+  const total = fit + value + readiness + freshness + risk;
+
+  return { fit, value, readiness, freshness, risk, total };
+}
+
+function getPlannerScoreReason(ticket, breakdown, maxEstimate) {
+  const fitText =
+    ticket.estimate <= maxEstimate
+      ? `uses ${ticket.estimate}/${maxEstimate} points`
+      : `needs ${ticket.estimate}/${maxEstimate} points`;
+  const statusText =
+    ticket.status === "in-progress"
+      ? "continues active work"
+      : ticket.status === "review"
+        ? "keeps review moving"
+        : "starts backlog work";
+
+  return `${ticket.id} scored ${breakdown.total}: ${fitText}, ${statusText}, value ${breakdown.value}, readiness ${breakdown.readiness}, risk ${breakdown.risk}.`;
 }
 
 function estimateBudgetForWindow(percentLeft) {

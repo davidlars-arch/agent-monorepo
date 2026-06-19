@@ -19,6 +19,7 @@ npm run loop:projects
 npm run loop:projects -- --list
 npm run loop:projects -- --all
 npm run loop:projects -- --project web-atlas
+npm run loop:projects -- --project atlas-planner --claim-goal
 npm run loop:projects -- --all --build
 ```
 
@@ -27,6 +28,9 @@ npm run loop:projects -- --all --build
 - `loops/project-controller/projects.json` is the committed project registry.
 - `loops/project-controller/state.json` is ignored local state.
 - `loops/project-controller/latest-report.md` is the latest ignored local report.
+- `loops/project-controller/decisions.jsonl` is an ignored append-only planner decision log.
+- `loops/project-controller/goal-queue.json` is the ignored durable queue written by the Atlas Planner Create Goal UI.
+- `loops/project-controller/current-run.json` is the ignored active run claim written by `--claim-goal`.
 - `loops/project-controller/LOCK` prevents overlapping controller runs.
 
 ## Agent Contract
@@ -38,6 +42,21 @@ npm run loop:projects -- --all --build
 5. If projects pass, use each project's next action as the next build slice.
 6. Do not enable external actions from this loop without fresh approval.
 
+## Reliability Contract
+
+- Do not run autonomous implementation without a strict goal block: statement, stop condition, and layered satisfaction criteria.
+- Treat the controller as the heartbeat: it discovers due work and writes a report before implementation starts.
+- Use isolated worktrees before parallel implementation agents edit the same repo.
+- Put durable project rules in loop markdown or skills, not in one-off chat prompts.
+- Keep external connectors explicit; opening PRs, tickets, or messages is a separate approved step.
+- Split maker and checker work. The agent that edits code should not be the only verifier.
+- Use `state.json` and `latest-report.md` as the loop memory spine across cold starts.
+- Append every selected ticket decision to `decisions.jsonl` with the score, budget, reason, and deferred larger work.
+- Treat queued goals from `goal-queue.json` as first-class Atlas Planner candidates once they are approved to run.
+- Use `--claim-goal` to move the selected approved queued goal to `running` and write `current-run.json`; do this before maker/checker work starts.
+- Prefer the highest-scoring ticket that fits the current token window; defer larger work instead of half-doing it.
+- Continue looping only while at least one goal layer remains pending and the next ticket fits the current token window.
+
 ## Stop Condition
 
 Atlas Planner is healthy when:
@@ -45,6 +64,9 @@ Atlas Planner is healthy when:
 - It exits `0`.
 - No project checks fail.
 - `latest-report.md` names a concrete next action or says nothing is due.
+- The verification step is independent enough to catch maker mistakes.
+- The next action either fits the token window or is explicitly deferred.
+- Registered strict goal layers are satisfied, or the report states which layer remains pending and why.
 
 ## Expansion Points
 

@@ -18,8 +18,40 @@ export type LoopKanbanEpic = {
 export type LoopKanbanProject = {
   id: string;
   label: string;
+  area?: string;
+  cadenceHours?: number;
+  permission?: string;
   nextAction: string;
+  goal?: LoopGoal;
   epics?: LoopKanbanEpic[];
+  commands?: LoopCommand[];
+  buildCommands?: LoopCommand[];
+  allowFailure?: boolean;
+};
+
+export type LoopCommand = {
+  name: string;
+  cmd: string;
+  args?: string[];
+  timeoutMs?: number;
+};
+
+export type LoopGoalLayerStatus = "pending" | "scaffolded" | "satisfied" | "blocked";
+
+export type LoopGoalLayer = {
+  id: string;
+  label: string;
+  status: LoopGoalLayerStatus;
+  criteria: string[];
+  evidence?: string[];
+};
+
+export type LoopGoal = {
+  id: string;
+  title: string;
+  statement: string;
+  stopCondition: string;
+  layers: LoopGoalLayer[];
 };
 
 export type UsageStatusSnapshot = {
@@ -71,6 +103,50 @@ export type PlannerStateExport = {
   version: 1;
   exportedAt: string;
   tickets: KanbanTicket[];
+};
+
+export type LoopPlannerCommand = {
+  command: string;
+  verificationCommand: string;
+  maxEstimate: number;
+  shortWindowLeft: number | null;
+  ticket?: KanbanTicket;
+  reason: string;
+  stopCondition: string;
+  counts: Record<LoopTicketStatus, number>;
+  decision: LoopPlannerDecision;
+};
+
+export type LoopPlannerScoreBreakdown = {
+  fit: number;
+  value: number;
+  readiness: number;
+  freshness: number;
+  risk: number;
+  total: number;
+};
+
+export type LoopPlannerCandidate = {
+  ticket: KanbanTicket;
+  score: number;
+  breakdown: LoopPlannerScoreBreakdown;
+  reason: string;
+};
+
+export type LoopPlannerDecision = {
+  maxEstimate: number;
+  shortWindowLeft: number | null;
+  selected?: LoopPlannerCandidate;
+  candidates: LoopPlannerCandidate[];
+  skipped: LoopPlannerCandidate[];
+};
+
+export type LoopGoalSummary = {
+  goal?: LoopGoal;
+  counts: Record<LoopGoalLayerStatus, number>;
+  totalLayers: number;
+  satisfiedLayers: number;
+  isSatisfied: boolean;
 };
 
 export const plannerTicketStorageKey = "atlas-planner:tickets:v1";
@@ -173,6 +249,88 @@ export function getKanbanColumns(tickets: KanbanTicket[], usageStatus?: UsageSta
   }
 
   return columns;
+}
+
+export function getLoopPlannerCommand(
+  projects: LoopKanbanProject[],
+  usageStatus?: UsageStatusSnapshot | null
+): LoopPlannerCommand {
+  const shortWindowLeft = usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null;
+  const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
+  const tickets = buildPlannerTickets(projects);
+  const counts = getTicketStatusCounts(tickets);
+  const decision = getLoopPlannerDecision(projects, usageStatus, { preferredProjectId: "atlas-planner" });
+  const ticket = decision.selected?.ticket;
+  const projectId = ticket?.projectId ?? projects.find((project) => project.id === "atlas-planner")?.id ?? projects[0]?.id;
+  const command = projectId
+    ? `npm run loop:projects -- --project ${projectId}`
+    : "npm run loop:projects -- --list";
+  const verificationCommand = projectId
+    ? `npm run loop:projects -- --project ${projectId} --build`
+    : "npm run loop:projects -- --all --build";
+
+  return {
+    command,
+    verificationCommand,
+    maxEstimate,
+    shortWindowLeft,
+    ticket,
+    reason: decision.selected?.reason ?? getPlannerCommandReason(ticket, maxEstimate, shortWindowLeft),
+    stopCondition: "Checks pass, latest-report.md records evidence, and the next action needs human judgment.",
+    counts,
+    decision
+  };
+}
+
+export function getLoopPlannerDecision(
+  projects: LoopKanbanProject[],
+  usageStatus?: UsageStatusSnapshot | null,
+  options: { preferredProjectId?: string } = {}
+): LoopPlannerDecision {
+  const shortWindowLeft = usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null;
+  const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
+  const tickets = buildPlannerTickets(projects);
+  const preferredTickets = options.preferredProjectId
+    ? tickets.filter((ticket) => ticket.projectId === options.preferredProjectId)
+    : [];
+  const scoredPreferredTickets = scorePlannerTickets(preferredTickets, projects, maxEstimate, options.preferredProjectId);
+  const scoredTickets =
+    scoredPreferredTickets.candidates.length > 0
+      ? scoredPreferredTickets
+      : scorePlannerTickets(tickets, projects, maxEstimate, options.preferredProjectId);
+
+  return {
+    maxEstimate,
+    shortWindowLeft,
+    selected: scoredTickets.candidates[0],
+    candidates: scoredTickets.candidates,
+    skipped: scoredTickets.skipped
+  };
+}
+
+export function getLoopGoalSummary(projects: LoopKanbanProject[], projectId = "atlas-planner"): LoopGoalSummary {
+  const goal = projects.find((project) => project.id === projectId)?.goal;
+  const counts: Record<LoopGoalLayerStatus, number> = {
+    pending: 0,
+    scaffolded: 0,
+    satisfied: 0,
+    blocked: 0
+  };
+
+  for (const layer of goal?.layers ?? []) {
+    counts[layer.status] += 1;
+  }
+
+  const totalLayers = goal?.layers.length ?? 0;
+  const satisfiedLayers = counts.satisfied;
+
+  return {
+    goal,
+    counts,
+    totalLayers,
+    satisfiedLayers,
+    isSatisfied: totalLayers > 0 && satisfiedLayers === totalLayers
+  };
 }
 
 export function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDraft {
@@ -435,4 +593,114 @@ function coerceOptionalString(value: unknown) {
 
 function isTicketStatus(value: unknown): value is LoopTicketStatus {
   return ticketStatuses.some((status) => status.id === value);
+}
+
+function getPlannerCommandReason(ticket: KanbanTicket | undefined, maxEstimate: number, shortWindowLeft: number | null) {
+  const windowLabel = shortWindowLeft === null ? "without a token snapshot" : `with ${shortWindowLeft}% of the short window left`;
+  if (!ticket) {
+    return `No actionable ticket is registered, so list the loop registry ${windowLabel}.`;
+  }
+
+  if (ticket.estimate <= maxEstimate) {
+    return `${ticket.id} fits the ${maxEstimate}-point window ${windowLabel}.`;
+  }
+
+  return `${ticket.id} is the smallest actionable ticket, but it is over the ${maxEstimate}-point window ${windowLabel}.`;
+}
+
+function scorePlannerTickets(
+  tickets: KanbanTicket[],
+  projects: LoopKanbanProject[],
+  maxEstimate: number,
+  preferredProjectId: string | undefined
+) {
+  const candidates = tickets
+    .filter((ticket) => ticket.status !== "done" && ticket.status !== "blocked")
+    .map((ticket) => {
+      const project = projects.find((candidate) => candidate.id === ticket.projectId);
+      const breakdown = getPlannerScoreBreakdown(ticket, project, maxEstimate, preferredProjectId);
+      return {
+        ticket,
+        score: breakdown.total,
+        breakdown,
+        reason: getPlannerScoreReason(ticket, breakdown, maxEstimate)
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.ticket.estimate - left.ticket.estimate || left.ticket.id.localeCompare(right.ticket.id));
+
+  const skipped = tickets
+    .filter((ticket) => ticket.status !== "done" && ticket.status !== "blocked" && ticket.estimate > maxEstimate)
+    .map((ticket) => {
+      const project = projects.find((candidate) => candidate.id === ticket.projectId);
+      const breakdown = getPlannerScoreBreakdown(ticket, project, maxEstimate, preferredProjectId);
+      return {
+        ticket,
+        score: breakdown.total,
+        breakdown,
+        reason: `${ticket.id} needs ${ticket.estimate} points, above the ${maxEstimate}-point window.`
+      };
+    })
+    .sort((left, right) => right.ticket.estimate - left.ticket.estimate || right.score - left.score)
+    .slice(0, 4);
+
+  return { candidates, skipped };
+}
+
+function getPlannerScoreBreakdown(
+  ticket: KanbanTicket,
+  project: LoopKanbanProject | undefined,
+  maxEstimate: number,
+  preferredProjectId: string | undefined
+): LoopPlannerScoreBreakdown {
+  const tags = ticket.tags ?? [];
+  const fit =
+    ticket.estimate <= maxEstimate
+      ? 40 + Math.round((ticket.estimate / Math.max(1, maxEstimate)) * 30)
+      : -40 - (ticket.estimate - maxEstimate) * 8;
+  const value =
+    (ticket.projectId === preferredProjectId ? 18 : 0) +
+    (tags.some((tag) => ["loop-engineering", "reliability", "usage", "evidence"].includes(tag)) ? 8 : 0);
+  const readiness =
+    (ticket.summary || ticket.description ? 8 : 0) +
+    ((project?.commands?.length ?? 0) > 0 ? 6 : 0) +
+    (tags.length > 0 ? 3 : 0);
+  const freshness = ticket.status === "in-progress" ? 20 : ticket.status === "review" ? 14 : 4;
+  const riskyText = `${project?.permission ?? ""} ${tags.join(" ")} ${ticket.title}`.toLowerCase();
+  const risk =
+    (riskyText.includes("live trading") || riskyText.includes("migration") || riskyText.includes("auth") ? -24 : 0) +
+    (ticket.estimate > maxEstimate ? -12 : 0);
+  const total = fit + value + readiness + freshness + risk;
+
+  return { fit, value, readiness, freshness, risk, total };
+}
+
+function getPlannerScoreReason(ticket: KanbanTicket, breakdown: LoopPlannerScoreBreakdown, maxEstimate: number) {
+  const fitText =
+    ticket.estimate <= maxEstimate
+      ? `uses ${ticket.estimate}/${maxEstimate} points`
+      : `needs ${ticket.estimate}/${maxEstimate} points`;
+  const statusText =
+    ticket.status === "in-progress"
+      ? "continues active work"
+      : ticket.status === "review"
+        ? "keeps review moving"
+        : "starts backlog work";
+
+  return `${ticket.id} scored ${breakdown.total}: ${fitText}, ${statusText}, value ${breakdown.value}, readiness ${breakdown.readiness}, risk ${breakdown.risk}.`;
+}
+
+function getTicketStatusCounts(tickets: KanbanTicket[]) {
+  return ticketStatuses.reduce<Record<LoopTicketStatus, number>>(
+    (counts, status) => ({
+      ...counts,
+      [status.id]: tickets.filter((ticket) => ticket.status === status.id).length
+    }),
+    {
+      backlog: 0,
+      "in-progress": 0,
+      review: 0,
+      blocked: 0,
+      done: 0
+    }
+  );
 }

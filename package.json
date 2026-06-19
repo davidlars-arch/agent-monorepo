@@ -14,7 +14,9 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "loop:projects": "node scripts/project-loop.mjs",
+    "test:loop-controller": "node --test scripts/project-loop.test.mjs",
     "loop:repo-health": "node scripts/repo-health-loop.mjs",
+    "usage:status": "node scripts/usage-status.mjs",
     "loop:web-atlas": "node scripts/web-atlas-loop.mjs",
     "sync:unity-webgl": "node scripts/sync-unity-webgl.mjs",
     "dbt:debug": "dbt debug --project-dir analytics/dbt-agent-poc --profiles-dir analytics/dbt-agent-poc"
