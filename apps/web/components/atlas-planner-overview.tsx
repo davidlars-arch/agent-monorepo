@@ -186,6 +186,25 @@ type RunnerEvidenceSummary = {
   findings: RunnerEvidenceFinding[];
 };
 
+type ControllerMemorySummary = {
+  latestReport?: {
+    path: string;
+    updatedAt: string;
+    excerpt: string;
+  };
+  controllerState?: {
+    path: string;
+    updatedAt: string;
+    summary: string;
+  };
+  decisionLog?: {
+    path: string;
+    updatedAt: string;
+    count: number;
+    lastDecision: string;
+  };
+};
+
 const goalLifecycleStages: Array<{ id: GoalLifecycleStatus; label: string; detail: string }> = [
   {
     id: "draft",
@@ -812,6 +831,7 @@ export function AtlasPlannerOverview({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
+  controllerMemory,
   currentCommit,
   initialGoalComposerOpen = false,
   showExplainer,
@@ -824,6 +844,7 @@ export function AtlasPlannerOverview({
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerMemory?: ControllerMemorySummary | null;
   currentCommit: string;
   initialGoalComposerOpen?: boolean;
   showExplainer: boolean;
@@ -1774,6 +1795,40 @@ export function AtlasPlannerOverview({
                   </article>
                 ))}
               </div>
+              {controllerMemory ? (
+                <div className="loop-controller-memory">
+                  {controllerMemory.latestReport ? (
+                    <article>
+                      <div>
+                        <span>Latest report</span>
+                        <strong>{formatPlannerDateTime(controllerMemory.latestReport.updatedAt)}</strong>
+                      </div>
+                      <code>{controllerMemory.latestReport.path}</code>
+                      <p>{controllerMemory.latestReport.excerpt || "Report file exists but has no readable summary."}</p>
+                    </article>
+                  ) : null}
+                  {controllerMemory.controllerState ? (
+                    <article>
+                      <div>
+                        <span>Controller state</span>
+                        <strong>{formatPlannerDateTime(controllerMemory.controllerState.updatedAt)}</strong>
+                      </div>
+                      <code>{controllerMemory.controllerState.path}</code>
+                      <p>{controllerMemory.controllerState.summary}</p>
+                    </article>
+                  ) : null}
+                  {controllerMemory.decisionLog ? (
+                    <article>
+                      <div>
+                        <span>Decision log</span>
+                        <strong>{controllerMemory.decisionLog.count} entries</strong>
+                      </div>
+                      <code>{controllerMemory.decisionLog.path}</code>
+                      <p>{controllerMemory.decisionLog.lastDecision || "No decision lines recorded yet."}</p>
+                    </article>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             <section className="loop-merge-gates" aria-label="PR and merge gates">

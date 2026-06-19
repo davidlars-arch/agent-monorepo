@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
@@ -79,6 +79,25 @@ type RunnerEvidenceSummary = {
   maxRepairs: number;
   checks: RunnerEvidenceCheck[];
   findings: RunnerEvidenceFinding[];
+};
+
+type ControllerMemorySummary = {
+  latestReport?: {
+    path: string;
+    updatedAt: string;
+    excerpt: string;
+  };
+  controllerState?: {
+    path: string;
+    updatedAt: string;
+    summary: string;
+  };
+  decisionLog?: {
+    path: string;
+    updatedAt: string;
+    count: number;
+    lastDecision: string;
+  };
 };
 
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
@@ -201,12 +220,94 @@ async function readCurrentRunnerEvidence(currentLoopRun: CurrentLoopRunSummary |
   }
 }
 
+async function readControllerMemory(): Promise<ControllerMemorySummary | null> {
+  const latestReportPath = resolveRepoPath("loops/project-controller/latest-report.md");
+  const statePath = resolveRepoPath("loops/project-controller/state.json");
+  const decisionsPath = resolveRepoPath("loops/project-controller/decisions.jsonl");
+  const memory: ControllerMemorySummary = {};
+
+  if (existsSync(latestReportPath)) {
+    const report = await readFile(latestReportPath, "utf8").catch(() => "");
+    const reportStat = await stat(latestReportPath).catch(() => null);
+    const excerpt = report
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(" ");
+    memory.latestReport = {
+      path: "loops/project-controller/latest-report.md",
+      updatedAt: reportStat?.mtime.toISOString() ?? "",
+      excerpt: excerpt.slice(0, 360)
+    };
+  }
+
+  if (existsSync(statePath)) {
+    const stateText = await readFile(statePath, "utf8").catch(() => "");
+    const stateStat = await stat(statePath).catch(() => null);
+    const state = parseJsonObject(stateText);
+    const summary = state
+      ? Object.entries(state)
+          .slice(0, 4)
+          .map(([key, value]) => `${key}: ${summarizeMemoryValue(value)}`)
+          .join(" · ")
+      : "State file exists but could not be parsed.";
+    memory.controllerState = {
+      path: "loops/project-controller/state.json",
+      updatedAt: stateStat?.mtime.toISOString() ?? "",
+      summary: summary.slice(0, 360)
+    };
+  }
+
+  if (existsSync(decisionsPath)) {
+    const decisions = await readFile(decisionsPath, "utf8").catch(() => "");
+    const decisionsStat = await stat(decisionsPath).catch(() => null);
+    const lines = decisions
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    memory.decisionLog = {
+      path: "loops/project-controller/decisions.jsonl",
+      updatedAt: decisionsStat?.mtime.toISOString() ?? "",
+      count: lines.length,
+      lastDecision: (lines.at(-1) ?? "").slice(0, 360)
+    };
+  }
+
+  return memory.latestReport || memory.controllerState || memory.decisionLog ? memory : null;
+}
+
 function resolveRepoPath(path: string) {
   if (path.startsWith("/")) {
     return path;
   }
 
   return resolve(process.cwd(), "../..", path);
+}
+
+function parseJsonObject(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeMemoryValue(value: unknown) {
+  if (typeof value === "string") {
+    return value.slice(0, 80);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} items`;
+  }
+  if (value && typeof value === "object") {
+    return `${Object.keys(value).length} keys`;
+  }
+  return "empty";
 }
 
 async function readCurrentCommit() {
@@ -234,6 +335,7 @@ export default async function Home({
   const currentLoopRun = await readCurrentLoopRun();
   const currentRunnerState = await readCurrentRunnerState(currentLoopRun);
   const currentRunnerEvidence = await readCurrentRunnerEvidence(currentLoopRun);
+  const controllerMemory = await readControllerMemory();
   const currentCommit = await readCurrentCommit();
   return (
     <EarthGlobe
@@ -246,6 +348,7 @@ export default async function Home({
       currentLoopRun={currentLoopRun}
       currentRunnerState={currentRunnerState}
       currentRunnerEvidence={currentRunnerEvidence}
+      controllerMemory={controllerMemory}
       currentCommit={currentCommit}
     />
   );

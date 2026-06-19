@@ -116,6 +116,25 @@ type RunnerEvidenceSummary = {
   findings: RunnerEvidenceFinding[];
 };
 
+type ControllerMemorySummary = {
+  latestReport?: {
+    path: string;
+    updatedAt: string;
+    excerpt: string;
+  };
+  controllerState?: {
+    path: string;
+    updatedAt: string;
+    summary: string;
+  };
+  decisionLog?: {
+    path: string;
+    updatedAt: string;
+    count: number;
+    lastDecision: string;
+  };
+};
+
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
   web: { lat: 8, lon: -72, color: "#9f7aea" },
   "atlas-planner": { lat: 19, lon: -44, color: "#f0abfc" },
@@ -286,6 +305,7 @@ export function EarthGlobe({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
+  controllerMemory,
   currentCommit = "unknown"
 }: {
   initialOpenProjectId?: string;
@@ -297,6 +317,7 @@ export function EarthGlobe({
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerMemory?: ControllerMemorySummary | null;
   currentCommit?: string;
 }) {
   const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
@@ -960,6 +981,7 @@ export function EarthGlobe({
           currentLoopRun={currentLoopRun}
           currentRunnerState={currentRunnerState}
           currentRunnerEvidence={currentRunnerEvidence}
+          controllerMemory={controllerMemory}
           currentCommit={currentCommit}
           initialGoalComposerOpen={initialGoalComposerOpen}
           showExplainer={isLoopExplainerOpen}
