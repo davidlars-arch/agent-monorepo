@@ -5,9 +5,41 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { validateQueuedGoalInput } from "../packages/loop-store/src/index.mjs";
 
 const execFileAsync = promisify(execFile);
 const scriptPath = resolve("scripts/project-loop.mjs");
+
+test("queued goal validation preserves the full goal contract", () => {
+  const validation = validateQueuedGoalInput(
+    {
+      id: "GOAL-CONTRACT",
+      title: "Preserve contract",
+      projectId: "repo-health",
+      projectLabel: "Repo Health",
+      epicId: "repo-safety",
+      epicLabel: "Repo Safety",
+      lifecycleStatus: "approved",
+      approvedToRun: true,
+      estimate: 5,
+      summary: "Statement fallback.",
+      goalContract: makeGoalContract()
+    },
+    { now: "2026-06-20T10:00:00.000Z" }
+  );
+
+  assert.equal(validation.ok, true);
+  assert.equal(validation.goal.projectId, "repo-health");
+  assert.equal(validation.goal.projectLabel, "Repo Health");
+  assert.equal(validation.goal.epicId, "repo-safety");
+  assert.equal(validation.goal.epicLabel, "Repo Safety");
+  assert.equal(validation.goal.goalContract.statement, "Complete the durable contract handoff.");
+  assert.equal(validation.goal.goalContract.stopCondition, "Stop when runner prompts and evidence contain the contract.");
+  assert.equal(validation.goal.goalContract.scope, "Loop store, project loop, and runner handoff only.");
+  assert.equal(validation.goal.goalContract.satisfactionLayers[0].criteria, "Queue stores structured layers.");
+  assert.equal(validation.goal.goalContract.verificationCommands[0].command, "npm run test:loop-controller");
+  assert.equal(validation.goal.goalContract.safety.allowedPaths, "packages/loop-store/**, scripts/**");
+});
 
 test("approved queued goals are selected before ordinary planner tickets", async () => {
   const root = await makeLoopRoot({
@@ -76,6 +108,7 @@ test("--claim-goal writes current-run state and moves the queued goal to running
         summary: "A queued goal should be claimed.",
         tags: ["goal", "loop", "approved-to-run"],
         description: "Claimable goal.",
+        goalContract: makeGoalContract(),
         subtasks: [],
         createdAt: "2026-06-19T20:00:00.000Z",
         updatedAt: "2026-06-19T20:00:00.000Z"
@@ -91,11 +124,18 @@ test("--claim-goal writes current-run state and moves the queued goal to running
 
   assert.equal(queue.goals[0].lifecycleStatus, "running");
   assert.equal(queue.goals[0].status, "in-progress");
+  assert.equal(queue.goals[0].goalContract.statement, "Complete the durable contract handoff.");
   assert.equal(currentRun.goalId, "GOAL-CLAIM");
+  assert.equal(currentRun.goalContract.statement, "Complete the durable contract handoff.");
+  assert.equal(currentRun.goalContract.satisfactionLayers[0].label, "Queue preservation");
+  assert.equal(currentRun.goalContract.verificationCommands[0].command, "npm run test:loop-controller");
+  assert.equal(currentRun.goalContract.safety.externalActionPolicy, "human-gated");
   assert.equal(currentRun.stage, "claimed");
   assert.equal(currentRun.branchName, "worktree/goal-claim");
   assert.equal(currentRun.worktreePath, "../agent-monorepo-goal-claim");
   assert.match(currentRun.runnerCommand, /scripts\/planner-agent-runner\.mjs/);
+  assert.match(currentRun.runnerCommand, /--goal-contract-json/);
+  assert.match(currentRun.runnerCommand, /--max-repairs '2'/);
   assert.equal(currentRun.handoffDir, `loops/project-controller/runs/${currentRun.id}`);
   assert.equal(currentRun.makerPromptPath, `loops/project-controller/runs/${currentRun.id}/maker-prompt.md`);
   assert.equal(currentRun.checkerPromptPath, `loops/project-controller/runs/${currentRun.id}/checker-prompt.md`);
@@ -105,6 +145,43 @@ test("--claim-goal writes current-run state and moves the queued goal to running
   assert.match(report, /Goal claim: `GOAL-CLAIM` claimed/);
   assert.match(report, /branch `worktree\/goal-claim`/);
   assert.match(report, /planner-agent-runner\.mjs/);
+});
+
+test("--claim-goal claims queued goals for their owning project", async () => {
+  const root = await makeLoopRoot({
+    registry: makeRegistryWithRepoHealth(),
+    queuedGoals: [
+      {
+        id: "GOAL-REPO",
+        title: "Repo-owned goal",
+        projectId: "repo-health",
+        projectLabel: "Repo Health",
+        epicId: "repo-safety",
+        epicLabel: "Repo Safety",
+        lifecycleStatus: "approved",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 3,
+        summary: "A queued goal should belong to repo health.",
+        tags: ["goal", "loop", "approved-to-run"],
+        description: "Repo-owned goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-19T20:00:00.000Z",
+        updatedAt: "2026-06-19T20:00:00.000Z"
+      }
+    ]
+  });
+
+  await runController(root, ["--project", "repo-health", "--claim-goal"]);
+
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const report = await readFile(join(root, "loops/project-controller/latest-report.md"), "utf8");
+
+  assert.equal(currentRun.goalId, "GOAL-REPO");
+  assert.equal(currentRun.projectId, "repo-health");
+  assert.equal(currentRun.projectLabel, "Repo Health");
+  assert.match(report, /Goal claim: `GOAL-REPO` claimed/);
 });
 
 test("--claim-goal can claim an already-running queued goal without current-run state", async () => {
@@ -254,13 +331,13 @@ test("--claim-goal without a queued goal does not write current-run", async () =
   await assert.rejects(readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
 });
 
-async function makeLoopRoot({ queuedGoals }) {
+async function makeLoopRoot({ queuedGoals, registry = makeRegistry() }) {
   const root = await mkdtemp(join(tmpdir(), "project-loop-"));
   await mkdir(join(root, "loops/project-controller"), { recursive: true });
   await mkdir(join(root, "loops/usage-status"), { recursive: true });
   await writeFile(
     join(root, "loops/project-controller/projects.json"),
-    `${JSON.stringify(makeRegistry(), null, 2)}\n`
+    `${JSON.stringify(registry, null, 2)}\n`
   );
   await writeFile(
     join(root, "loops/project-controller/goal-queue.json"),
@@ -326,5 +403,72 @@ function makeRegistry() {
         ]
       }
     ]
+  };
+}
+
+function makeRegistryWithRepoHealth() {
+  const registry = makeRegistry();
+  return {
+    ...registry,
+    projects: [
+      ...registry.projects,
+      {
+        id: "repo-health",
+        label: "Repo Health",
+        area: ".",
+        cadenceHours: 24,
+        permission: "build-local",
+        nextAction: "Keep the repo green.",
+        commands: [{ name: "noop", cmd: "node", args: ["--version"] }],
+        epics: [
+          {
+            id: "repo-safety",
+            label: "Repo Safety",
+            tickets: []
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function makeGoalContract() {
+  return {
+    statement: "Complete the durable contract handoff.",
+    stopCondition: "Stop when runner prompts and evidence contain the contract.",
+    scope: "Loop store, project loop, and runner handoff only.",
+    maxEstimate: 5,
+    satisfactionLayers: [
+      {
+        id: "queue-preservation",
+        label: "Queue preservation",
+        criteria: "Queue stores structured layers.",
+        status: "pending",
+        humanGated: false
+      },
+      {
+        id: "runner-proof",
+        label: "Runner proof",
+        criteria: "Evidence has a structured place for layer proof.",
+        status: "pending",
+        humanGated: true
+      }
+    ],
+    verificationCommands: [
+      {
+        id: "loop-controller",
+        label: "Loop controller tests",
+        command: "npm run test:loop-controller",
+        required: true
+      }
+    ],
+    safety: {
+      maxIterations: 4,
+      maxRepairAttempts: 2,
+      tokenBudget: "Stay inside the current window.",
+      timeBudget: "One focused run.",
+      allowedPaths: "packages/loop-store/**, scripts/**",
+      externalActionPolicy: "human-gated"
+    }
   };
 }

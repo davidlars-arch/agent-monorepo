@@ -11,6 +11,7 @@ const scriptPath = resolve("scripts/planner-agent-runner.mjs");
 
 test("dry run prints the worktree and handoff plan without writing files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-dry-"));
+  const goalContract = makeGoalContract();
 
   const { stdout } = await execFileAsync(
     "node",
@@ -26,7 +27,9 @@ test("dry run prints the worktree and handoff plan without writing files", async
       "--run-id",
       "run-ap-6",
       "--goal-title",
-      "Agent worktree runner MVP"
+      "Agent worktree runner MVP",
+      "--goal-contract-json",
+      JSON.stringify(goalContract)
     ],
     { cwd: root }
   );
@@ -37,6 +40,9 @@ test("dry run prints the worktree and handoff plan without writing files", async
   assert.equal(plan.runId, "run-ap-6");
   assert.equal(plan.branch, "worktree/ap-6");
   assert.equal(plan.base, "abc1234");
+  assert.equal(plan.goalContract.statement, "Complete the durable contract handoff.");
+  assert.equal(plan.goalContract.satisfactionLayers[0].label, "Queue preservation");
+  assert.equal(plan.goalContract.verificationCommands[0].command, "npm run test:planner-agent-runner");
   assert.match(plan.worktreePath, /agent-monorepo-worktree-ap-6$/);
   assert.equal(plan.files.makerPrompt, "loops/project-controller/runs/run-ap-6/maker-prompt.md");
   await assert.rejects(readFile(join(root, "loops/project-controller/runs/run-ap-6/runner-state.json"), "utf8"));
@@ -45,6 +51,7 @@ test("dry run prints the worktree and handoff plan without writing files", async
 test("runner creates a worktree and writes maker/checker handoff files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-"));
   const worktreePath = join(tmpdir(), `planner-agent-runner-worktree-${Date.now()}`);
+  const goalContract = makeGoalContract();
 
   await execFileAsync("git", ["init"], { cwd: root });
   await execFileAsync("git", ["config", "user.email", "runner@example.test"], { cwd: root });
@@ -65,6 +72,8 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
       "run-ap-6",
       "--goal-title",
       "Agent worktree runner MVP",
+      "--goal-contract-json",
+      JSON.stringify(goalContract),
       "--worktree-dir",
       worktreePath
     ],
@@ -81,9 +90,17 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
   assert.equal(state.status, "prepared");
   assert.equal(state.stage, "maker-handoff");
   assert.equal(state.worktreePath, worktreePath);
+  assert.equal(state.goalContract.safety.allowedPaths, "packages/loop-store/**, scripts/**");
   assert.match(makerPrompt, /Implement one bounded slice/);
+  assert.match(makerPrompt, /Complete the durable contract handoff/);
+  assert.match(makerPrompt, /Queue preservation: Queue stores structured layers/);
+  assert.match(makerPrompt, /npm run test:planner-agent-runner/);
+  assert.match(makerPrompt, /External actions: human-gated/);
   assert.match(checkerPrompt, /Do not mark the run satisfied from maker output alone/);
+  assert.match(checkerPrompt, /"satisfactionLayers"/);
   assert.equal(evidence.status, "awaiting-maker");
+  assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
+  assert.deepEqual(evidence.satisfactionLayers[0].proof, []);
 });
 
 test("runner executes maker and checker commands and records passing evidence", async () => {
@@ -118,11 +135,78 @@ test("runner executes maker and checker commands and records passing evidence", 
   assert.equal(state.status, "satisfied");
   assert.equal(state.stage, "checker-passed");
   assert.equal(evidence.status, "checker-passed");
+  assert.equal(evidence.pullRequest.status, "ready");
   assert.equal(evidence.checks.length, 2);
   assert.deepEqual(
     evidence.checks.map((check) => check.stage),
     ["maker", "checker"]
   );
+});
+
+test("runner reads stage-specific command configuration from env", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-env-command-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-7B",
+      "--branch",
+      "worktree/ap-7b-runner-test",
+      "--run-id",
+      "run-ap-7b",
+      "--worktree-dir",
+      worktreePath
+    ],
+    {
+      cwd: root,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        ATLAS_MAKER_COMMAND: 'node -e \'require("fs").writeFileSync("maker-output.txt", "env command\\n")\'',
+        ATLAS_CHECKER_COMMAND: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("env command") || process.exit(2)\''
+      }
+    }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-7b/runner-state.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.match(state.makerCommand, /env command/);
+  assert.match(state.checkerCommand, /env command/);
+});
+
+test("runner allows repair env command with generic agent fallback checker", async () => {
+  const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-env-repair-"));
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--dry-run",
+      "--ticket",
+      "AP-7C",
+      "--branch",
+      "worktree/ap-7c-runner-test",
+      "--run-id",
+      "run-ap-7c"
+    ],
+    {
+      cwd: root,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        ATLAS_AGENT_COMMAND: "node scripts/atlas-openclaw-agent-command.mjs",
+        ATLAS_REPAIR_COMMAND: "node scripts/custom-repair.mjs"
+      }
+    }
+  );
+
+  const plan = JSON.parse(stdout);
+  assert.equal(plan.agentCommand, "node scripts/atlas-openclaw-agent-command.mjs");
+  assert.equal(plan.repairCommand, "node scripts/custom-repair.mjs");
 });
 
 test("runner stops after bounded repair attempts and records checker blockers", async () => {
@@ -166,6 +250,80 @@ test("runner stops after bounded repair attempts and records checker blockers", 
   assert.equal(evidence.repairAttempts, 1);
   assert.equal(evidence.findings.filter((finding) => finding.stage === "checker").length, 2);
   assert.equal(repairLog, "1\n");
+});
+
+test("runner runs configured PR command after checker satisfaction", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-pr-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-20",
+      "--branch",
+      "worktree/ap-20-runner-test",
+      "--run-id",
+      "run-ap-20",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      "--pr-command",
+      'node -e \'require("fs").writeFileSync("pr.txt", process.env.ATLAS_BRANCH); console.log("https://example.test/pr/20")\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20/evidence.json"), "utf8"));
+  const prMarker = await readFile(join(worktreePath, "pr.txt"), "utf8");
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "pr-created");
+  assert.equal(state.stage, "pr-created");
+  assert.equal(evidence.pullRequest.status, "created");
+  assert.match(evidence.pullRequest.detail, /example\.test\/pr\/20/);
+  assert.equal(evidence.events.at(-1).stage, "pr");
+  assert.equal(prMarker, "worktree/ap-20-runner-test");
+});
+
+test("runner blocks when configured PR command fails", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-pr-block-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-20B",
+      "--branch",
+      "worktree/ap-20b-runner-test",
+      "--run-id",
+      "run-ap-20b",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      "--pr-command",
+      "node -e 'process.exit(5)'"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20b/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20b/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "pr-blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(evidence.pullRequest.status, "blocked");
 });
 
 test("runner resumes an existing handoff without recreating the worktree", async () => {
@@ -212,6 +370,104 @@ test("runner resumes an existing handoff without recreating the worktree", async
   assert.equal(state.stage, "checker-passed");
   assert.equal(evidence.status, "checker-passed");
   assert.equal(evidence.checks.length, 2);
+});
+
+test("runner resume uses commands saved in runner state", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-resume-state-command-");
+
+  await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-9C",
+      "--branch",
+      "worktree/ap-9c-runner-test",
+      "--run-id",
+      "run-ap-9c",
+      "--worktree-dir",
+      worktreePath
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const statePath = join(root, "loops/project-controller/runs/run-ap-9c/runner-state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  await writeFile(
+    statePath,
+    `${JSON.stringify(
+      {
+        ...state,
+        makerCommand: 'node -e \'require("fs").writeFileSync("maker-output.txt", "state command\\n")\'',
+        checkerCommand: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("state command") || process.exit(4)\'',
+        prCommand: 'node -e \'console.log("state-pr-ready")\''
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [scriptPath, "--resume", "--handoff-dir", "loops/project-controller/runs/run-ap-9c"],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9c/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "pr-created");
+  assert.equal(evidence.events.at(-1).stage, "pr");
+  assert.equal(evidence.pullRequest.status, "created");
+});
+
+test("runner resume preserves the saved repair budget", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-resume-repair-");
+
+  await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-9B",
+      "--branch",
+      "worktree/ap-9b-runner-test",
+      "--run-id",
+      "run-ap-9b",
+      "--worktree-dir",
+      worktreePath,
+      "--max-repairs",
+      "1"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--resume",
+      "--handoff-dir",
+      "loops/project-controller/runs/run-ap-9b",
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "resumed\\n")\'',
+      "--checker-command",
+      "node -e 'process.exit(3)'",
+      "--repair-command",
+      'node -e \'require("fs").appendFileSync("repair.log", `${process.env.ATLAS_REPAIR_ATTEMPT}\\n`)\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9b/runner-state.json"), "utf8"));
+  const repairLog = await readFile(join(worktreePath, "repair.log"), "utf8");
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.repairAttempts, 1);
+  assert.equal(state.repairAttempts, 1);
+  assert.equal(repairLog, "1\n");
 });
 
 test("runner adapter uses stage env vars and records structured checker findings", async () => {
@@ -262,6 +518,89 @@ test("runner adapter uses stage env vars and records structured checker findings
   assert.equal(evidence.findings[0].file, "maker-output.txt");
 });
 
+test("runner records structured checker satisfaction layer proof", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-layer-proof-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }, { layerId: "runner-proof", label: "Runner proof", status: "satisfied", proof: ["Evidence contains layer proof."], missing: [] }], findings: [] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-11",
+      "--branch",
+      "worktree/ap-11-runner-test",
+      "--run-id",
+      "run-ap-11",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-11/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
+  assert.equal(evidence.satisfactionLayers[0].status, "satisfied");
+  assert.deepEqual(evidence.satisfactionLayers[0].proof, ["Queue contains goalContract."]);
+});
+
+test("runner blocks when checker layer proof is missing or blocked", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-layer-block-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "blocked", proof: [], missing: ["Queue evidence missing"] }], findings: [] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-12",
+      "--branch",
+      "worktree/ap-12-runner-test",
+      "--run-id",
+      "run-ap-12",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-12/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-12/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(evidence.status, "checker-blocked");
+  assert.equal(evidence.satisfactionLayers[0].status, "blocked");
+  assert.deepEqual(evidence.satisfactionLayers[0].missing, ["Queue evidence missing"]);
+});
+
 async function createGitFixture(prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   const worktreePath = await mkdtemp(join(tmpdir(), `${prefix}worktree-`));
@@ -275,4 +614,45 @@ async function createGitFixture(prefix) {
   await execFileAsync("git", ["commit", "-m", "initial"], { cwd: root });
 
   return { root, worktreePath };
+}
+
+function makeGoalContract() {
+  return {
+    statement: "Complete the durable contract handoff.",
+    stopCondition: "Stop when runner prompts and evidence contain the contract.",
+    scope: "Loop store, project loop, and runner handoff only.",
+    maxEstimate: 5,
+    satisfactionLayers: [
+      {
+        id: "queue-preservation",
+        label: "Queue preservation",
+        criteria: "Queue stores structured layers.",
+        status: "pending",
+        humanGated: false
+      },
+      {
+        id: "runner-proof",
+        label: "Runner proof",
+        criteria: "Evidence has a structured place for layer proof.",
+        status: "pending",
+        humanGated: true
+      }
+    ],
+    verificationCommands: [
+      {
+        id: "planner-runner",
+        label: "Planner runner tests",
+        command: "npm run test:planner-agent-runner",
+        required: true
+      }
+    ],
+    safety: {
+      maxIterations: 4,
+      maxRepairAttempts: 2,
+      tokenBudget: "Stay inside the current window.",
+      timeBudget: "One focused run.",
+      allowedPaths: "packages/loop-store/**, scripts/**",
+      externalActionPolicy: "human-gated"
+    }
+  };
 }

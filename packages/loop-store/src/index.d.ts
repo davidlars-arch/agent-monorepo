@@ -1,8 +1,46 @@
 export type GoalLifecycleStatus = "draft" | "refined" | "approved" | "running" | "blocked" | "satisfied" | "archived";
 
+export type GoalContractLayer = {
+  id: string;
+  label: string;
+  criteria: string;
+  status: "pending" | "scaffolded" | "satisfied" | "blocked" | string;
+  humanGated: boolean;
+};
+
+export type GoalContractVerificationCommand = {
+  id: string;
+  label: string;
+  command: string;
+  required: boolean;
+};
+
+export type GoalContractSafetySettings = {
+  maxIterations: number;
+  maxRepairAttempts: number;
+  tokenBudget: string;
+  timeBudget: string;
+  allowedPaths: string;
+  externalActionPolicy: "disabled" | "pr-only" | "human-gated" | "auto-merge" | string;
+};
+
+export type GoalContract = {
+  statement: string;
+  stopCondition: string;
+  scope: string;
+  maxEstimate: number;
+  satisfactionLayers: GoalContractLayer[];
+  verificationCommands: GoalContractVerificationCommand[];
+  safety: GoalContractSafetySettings;
+};
+
 export type QueuedGoal = {
   id: string;
   title: string;
+  projectId?: string;
+  projectLabel?: string;
+  epicId?: string;
+  epicLabel?: string;
   lifecycleStatus: GoalLifecycleStatus | string;
   approvedToRun: boolean;
   status: string;
@@ -10,12 +48,16 @@ export type QueuedGoal = {
   summary: string;
   tags: string[];
   description: string;
+  goalContract: GoalContract;
   subtasks: Array<{ id: string; title: string; done: boolean }>;
   createdAt: string;
   updatedAt: string;
 };
 
-export type QueuedGoalSummary = Pick<QueuedGoal, "id" | "title" | "lifecycleStatus" | "approvedToRun" | "status" | "estimate" | "updatedAt">;
+export type QueuedGoalSummary = Pick<
+  QueuedGoal,
+  "id" | "title" | "projectId" | "projectLabel" | "epicId" | "epicLabel" | "lifecycleStatus" | "approvedToRun" | "status" | "estimate" | "updatedAt"
+>;
 
 export type GoalQueue = {
   version: 1;
@@ -24,9 +66,13 @@ export type GoalQueue = {
 };
 
 export type CurrentLoopRunSummary = {
+  version?: 1;
   id: string;
+  projectId?: string;
+  projectLabel?: string;
   goalId: string;
   goalTitle: string;
+  goalContract?: GoalContract;
   status: string;
   stage: string;
   claimedAt: string;
@@ -36,6 +82,7 @@ export type CurrentLoopRunSummary = {
   worktreePath?: string;
   handoffDir?: string;
   runnerCommand?: string;
+  runnerCommands?: RunnerCommandConfig;
   makerPromptPath?: string;
   checkerPromptPath?: string;
   evidencePath?: string;
@@ -47,6 +94,15 @@ export type CurrentLoopRunSummary = {
     maxEstimate?: number;
     reason?: string;
   };
+  timeline?: RunnerTimelineEvent[];
+};
+
+export type RunnerCommandConfig = {
+  agentCommand?: string;
+  makerCommand?: string;
+  checkerCommand?: string;
+  repairCommand?: string;
+  prCommand?: string;
 };
 
 export type RunnerTimelineEvent = {
@@ -107,12 +163,30 @@ export type RunnerEvidenceFinding = {
   at?: string;
 };
 
+export type RunnerEvidenceLayerProof = {
+  layerId: string;
+  label: string;
+  status: string;
+  criteria?: string;
+  humanGated?: boolean;
+  proof: string[];
+  missing?: string[];
+  at?: string;
+};
+
 export type RunnerEvidenceSummary = {
   status: string;
   repairAttempts: number;
   maxRepairs: number;
   checks: RunnerEvidenceCheck[];
   findings: RunnerEvidenceFinding[];
+  satisfactionLayers?: RunnerEvidenceLayerProof[];
+  pullRequest?: {
+    status: string;
+    detail?: string;
+    command?: string;
+    at?: string;
+  };
 };
 
 export type ControllerMemorySummary = {
@@ -177,6 +251,102 @@ export function getCurrentRunRecoveryStatus(
   currentRun: Partial<CurrentLoopRunSummary> | null | undefined,
   runnerState: Partial<RunnerStateSummary> | null | undefined
 ): CurrentRunRecoveryStatus;
+export function claimNextAtlasPlannerGoal(
+  root: string,
+  options?: { now?: Date; readCommit?: (root: string) => Promise<string> | string; goalId?: string; projectId?: string }
+): Promise<
+  | { ok: true; status: "claimed"; currentRun: CurrentLoopRunSummary; goal: QueuedGoal }
+  | { ok: true; status: "idle" | "blocked"; reason: string }
+  | { ok: false; status: "busy"; reason: string }
+>;
+export function runAtlasLoopRunnerAction(
+  root: string,
+  action: "start-current-run" | "resume-current-run",
+  options?: {
+    timeoutMs?: number;
+    execRunner?: (
+      file: string,
+      args: string[],
+      options: { cwd: string; encoding: "utf8"; maxBuffer: number; timeout: number }
+    ) => Promise<{ stdout?: string; stderr?: string }>;
+  }
+): Promise<
+  | {
+      ok: true;
+      status: "completed";
+      action: string;
+      currentRun: CurrentLoopRunSummary;
+      goal?: QueuedGoal | null;
+      sync?: {
+        ok: true;
+        status: "skipped" | "non-terminal" | "synced";
+        reason?: string;
+        runnerStatus?: string;
+        lifecycleStatus?: string;
+        goal?: QueuedGoal | null;
+        currentRun?: CurrentLoopRunSummary;
+      };
+      command: string;
+      exitCode: 0;
+      stdout: string;
+      stderr: string;
+      startedAt: string;
+      finishedAt: string;
+    }
+  | {
+      ok: false;
+      status:
+        | "missing-current-run"
+        | "invalid-current-run"
+        | "runner-state-exists"
+        | "missing-runner-state"
+        | "terminal-current-run"
+        | "terminal-runner-state"
+        | "unsupported-action"
+        | "busy"
+        | "changed"
+        | "timed-out"
+        | "failed";
+      reason?: string;
+      action?: string;
+      currentRun?: CurrentLoopRunSummary;
+      command?: string;
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+      startedAt?: string;
+      finishedAt?: string;
+    }
+>;
+export function syncTerminalAtlasRun(
+  root: string,
+  currentRun: Partial<CurrentLoopRunSummary> | null | undefined
+): Promise<{
+  ok: true;
+  status: "skipped" | "non-terminal" | "synced";
+  reason?: string;
+  runnerStatus?: string;
+  lifecycleStatus?: string;
+  goal?: QueuedGoal | null;
+  currentRun?: CurrentLoopRunSummary;
+}>;
+export function buildAtlasRunnerCommand(
+  root: string,
+  action: "start-current-run" | "resume-current-run" | string,
+  currentRun: Partial<CurrentLoopRunSummary> | null | undefined
+):
+  | { ok: true; cmd: string; args: string[] }
+  | {
+      ok: false;
+      status:
+        | "invalid-current-run"
+        | "runner-state-exists"
+        | "missing-runner-state"
+        | "terminal-current-run"
+        | "terminal-runner-state"
+        | "unsupported-action";
+      reason: string;
+    };
 export function acquireFileLock(lockPath: string, owner?: string): Promise<{ ok: true; file: unknown } | { ok: false }>;
 export function releaseFileLock(lockPath: string, file: unknown): Promise<void>;
 export function writeJsonAtomically(path: string, value: unknown): Promise<void>;

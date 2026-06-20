@@ -99,6 +99,68 @@ test("getLoopPlannerCommand keeps Atlas Planner as the product focus", () => {
   assert.equal(command.command, "npm run loop:projects -- --project atlas-planner");
 });
 
+test("getLoopPlannerCommand can target all projects without Atlas preference", () => {
+  const command = getLoopPlannerCommand(
+    [
+      makeRepoHealthProject(),
+      makeProject({
+        epics: [
+          {
+            id: "planner-product",
+            label: "Planner Product",
+            tickets: [
+              {
+                id: "AP-DONE",
+                title: "Done planner work",
+                status: "done",
+                estimate: 8,
+                summary: "Not runnable."
+              }
+            ]
+          }
+        ]
+      })
+    ],
+    null,
+    { preferredProjectId: null }
+  );
+
+  assert.equal(command.ticket?.id, "RH-1");
+  assert.equal(command.command, "npm run loop:projects -- --project repo-health");
+});
+
+test("getLoopPlannerCommand keeps a strict selected project even without candidates", () => {
+  const command = getLoopPlannerCommand(
+    [
+      makeProject({
+        id: "empty-repo",
+        label: "Empty Repo",
+        epics: [
+          {
+            id: "empty",
+            label: "Empty",
+            tickets: [
+              {
+                id: "EMPTY-DONE",
+                title: "Already complete",
+                status: "done",
+                estimate: 3,
+                summary: "No runnable work here."
+              }
+            ]
+          }
+        ]
+      }),
+      makeRepoHealthProject()
+    ],
+    null,
+    { preferredProjectId: "empty-repo", strictPreferredProject: true }
+  );
+
+  assert.equal(command.ticket, undefined);
+  assert.equal(command.command, "npm run loop:projects -- --project empty-repo");
+});
+
 test("getLoopPlannerDecision maximizes useful ticket size inside the window", () => {
   const decision = getLoopPlannerDecision(
     [

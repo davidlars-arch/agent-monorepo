@@ -16,12 +16,14 @@ import {
 
 export function useAtlasGoals({
   loopKanban,
+  selectedProjectId,
   queuedGoals,
   initialGoalComposerOpen,
   addPlannerTicket,
   setPlannerStateMessage
 }: {
   loopKanban: LoopKanbanProject[];
+  selectedProjectId: string;
   queuedGoals?: QueuedGoalSummary[];
   initialGoalComposerOpen: boolean;
   addPlannerTicket: (ticket: KanbanTicket) => void;
@@ -112,7 +114,10 @@ export function useAtlasGoals({
   }
 
   async function saveGoalDraft() {
-    const project = loopKanban.find((candidate) => candidate.id === "atlas-planner") ?? loopKanban[0];
+    const project =
+      (selectedProjectId !== "all" ? loopKanban.find((candidate) => candidate.id === selectedProjectId) : undefined) ??
+      loopKanban.find((candidate) => candidate.id === "atlas-planner") ??
+      loopKanban[0];
     const epic = project?.epics?.find((candidate) => candidate.id === "planner-product") ?? project?.epics?.[0];
     const now = new Date().toISOString();
     const title = goalDraft.title.trim() || "New loop goal";
@@ -176,9 +181,22 @@ export function useAtlasGoals({
           approvedToRun: goalDraft.approvedToRun,
           status: ticket.status,
           estimate: ticket.estimate,
+          projectId: ticket.projectId,
+          projectLabel: ticket.projectLabel,
+          epicId: ticket.epicId,
+          epicLabel: ticket.epicLabel,
           summary: ticket.summary,
           tags: ticket.tags,
           description: ticket.description,
+          goalContract: {
+            statement,
+            stopCondition,
+            scope,
+            maxEstimate: goalDraft.maxEstimate,
+            satisfactionLayers: contract.layers,
+            verificationCommands: goalDraft.verificationCommands,
+            safety: goalDraft.safety
+          },
           subtasks: ticket.subtasks,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt

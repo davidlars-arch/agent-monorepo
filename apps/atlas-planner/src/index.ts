@@ -283,15 +283,20 @@ export function getKanbanColumns(tickets: KanbanTicket[], usageStatus?: UsageSta
 
 export function getLoopPlannerCommand(
   projects: LoopKanbanProject[],
-  usageStatus?: UsageStatusSnapshot | null
+  usageStatus?: UsageStatusSnapshot | null,
+  options: { preferredProjectId?: string | null; strictPreferredProject?: boolean } = {}
 ): LoopPlannerCommand {
   const shortWindowLeft = usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null;
   const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
   const tickets = buildPlannerTickets(projects);
   const counts = getTicketStatusCounts(tickets);
-  const decision = getLoopPlannerDecision(projects, usageStatus, { preferredProjectId: "atlas-planner" });
+  const preferredProjectId = options.preferredProjectId === null ? undefined : (options.preferredProjectId ?? "atlas-planner");
+  const decision = getLoopPlannerDecision(projects, usageStatus, {
+    preferredProjectId,
+    strictPreferredProject: options.strictPreferredProject
+  });
   const ticket = decision.selected?.ticket;
-  const projectId = ticket?.projectId ?? projects.find((project) => project.id === "atlas-planner")?.id ?? projects[0]?.id;
+  const projectId = ticket?.projectId ?? projects.find((project) => project.id === preferredProjectId)?.id ?? projects[0]?.id;
   const command = projectId
     ? `npm run loop:projects -- --project ${projectId}`
     : "npm run loop:projects -- --list";
@@ -315,7 +320,7 @@ export function getLoopPlannerCommand(
 export function getLoopPlannerDecision(
   projects: LoopKanbanProject[],
   usageStatus?: UsageStatusSnapshot | null,
-  options: { preferredProjectId?: string } = {}
+  options: { preferredProjectId?: string; strictPreferredProject?: boolean } = {}
 ): LoopPlannerDecision {
   const shortWindowLeft = usageStatus ? parseFirstPercent(usageStatus.shortWindow) : null;
   const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
@@ -325,7 +330,7 @@ export function getLoopPlannerDecision(
     : [];
   const scoredPreferredTickets = scorePlannerTickets(preferredTickets, projects, maxEstimate, options.preferredProjectId);
   const scoredTickets =
-    scoredPreferredTickets.candidates.length > 0
+    options.strictPreferredProject || scoredPreferredTickets.candidates.length > 0
       ? scoredPreferredTickets
       : scorePlannerTickets(tickets, projects, maxEstimate, options.preferredProjectId);
 
@@ -363,8 +368,11 @@ export function getLoopGoalSummary(projects: LoopKanbanProject[], projectId = "a
   };
 }
 
-export function getDefaultPlannerTicket(projects: LoopKanbanProject[]): PlannerTicketDraft {
-  const project = projects[0] ?? { id: "atlas-planner", label: "Atlas Planner", epics: [] };
+export function getDefaultPlannerTicket(projects: LoopKanbanProject[], preferredProjectId?: string): PlannerTicketDraft {
+  const project =
+    (preferredProjectId ? projects.find((candidate) => candidate.id === preferredProjectId) : undefined) ??
+    projects[0] ??
+    { id: "atlas-planner", label: "Atlas Planner", epics: [] };
   const epic = project.epics?.[0] ?? { id: "general", label: "General", tickets: [] };
   const now = new Date().toISOString();
   const ticketStamp = Date.now().toString(36).toUpperCase();

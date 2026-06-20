@@ -11,6 +11,7 @@ import {
   parsePlannerStateImport,
   plannerTicketStorageKey,
   type KanbanTicket,
+  type LoopKanbanEpic,
   type LoopKanbanProject,
   type LoopTicketStatus,
   type PlannerSubtask,
@@ -33,12 +34,14 @@ const plannerRunnerSyncStorageKey = "atlas-planner:runner-sync:v1";
 
 export function usePlannerTickets({
   loopKanban,
+  selectedProjectId,
   currentCommit,
   usageStatus,
   currentLoopRun,
   currentRunnerState
 }: {
   loopKanban: LoopKanbanProject[];
+  selectedProjectId: string;
   currentCommit: string;
   usageStatus: UsageStatusSnapshot | null;
   currentLoopRun?: CurrentLoopRunSummary | null;
@@ -62,7 +65,8 @@ export function usePlannerTickets({
   const isApiBackedPlannerStateRef = useRef(false);
   const shouldSkipNextPlannerPersistRef = useRef(false);
   const syncedRunnerRunIdsRef = useRef<Set<string>>(new Set());
-  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+  const visiblePlannerTickets = getVisiblePlannerTickets(plannerTickets, selectedProjectId);
+  const kanbanColumns = getKanbanColumns(visiblePlannerTickets, usageStatus);
 
   const persistPlannerTicketsToApi = useCallback(async (tickets: KanbanTicket[]) => {
     queuedPlannerTicketsRef.current = tickets;
@@ -375,7 +379,7 @@ export function usePlannerTickets({
   }
 
   function openNewTicket() {
-    openTicketEditor(getDefaultPlannerTicket(loopKanban));
+    openTicketEditor(getDefaultPlannerTicket(loopKanban, selectedProjectId === "all" ? undefined : selectedProjectId));
   }
 
   function closeTicketEditor() {
@@ -434,15 +438,16 @@ export function usePlannerTickets({
       return;
     }
 
-    const plannerState = createPlannerStateExport(plannerTickets);
+    const plannerState = createPlannerStateExport(visiblePlannerTickets);
     const stateBlob = new Blob([JSON.stringify(plannerState, null, 2)], { type: "application/json" });
     const stateUrl = window.URL.createObjectURL(stateBlob);
     const link = document.createElement("a");
     link.href = stateUrl;
-    link.download = `atlas-planner-${plannerState.exportedAt.slice(0, 10)}.json`;
+    const boardSlug = selectedProjectId === "all" ? "all-repos" : selectedProjectId;
+    link.download = `atlas-planner-${boardSlug}-${plannerState.exportedAt.slice(0, 10)}.json`;
     link.click();
     window.URL.revokeObjectURL(stateUrl);
-    setPlannerStateMessage(`Exported ${plannerState.tickets.length} tickets.`);
+    setPlannerStateMessage(`Exported ${plannerState.tickets.length} tickets from ${getBoardLabel(loopKanban, selectedProjectId)}.`);
   }
 
   function importPlannerState(file: File | undefined) {
@@ -454,8 +459,9 @@ export function usePlannerTickets({
     reader.addEventListener("load", () => {
       try {
         const importedTickets = parsePlannerStateImport(String(reader.result ?? ""));
-        setPlannerTickets(importedTickets);
-        setPlannerStateMessage(`Imported ${importedTickets.length} tickets.`);
+        const boardTickets = getImportTicketsForBoard(importedTickets, selectedProjectId);
+        setPlannerTickets((current) => mergeBoardTickets(current, boardTickets, loopKanban, selectedProjectId));
+        setPlannerStateMessage(`Imported ${boardTickets.length} tickets into ${getBoardLabel(loopKanban, selectedProjectId)}.`);
       } catch {
         setPlannerStateMessage("Import failed. Use an Atlas Planner JSON export.");
       }
@@ -464,9 +470,9 @@ export function usePlannerTickets({
   }
 
   function resetPlannerState() {
-    const defaultTickets = buildPlannerTickets(loopKanban);
-    setPlannerTickets(defaultTickets);
-    setPlannerStateMessage(`Reset to ${defaultTickets.length} default tickets.`);
+    const defaultTickets = getDefaultTicketsForBoard(loopKanban, selectedProjectId);
+    setPlannerTickets((current) => mergeBoardTickets(current, defaultTickets, loopKanban, selectedProjectId));
+    setPlannerStateMessage(`Reset ${getBoardLabel(loopKanban, selectedProjectId)} to ${defaultTickets.length} default tickets.`);
   }
 
   function addPlannerTicket(ticket: KanbanTicket) {
@@ -475,6 +481,7 @@ export function usePlannerTickets({
 
   return {
     plannerTickets,
+    visiblePlannerTickets,
     kanbanColumns,
     editingTicket,
     isTicketEditorClosing,
@@ -503,6 +510,70 @@ export function usePlannerTickets({
     handleTicketDragStart,
     handleTicketDragEnd
   };
+}
+
+function getVisiblePlannerTickets(tickets: KanbanTicket[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return tickets;
+  }
+  return tickets.filter((ticket) => ticket.projectId === selectedProjectId);
+}
+
+function getDefaultTicketsForBoard(projects: LoopKanbanProject[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return buildPlannerTickets(projects);
+  }
+  return buildPlannerTickets(projects.filter((project) => project.id === selectedProjectId));
+}
+
+function mergeBoardTickets(
+  currentTickets: KanbanTicket[],
+  boardTickets: KanbanTicket[],
+  projects: LoopKanbanProject[],
+  selectedProjectId: string
+) {
+  const hydratedTickets = hydratePlannerTickets(boardTickets);
+  if (selectedProjectId === "all") {
+    return hydratedTickets;
+  }
+
+  const project = projects.find((candidate) => candidate.id === selectedProjectId);
+  const defaultEpic = project?.epics?.[0];
+  const scopedTickets = hydratedTickets.map((ticket) => ({
+    ...ticket,
+    projectId: project?.id ?? selectedProjectId,
+    projectLabel: project?.label ?? ticket.projectLabel,
+    ...getTicketEpicForProject(ticket, project, defaultEpic)
+  }));
+
+  return [...currentTickets.filter((ticket) => ticket.projectId !== selectedProjectId), ...scopedTickets];
+}
+
+function getImportTicketsForBoard(tickets: KanbanTicket[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return tickets;
+  }
+  return tickets.filter((ticket) => !ticket.projectId || ticket.projectId === selectedProjectId);
+}
+
+function getTicketEpicForProject(
+  ticket: KanbanTicket,
+  project: LoopKanbanProject | undefined,
+  defaultEpic: LoopKanbanEpic | undefined
+) {
+  const matchingEpic = project?.epics?.find((epic) => epic.id === ticket.epicId);
+  const epic = matchingEpic ?? defaultEpic;
+  return {
+    epicId: epic?.id ?? "general",
+    epicLabel: epic?.label ?? "General"
+  };
+}
+
+function getBoardLabel(projects: LoopKanbanProject[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return "All repos";
+  }
+  return projects.find((project) => project.id === selectedProjectId)?.label ?? selectedProjectId;
 }
 
 async function readPlannerTicketsFromApi() {

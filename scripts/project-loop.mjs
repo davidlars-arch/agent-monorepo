@@ -190,7 +190,7 @@ async function runProject(project) {
 }
 
 async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
-  if (!claimGoal || project.id !== "atlas-planner" || !plannedTask?.tags?.includes("queued-goal")) {
+  if (!claimGoal || !plannedTask?.tags?.includes("queued-goal")) {
     return null;
   }
 
@@ -210,7 +210,8 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
   const claimedAt = startedAt.toISOString();
   const runId = `run-${queuedGoal.id.toLowerCase()}-${startedAt.getTime().toString(36)}`;
   const baseCommit = await readCurrentCommit();
-  const agentRun = buildAgentRunPlan({ runId, goal: queuedGoal, plannedTask, baseCommit });
+  const goalContract = contractForGoal(queuedGoal);
+  const agentRun = buildAgentRunPlan({ runId, goal: queuedGoal, goalContract, plannedTask, baseCommit });
   const claimedGoal = {
     ...queuedGoal,
     lifecycleStatus: "running",
@@ -232,6 +233,7 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     projectLabel: project.label,
     goalId: claimedGoal.id,
     goalTitle: claimedGoal.title,
+    goalContract,
     status: "running",
     stage: "claimed",
     claimedAt,
@@ -241,6 +243,7 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     worktreePath: agentRun.worktreePath,
     handoffDir: agentRun.handoffDir,
     runnerCommand: agentRun.command,
+    runnerCommands: agentRun.runnerCommands,
     makerPromptPath: agentRun.makerPromptPath,
     checkerPromptPath: agentRun.checkerPromptPath,
     evidencePath: agentRun.evidencePath,
@@ -277,12 +280,12 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
   };
 }
 
-function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
+function buildAgentRunPlan({ runId, goal, goalContract, plannedTask, baseCommit }) {
   const ticketSlug = sanitizeForBranch(plannedTask.id);
   const branchName = `worktree/${ticketSlug}`;
   const worktreePath = `../agent-monorepo-${ticketSlug}`;
   const handoffDir = join("loops", "project-controller", "runs", runId);
-  const command = [
+  const commandParts = [
     shellQuote("node"),
     shellQuote("scripts/planner-agent-runner.mjs"),
     "--ticket",
@@ -295,21 +298,56 @@ function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
     shellQuote(runId),
     "--goal-title",
     shellQuote(goal.title),
+    "--goal-contract-json",
+    shellQuote(JSON.stringify(goalContract)),
     "--worktree-dir",
     shellQuote(worktreePath),
     "--handoff-dir",
     shellQuote(handoffDir)
-  ].join(" ");
+  ];
+  const maxRepairAttempts = Number(goalContract.safety?.maxRepairAttempts);
+  if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0 && maxRepairAttempts <= 5) {
+    commandParts.push("--max-repairs", shellQuote(String(maxRepairAttempts)));
+  }
+  const runnerCommands = getRunnerCommandConfig();
+  addRunnerCommandArgs(commandParts, runnerCommands, shellQuote);
+  const command = commandParts.join(" ");
 
   return {
     branchName,
     worktreePath,
     handoffDir,
+    runnerCommands,
     command,
     makerPromptPath: join(handoffDir, "maker-prompt.md"),
     checkerPromptPath: join(handoffDir, "checker-prompt.md"),
     evidencePath: join(handoffDir, "evidence.json")
   };
+}
+
+function contractForGoal(goal) {
+  const contract = goal.goalContract && typeof goal.goalContract === "object" ? goal.goalContract : {};
+  return {
+    statement: firstString(contract.statement, contract.outcome, goal.summary),
+    stopCondition: firstString(contract.stopCondition),
+    scope: firstString(contract.scope),
+    maxEstimate: Number.isFinite(Number(contract.maxEstimate)) ? Number(contract.maxEstimate) : goal.estimate,
+    satisfactionLayers: Array.isArray(contract.satisfactionLayers)
+      ? contract.satisfactionLayers
+      : Array.isArray(contract.layers)
+        ? contract.layers
+        : [],
+    verificationCommands: Array.isArray(contract.verificationCommands)
+      ? contract.verificationCommands
+      : Array.isArray(contract.verification)
+        ? contract.verification
+        : [],
+    safety: contract.safety && typeof contract.safety === "object" && !Array.isArray(contract.safety) ? contract.safety : {}
+  };
+}
+
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim() !== "")?.trim() ?? "";
 }
 
 async function readCurrentCommit() {
@@ -580,16 +618,13 @@ function flattenTickets(project) {
     }))
   );
 
-  if (project.id !== "atlas-planner") {
-    return registryTickets;
-  }
-
   return [...queuedGoalTickets(project), ...registryTickets];
 }
 
 function queuedGoalTickets(project) {
   return goalQueue.goals
     .filter(isRunnableQueuedGoal)
+    .filter((goal) => (goal.projectId ?? "atlas-planner") === project.id)
     .map((goal) => ({
       id: goal.id,
       title: goal.title,
@@ -597,10 +632,10 @@ function queuedGoalTickets(project) {
       estimate: goal.estimate,
       summary: goal.summary,
       tags: [...(goal.tags ?? []), "queued-goal"],
-      epicId: "queued-goals",
-      epicLabel: "Queued Goals",
-      projectId: project.id,
-      projectLabel: project.label
+      epicId: goal.epicId ?? "queued-goals",
+      epicLabel: goal.epicLabel ?? "Queued Goals",
+      projectId: goal.projectId ?? project.id,
+      projectLabel: goal.projectLabel ?? project.label
     }));
 }
 
@@ -618,6 +653,38 @@ function sanitizeForBranch(value) {
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function getRunnerCommandConfig(env = process.env) {
+  return {
+    agentCommand: stringEnv(env.ATLAS_AGENT_COMMAND),
+    makerCommand: stringEnv(env.ATLAS_MAKER_COMMAND),
+    checkerCommand: stringEnv(env.ATLAS_CHECKER_COMMAND),
+    repairCommand: stringEnv(env.ATLAS_REPAIR_COMMAND),
+    prCommand: stringEnv(env.ATLAS_PR_COMMAND)
+  };
+}
+
+function addRunnerCommandArgs(parts, runnerCommands, quote = (value) => value) {
+  if (runnerCommands.agentCommand) {
+    parts.push("--agent-command", quote(runnerCommands.agentCommand));
+  }
+  if (runnerCommands.makerCommand) {
+    parts.push("--maker-command", quote(runnerCommands.makerCommand));
+  }
+  if (runnerCommands.checkerCommand) {
+    parts.push("--checker-command", quote(runnerCommands.checkerCommand));
+  }
+  if (runnerCommands.repairCommand) {
+    parts.push("--repair-command", quote(runnerCommands.repairCommand));
+  }
+  if (runnerCommands.prCommand) {
+    parts.push("--pr-command", quote(runnerCommands.prCommand));
+  }
+}
+
+function stringEnv(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 function getPlannerScoreBreakdown(ticket, project, maxEstimate) {

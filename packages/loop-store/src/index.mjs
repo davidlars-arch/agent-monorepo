@@ -1,6 +1,10 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export const goalLifecycleStatuses = ["draft", "refined", "approved", "running", "blocked", "satisfied", "archived"];
 export const terminalGoalStatuses = ["done", "archived", "blocked"];
@@ -74,9 +78,14 @@ export function validateQueuedGoalInput(body, { now = new Date().toISOString() }
   const lifecycleStatus = isGoalLifecycleStatus(body.lifecycleStatus) ? body.lifecycleStatus : "draft";
   const approvedToRun = body.approvedToRun === true && isApprovedLifecycle(lifecycleStatus);
   const estimate = clampInteger(Number(body.estimate ?? 8), 1, 21);
+  const contract = sanitizeGoalContract(body.goalContract, body, estimate);
   const goal = {
     id: body.id.trim().slice(0, 80),
     title: body.title.trim().slice(0, 180),
+    projectId: sanitizeIdentifier(body.projectId, "atlas-planner"),
+    projectLabel: sanitizeString(body.projectLabel, 180) || "Atlas Planner",
+    epicId: sanitizeIdentifier(body.epicId, "queued-goals"),
+    epicLabel: sanitizeString(body.epicLabel, 180) || "Queued Goals",
     lifecycleStatus,
     approvedToRun,
     status: getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun),
@@ -84,6 +93,7 @@ export function validateQueuedGoalInput(body, { now = new Date().toISOString() }
     summary: sanitizeString(body.summary, 1000),
     tags: sanitizeGoalTags(body.tags, approvedToRun, lifecycleStatus),
     description: sanitizeString(body.description, 12_000),
+    goalContract: contract,
     subtasks: sanitizeSubtasks(body.subtasks),
     createdAt: sanitizeIsoDate(body.createdAt) ?? now,
     updatedAt: now
@@ -200,6 +210,254 @@ export function getCurrentRunRecoveryStatus(currentRun, runnerState) {
   };
 }
 
+export async function claimNextAtlasPlannerGoal(root, { now = new Date(), readCommit = readCurrentCommit, goalId = "", projectId = "" } = {}) {
+  const loopPaths = getLoopPaths(root);
+  const lock = await acquireFileLock(loopPaths.lockPath, "atlas-loop-runner-api");
+  if (!lock.ok) {
+    return { ok: false, status: "busy", reason: "The project loop is busy. Try again after the current run finishes." };
+  }
+
+  try {
+    const queue = await readGoalQueue(loopPaths.goalQueuePath);
+    const queuedGoal = queue.goals.find((goal) => {
+      if (!isRunnableQueuedGoal(goal)) {
+        return false;
+      }
+      if (goalId && goal.id !== goalId) {
+        return false;
+      }
+      if (projectId && (goal.projectId ?? "atlas-planner") !== projectId) {
+        return false;
+      }
+      return true;
+    });
+    if (!queuedGoal) {
+      return { ok: true, status: "idle", reason: "No approved Atlas Planner queued goal is ready to run." };
+    }
+
+    if (await hasCurrentRunState(loopPaths.currentRunPath)) {
+      return { ok: true, status: "blocked", reason: "A current run already exists; clear or resume it before claiming another goal." };
+    }
+
+    const claimedAt = now.toISOString();
+    const runId = `run-${queuedGoal.id.toLowerCase()}-${now.getTime().toString(36)}`;
+    const baseCommit = await readCommit(root);
+    const agentRun = buildAtlasAgentRunPlan({ runId, goal: queuedGoal, baseCommit });
+    const claimedGoal = {
+      ...queuedGoal,
+      lifecycleStatus: "running",
+      status: "in-progress",
+      updatedAt: claimedAt
+    };
+    const nextQueue = {
+      version: 1,
+      updatedAt: claimedAt,
+      goals: queue.goals.map((goal) => (goal.id === queuedGoal.id ? claimedGoal : goal))
+    };
+    const currentRun = buildCurrentAtlasRun({ runId, goal: claimedGoal, claimedAt, baseCommit, agentRun });
+
+    await writeJsonAtomically(loopPaths.goalQueuePath, nextQueue);
+    await writeJsonAtomically(loopPaths.currentRunPath, currentRun);
+
+    return { ok: true, status: "claimed", currentRun, goal: claimedGoal };
+  } finally {
+    await releaseFileLock(loopPaths.lockPath, lock.file);
+  }
+}
+
+export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_000, execRunner = execFileAsync } = {}) {
+  const loopPaths = getLoopPaths(root);
+  const currentRun = await readJsonFile(loopPaths.currentRunPath, null);
+  if (!currentRun?.id) {
+    return { ok: false, status: "missing-current-run", reason: "No current run exists. Claim an approved goal first." };
+  }
+
+  const lock = await acquireFileLock(loopPaths.lockPath, "atlas-loop-runner-api");
+  if (!lock.ok) {
+    return { ok: false, status: "busy", reason: "The project loop is busy. Try again after the current run finishes." };
+  }
+
+  try {
+    const recheckedRun = await readJsonFile(loopPaths.currentRunPath, null);
+    if (!recheckedRun?.id || recheckedRun.id !== currentRun.id) {
+      return { ok: false, status: "changed", reason: "Current run changed while the runner action was pending." };
+    }
+
+    const command = buildAtlasRunnerCommand(root, action, recheckedRun);
+    if (!command.ok) {
+      return command;
+    }
+
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await execRunner(command.cmd, command.args, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: timeoutMs
+      });
+      const sync = await syncTerminalAtlasRun(root, recheckedRun);
+      return {
+        ok: true,
+        status: "completed",
+        action,
+        currentRun: sync.currentRun ?? recheckedRun,
+        goal: sync.goal,
+        sync,
+        command: renderCommand(command),
+        exitCode: 0,
+        stdout: String(result.stdout ?? "").trim(),
+        stderr: String(result.stderr ?? "").trim(),
+        startedAt,
+        finishedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.killed ? "timed-out" : "failed",
+        action,
+        currentRun: (await syncTerminalAtlasRun(root, recheckedRun)).currentRun ?? recheckedRun,
+        command: renderCommand(command),
+        exitCode: typeof error?.code === "number" ? error.code : 1,
+        stdout: String(error?.stdout ?? "").trim(),
+        stderr: String(error?.stderr ?? error?.message ?? "").trim(),
+        startedAt,
+        finishedAt: new Date().toISOString()
+      };
+    }
+  } finally {
+    await releaseFileLock(loopPaths.lockPath, lock.file);
+  }
+}
+
+export async function syncTerminalAtlasRun(root, currentRun) {
+  if (!currentRun?.handoffDir || !currentRun?.goalId) {
+    return { ok: true, status: "skipped", reason: "Current run is missing handoff or goal id." };
+  }
+
+  const loopPaths = getLoopPaths(root);
+  const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+  const runnerState = await readJsonFile(runnerStatePath, null);
+  const runnerStatus = typeof runnerState?.status === "string" ? runnerState.status : "";
+  if (!terminalRunnerStatuses.includes(runnerStatus)) {
+    return { ok: true, status: "non-terminal", runnerStatus };
+  }
+
+  const updatedAt = typeof runnerState.updatedAt === "string" ? runnerState.updatedAt : new Date().toISOString();
+  const lifecycleStatus = getGoalLifecycleForRunnerStatus(runnerStatus);
+  const queue = await readGoalQueue(loopPaths.goalQueuePath);
+  let syncedGoal = null;
+  const nextGoals = queue.goals.map((goal) => {
+    if (goal.id !== currentRun.goalId) {
+      return goal;
+    }
+    syncedGoal = updateGoalLifecycle(goal, lifecycleStatus, lifecycleStatus === "satisfied", { now: updatedAt });
+    return syncedGoal;
+  });
+
+  const nextCurrentRun = {
+    ...currentRun,
+    status: runnerStatus,
+    stage: typeof runnerState.stage === "string" ? runnerState.stage : currentRun.stage,
+    updatedAt,
+    runnerStatus,
+    runnerUpdatedAt: updatedAt
+  };
+
+  if (syncedGoal) {
+    await writeJsonAtomically(loopPaths.goalQueuePath, {
+      version: 1,
+      updatedAt,
+      goals: nextGoals
+    });
+  }
+  await writeJsonAtomically(loopPaths.currentRunPath, nextCurrentRun);
+
+  return { ok: true, status: "synced", runnerStatus, lifecycleStatus, goal: syncedGoal, currentRun: nextCurrentRun };
+}
+
+export function buildAtlasRunnerCommand(root, action, currentRun) {
+  if (action === "start-current-run") {
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before starting another runner." };
+    }
+
+    const missing = ["goalId", "branchName", "baseCommit", "id", "goalTitle", "worktreePath", "handoffDir"].filter(
+      (key) => !currentRun?.[key]
+    );
+    if (missing.length > 0) {
+      return { ok: false, status: "invalid-current-run", reason: `Current run is missing: ${missing.join(", ")}.` };
+    }
+
+    const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+    if (existsSync(runnerStatePath)) {
+      return { ok: false, status: "runner-state-exists", reason: "Runner state already exists; use resume-current-run." };
+    }
+
+    const args = [
+      "scripts/planner-agent-runner.mjs",
+      "--ticket",
+      currentRun.goalId,
+      "--branch",
+      currentRun.branchName,
+      "--base",
+      currentRun.baseCommit,
+      "--run-id",
+      currentRun.id,
+      "--goal-title",
+      currentRun.goalTitle,
+      "--worktree-dir",
+      currentRun.worktreePath,
+      "--handoff-dir",
+      currentRun.handoffDir
+    ];
+    if (currentRun.goalContract) {
+      args.push("--goal-contract-json", JSON.stringify(currentRun.goalContract));
+    }
+    const maxRepairAttempts = Number(currentRun.goalContract?.safety?.maxRepairAttempts);
+    if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
+      args.push("--max-repairs", String(Math.min(5, maxRepairAttempts)));
+    }
+    addRunnerCommandArgs(args, currentRun.runnerCommands ?? getRunnerCommandConfig());
+
+    return {
+      ok: true,
+      cmd: process.execPath,
+      args
+    };
+  }
+
+  if (action === "resume-current-run") {
+    if (!currentRun?.handoffDir) {
+      return { ok: false, status: "invalid-current-run", reason: "Current run is missing a handoff directory." };
+    }
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before resuming." };
+    }
+
+    const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+    if (!existsSync(runnerStatePath)) {
+      return { ok: false, status: "missing-runner-state", reason: "Runner state does not exist yet; start the current run first." };
+    }
+
+    const runnerState = parseJsonObject(readFileSync(runnerStatePath, "utf8"));
+    if (terminalRunnerStatuses.includes(runnerState?.status)) {
+      return { ok: false, status: "terminal-runner-state", reason: "Runner state is terminal; clear current-run before starting new work." };
+    }
+
+    const args = ["scripts/planner-agent-runner.mjs", "--resume", "--handoff-dir", currentRun.handoffDir];
+    addRunnerCommandArgs(args, currentRun.runnerCommands ?? getRunnerCommandConfig());
+
+    return {
+      ok: true,
+      cmd: process.execPath,
+      args
+    };
+  }
+
+  return { ok: false, status: "unsupported-action", reason: "Unsupported Atlas loop runner action." };
+}
+
 export async function acquireFileLock(lockPath, owner = "loop-store") {
   try {
     await mkdir(dirname(lockPath), { recursive: true });
@@ -243,6 +501,151 @@ export function parseJsonObject(value) {
   } catch {
     return null;
   }
+}
+
+function buildAtlasAgentRunPlan({ runId, goal, baseCommit }) {
+  const ticketSlug = sanitizeForBranch(goal.id);
+  const branchName = `worktree/${ticketSlug}`;
+  const worktreePath = `../agent-monorepo-${ticketSlug}`;
+  const handoffDir = join("loops", "project-controller", "runs", runId);
+  const commandParts = [
+    shellQuote("node"),
+    shellQuote("scripts/planner-agent-runner.mjs"),
+    "--ticket",
+    shellQuote(goal.id),
+    "--branch",
+    shellQuote(branchName),
+    "--base",
+    shellQuote(baseCommit),
+    "--run-id",
+    shellQuote(runId),
+    "--goal-title",
+    shellQuote(goal.title),
+    "--worktree-dir",
+    shellQuote(worktreePath),
+    "--handoff-dir",
+    shellQuote(handoffDir)
+  ];
+  if (goal.goalContract) {
+    commandParts.push("--goal-contract-json", shellQuote(JSON.stringify(goal.goalContract)));
+  }
+  const maxRepairAttempts = Number(goal.goalContract?.safety?.maxRepairAttempts);
+  if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
+    commandParts.push("--max-repairs", shellQuote(String(Math.min(5, maxRepairAttempts))));
+  }
+  const runnerCommands = getRunnerCommandConfig();
+  addRunnerCommandArgs(commandParts, runnerCommands, shellQuote);
+  const command = commandParts.join(" ");
+
+  return {
+    branchName,
+    worktreePath,
+    handoffDir,
+    runnerCommands,
+    command,
+    makerPromptPath: join(handoffDir, "maker-prompt.md"),
+    checkerPromptPath: join(handoffDir, "checker-prompt.md"),
+    evidencePath: join(handoffDir, "evidence.json")
+  };
+}
+
+function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) {
+  return {
+    version: 1,
+    id: runId,
+    projectId: goal.projectId ?? "atlas-planner",
+    projectLabel: goal.projectLabel ?? "Atlas Planner",
+    goalId: goal.id,
+    goalTitle: goal.title,
+    goalContract: goal.goalContract,
+    status: "running",
+    stage: "claimed",
+    claimedAt,
+    updatedAt: claimedAt,
+    baseCommit,
+    branchName: agentRun.branchName,
+    worktreePath: agentRun.worktreePath,
+    handoffDir: agentRun.handoffDir,
+    runnerCommands: agentRun.runnerCommands,
+    runnerCommand: agentRun.command,
+    makerPromptPath: agentRun.makerPromptPath,
+    checkerPromptPath: agentRun.checkerPromptPath,
+    evidencePath: agentRun.evidencePath,
+    selectedTask: {
+      id: goal.id,
+      title: goal.title,
+      estimate: goal.estimate,
+      reason: "Approved Atlas Planner queued goal."
+    },
+    timeline: [
+      { stage: "queued", status: "done", at: claimedAt, detail: "Goal was present in goal-queue.json." },
+      { stage: "claimed", status: "done", at: claimedAt, detail: "Controller claimed the goal for the next run." },
+      { stage: "prepare", status: "next", at: null, detail: "Run the agent runner command to create the branch, worktree, and handoff files." },
+      { stage: "maker", status: "locked", at: null, detail: "Maker work starts after the handoff worktree exists." },
+      { stage: "checker", status: "locked", at: null, detail: "Checker review starts only after maker evidence exists." }
+    ]
+  };
+}
+
+async function readCurrentCommit(root) {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd: root });
+    return stdout.trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function renderCommand(command) {
+  return [command.cmd, ...command.args].map(shellQuote).join(" ");
+}
+
+function getRunnerCommandConfig(env = process.env) {
+  return {
+    agentCommand: stringEnv(env.ATLAS_AGENT_COMMAND),
+    makerCommand: stringEnv(env.ATLAS_MAKER_COMMAND),
+    checkerCommand: stringEnv(env.ATLAS_CHECKER_COMMAND),
+    repairCommand: stringEnv(env.ATLAS_REPAIR_COMMAND),
+    prCommand: stringEnv(env.ATLAS_PR_COMMAND)
+  };
+}
+
+function addRunnerCommandArgs(parts, runnerCommands, quote = (value) => value) {
+  if (runnerCommands.agentCommand) {
+    parts.push("--agent-command", quote(runnerCommands.agentCommand));
+  }
+  if (runnerCommands.makerCommand) {
+    parts.push("--maker-command", quote(runnerCommands.makerCommand));
+  }
+  if (runnerCommands.checkerCommand) {
+    parts.push("--checker-command", quote(runnerCommands.checkerCommand));
+  }
+  if (runnerCommands.repairCommand) {
+    parts.push("--repair-command", quote(runnerCommands.repairCommand));
+  }
+  if (runnerCommands.prCommand) {
+    parts.push("--pr-command", quote(runnerCommands.prCommand));
+  }
+}
+
+function stringEnv(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function sanitizeForBranch(value) {
+  const sanitized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 64);
+
+  return sanitized || "planner-ticket";
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 export function summarizeMemoryValue(value) {
@@ -307,8 +710,23 @@ function isApprovedLifecycle(lifecycleStatus) {
   return lifecycleStatus === "approved" || lifecycleStatus === "running";
 }
 
+function getGoalLifecycleForRunnerStatus(runnerStatus) {
+  if (runnerStatus === "satisfied" || runnerStatus === "passed" || runnerStatus === "merged") {
+    return "satisfied";
+  }
+  return "blocked";
+}
+
 function sanitizeString(value, maxLength) {
   return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function sanitizeIdentifier(value, fallback) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const sanitized = value.trim().slice(0, 120);
+  return /^[A-Za-z0-9._-]+$/.test(sanitized) ? sanitized : fallback;
 }
 
 function sanitizeGoalTags(value, approvedToRun, lifecycleStatus) {
@@ -336,6 +754,78 @@ function sanitizeSubtasks(value) {
       title: typeof item.title === "string" ? item.title.trim().slice(0, 240) : "Untitled subtask",
       done: item.done === true
     }));
+}
+
+function sanitizeGoalContract(value, fallback, estimate) {
+  const source = value && typeof value === "object" ? value : {};
+  const statement = sanitizeString(source.statement ?? source.outcome ?? fallback.summary, 4000);
+  const stopCondition = sanitizeString(source.stopCondition ?? fallback.stopCondition, 2000);
+  const scope = sanitizeString(source.scope ?? fallback.scope, 4000);
+  const maxEstimate = clampInteger(Number(source.maxEstimate ?? fallback.estimate ?? estimate), 1, 21);
+
+  return {
+    statement,
+    stopCondition,
+    scope,
+    maxEstimate,
+    satisfactionLayers: sanitizeSatisfactionLayers(source.satisfactionLayers ?? source.layers),
+    verificationCommands: sanitizeVerificationCommands(source.verificationCommands ?? source.verification),
+    safety: sanitizeSafetySettings(source.safety)
+  };
+}
+
+function sanitizeSatisfactionLayers(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: sanitizeString(item.id, 80) || `layer-${index + 1}`,
+      label: sanitizeString(item.label ?? item.title, 160) || `Layer ${index + 1}`,
+      criteria: sanitizeString(item.criteria, 2000),
+      status: sanitizeLayerStatus(item.status),
+      humanGated: item.humanGated === true
+    }));
+}
+
+function sanitizeVerificationCommands(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: sanitizeString(item.id, 80) || `verify-${index + 1}`,
+      label: sanitizeString(item.label ?? item.name, 160) || `Verification ${index + 1}`,
+      command: sanitizeString(item.command, 1000),
+      required: item.required !== false
+    }))
+    .filter((item) => item.command);
+}
+
+function sanitizeSafetySettings(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    maxIterations: clampInteger(Number(source.maxIterations ?? 6), 1, 20),
+    maxRepairAttempts: clampInteger(Number(source.maxRepairAttempts ?? 3), 0, 5),
+    tokenBudget: sanitizeString(source.tokenBudget, 1000),
+    timeBudget: sanitizeString(source.timeBudget, 1000),
+    allowedPaths: sanitizeString(source.allowedPaths, 2000),
+    externalActionPolicy: sanitizeExternalActionPolicy(source.externalActionPolicy)
+  };
+}
+
+function sanitizeLayerStatus(value) {
+  return ["pending", "scaffolded", "satisfied", "blocked"].includes(value) ? value : "pending";
+}
+
+function sanitizeExternalActionPolicy(value) {
+  return ["disabled", "pr-only", "human-gated", "auto-merge"].includes(value) ? value : "human-gated";
 }
 
 function sanitizeIsoDate(value) {
