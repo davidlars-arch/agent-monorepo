@@ -505,7 +505,6 @@ export function usePlannerTickets({
   };
 }
 
-<<<<<<< HEAD
 async function readPlannerTicketsFromApi() {
   try {
     const response = await fetch("/api/planner/tickets", { cache: "no-store" });
@@ -518,7 +517,7 @@ async function readPlannerTicketsFromApi() {
     return null;
   }
 }
-=======
+
 function readSyncedRunnerRunIds() {
   try {
     const value = window.localStorage.getItem(plannerRunnerSyncStorageKey);
@@ -532,4 +531,3 @@ function readSyncedRunnerRunIds() {
 function writeSyncedRunnerRunIds(runIds: Set<string>) {
   window.localStorage.setItem(plannerRunnerSyncStorageKey, JSON.stringify([...runIds].slice(-100)));
 }
->>>>>>> 556f168 (Sync runner outcomes to planner tickets)
