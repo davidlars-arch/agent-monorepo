@@ -76,7 +76,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({
       ok: true,
       source: "repo",
-      revision: getPlannerRevision(JSON.stringify(nextState)),
+      revision: getPlannerRevision(`${JSON.stringify(nextState, null, 2)}\n`),
       updatedAt: nextState.exportedAt,
       tickets: nextState.tickets
     });
