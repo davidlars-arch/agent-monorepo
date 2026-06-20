@@ -23,8 +23,11 @@ import {
   FileText,
   GitCommitHorizontal,
   ListChecks,
+  PlayCircle,
   Network,
   RefreshCw,
+  ShieldCheck,
+  Target,
   Workflow,
   X
 } from "lucide-react";
@@ -35,6 +38,11 @@ import { GoalComposer } from "./atlas-planner/goal-composer";
 import { KanbanBoard } from "./atlas-planner/kanban-board";
 import { LoopReliabilityPanel } from "./atlas-planner/loop-reliability-panel";
 import { loopFiles, loopSummaries } from "./atlas-planner/overview-data";
+import {
+  getFirstLoopReadiness,
+  getPlannerNextActionState,
+  type PlannerNextActionKind
+} from "./atlas-planner/planner-next-action";
 import { TicketEditor } from "./atlas-planner/ticket-editor";
 import { useAtlasGoals } from "./atlas-planner/use-atlas-goals";
 import { usePlannerTickets } from "./atlas-planner/use-planner-tickets";
@@ -183,6 +191,21 @@ export function AtlasPlannerOverview({
   });
   const loopGoalSummary = getLoopGoalSummary(loopKanban, selectedPlannerProjectId ?? "atlas-planner");
   const visibleQueuedGoals = getVisibleQueuedGoals(durableQueuedGoals, activeSelectedProjectId);
+  const boardLabel = activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo");
+  const approvedGoalCount = visibleQueuedGoals.filter(isClaimableQueuedGoal).length;
+  const nextAction = getPlannerNextActionState({
+    approvedGoalCount,
+    currentLoopRun,
+    currentRunnerState,
+    visibleTicketCount: visiblePlannerTickets.length
+  });
+  const firstLoopReadiness = getFirstLoopReadiness({
+    approvedGoalCount,
+    currentLoopRun,
+    currentRunnerState,
+    hasUsageStatus: Boolean(latestUsageStatus),
+    visibleTicketCount: visiblePlannerTickets.length
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -237,7 +260,7 @@ export function AtlasPlannerOverview({
       <section className="loop-panel">
         <header className="loop-panel__header">
           <div>
-            <p>Token-aware work board</p>
+            <p>Agent work control surface</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
           </div>
           <label className="loop-project-selector">
@@ -263,6 +286,71 @@ export function AtlasPlannerOverview({
         </header>
 
         <div className="loop-panel__body">
+          <section className="atlas-planner-purpose" aria-label="Atlas Planner purpose">
+            <div>
+              <p>What this is</p>
+              <strong>Plan agent work, approve what may run, and inspect evidence before anything merges.</strong>
+              <span>
+                Tickets are planning items on the board. Goals are execution contracts the controller can claim. Current
+                run is the single claimed execution with branch, worktree, runner state, and evidence.
+              </span>
+            </div>
+            <ol aria-label="Planner workflow">
+              <li>Ticket</li>
+              <li>Goal</li>
+              <li>Queue</li>
+              <li>Current run</li>
+              <li>Evidence</li>
+              <li>Review</li>
+            </ol>
+          </section>
+
+          <section className="atlas-next-action" aria-label="Planner next action">
+            <div className="atlas-next-action__summary">
+              <PlannerNextActionIcon kind={nextAction.kind} />
+              <div>
+                <p>Next safe action</p>
+                <strong>{nextAction.label}</strong>
+                <span>{nextAction.detail}</span>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Board</dt>
+                <dd>{boardLabel}</dd>
+              </div>
+              <div>
+                <dt>Tickets</dt>
+                <dd>{visiblePlannerTickets.length} visible</dd>
+              </div>
+              <div>
+                <dt>Approved goals</dt>
+                <dd>{approvedGoalCount}</dd>
+              </div>
+              <div>
+                <dt>Run</dt>
+                <dd>{currentLoopRun ? currentLoopRun.stage : "idle"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="atlas-loop-readiness" aria-label="First loop setup readiness">
+            <div>
+              <p>First loop setup</p>
+              <strong>{firstLoopReadiness.percent}% ready</strong>
+              <span>{firstLoopReadiness.summary}</span>
+            </div>
+            <ol>
+              {firstLoopReadiness.steps.map((step) => (
+                <li key={step.label} className={step.done ? "is-done" : ""}>
+                  <span>{step.done ? "Ready" : "Needed"}</span>
+                  <strong>{step.label}</strong>
+                  <small>{step.detail}</small>
+                </li>
+              ))}
+            </ol>
+          </section>
+
           <section className="loop-usage" aria-label="Latest usage status">
             <div className="loop-usage__heading">
               <div>
@@ -360,7 +448,7 @@ export function AtlasPlannerOverview({
 
           <KanbanBoard
             columns={kanbanColumns}
-            selectedProjectLabel={activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo")}
+            selectedProjectLabel={boardLabel}
             visibleTicketCount={visiblePlannerTickets.length}
             usageStatus={latestUsageStatus}
             stateMessage={plannerStateMessage}
@@ -506,4 +594,27 @@ function getVisibleQueuedGoals(goals: QueuedGoalSummary[], selectedProjectId: st
     return goals;
   }
   return goals.filter((goal) => (goal.projectId ?? "atlas-planner") === selectedProjectId);
+}
+
+function isClaimableQueuedGoal(goal: QueuedGoalSummary) {
+  return (
+    goal.approvedToRun === true &&
+    (goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running") &&
+    goal.status !== "done" &&
+    goal.status !== "blocked" &&
+    goal.status !== "archived"
+  );
+}
+
+function PlannerNextActionIcon({ kind }: { kind: PlannerNextActionKind }) {
+  if (kind === "review-run") {
+    return <RefreshCw size={18} />;
+  }
+  if (kind === "create-goal") {
+    return <Target size={18} />;
+  }
+  if (kind === "create-ticket") {
+    return <ShieldCheck size={18} />;
+  }
+  return <PlayCircle size={18} />;
 }

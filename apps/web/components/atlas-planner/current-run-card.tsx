@@ -93,11 +93,16 @@ export function CurrentRunCard({
   }
 
   return (
-    <section className="loop-current-run" aria-label="Current loop run">
+    <section className="loop-current-run" aria-label="Current claimed execution">
       <div className="loop-current-run__header">
         <div>
           <span>Current run</span>
           <strong>{currentLoopRun ? currentLoopRun.goalTitle : "No claimed goal"}</strong>
+          <small>
+            {currentLoopRun
+              ? "The controller has claimed this one execution. Review branch, worktree, runner state, and evidence here."
+              : "No execution is claimed. The runner cannot act until an approved goal is claimed."}
+          </small>
         </div>
         <p>{currentLoopRun ? currentLoopRun.stage : "idle"}</p>
       </div>
@@ -204,8 +209,8 @@ export function CurrentRunCard({
       ) : (
         <p>
           {claimableQueuedGoal
-            ? "Claim the approved queued goal to write `loops/project-controller/current-run.json`."
-            : "Approve a queued goal before claiming the next loop run."}
+            ? "Claim the approved queued goal to create the single current-run record."
+            : "Approve a goal in the queue before claiming the next loop run."}
         </p>
       )}
       {currentLoopRun && (currentRunnerState || currentRunnerEvidence) ? (

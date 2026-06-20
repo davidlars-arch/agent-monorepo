@@ -567,6 +567,218 @@ nextjs-portal,
   padding: 16px;
 }
 
+.atlas-planner-purpose,
+.atlas-next-action,
+.atlas-loop-readiness {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.48);
+  padding: 14px;
+}
+
+.atlas-planner-purpose {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.atlas-planner-purpose > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-planner-purpose p,
+.atlas-next-action p,
+.atlas-next-action dt {
+  margin: 0;
+  color: rgba(125, 211, 252, 0.78);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.atlas-planner-purpose strong,
+.atlas-next-action strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.atlas-planner-purpose span,
+.atlas-next-action span {
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.atlas-planner-purpose ol {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 390px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-planner-purpose li {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.1);
+  padding: 5px 8px;
+  color: rgba(204, 251, 241, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.atlas-next-action {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  border-color: rgba(45, 212, 191, 0.22);
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.1), rgba(8, 47, 73, 0.12)),
+    rgba(3, 7, 18, 0.48);
+}
+
+.atlas-next-action__summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.atlas-next-action__summary > svg {
+  margin-top: 2px;
+  color: #5eead4;
+}
+
+.atlas-next-action__summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.atlas-next-action dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(82px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.atlas-next-action dl div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+  padding: 8px;
+}
+
+.atlas-next-action dd {
+  margin: 0;
+  overflow: hidden;
+  color: rgba(204, 251, 241, 0.94);
+  font-size: 13px;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-loop-readiness {
+  grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
+  border-color: rgba(251, 191, 36, 0.18);
+  background:
+    linear-gradient(135deg, rgba(120, 53, 15, 0.12), rgba(8, 47, 73, 0.1)),
+    rgba(3, 7, 18, 0.48);
+}
+
+.atlas-loop-readiness > div {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-loop-readiness p {
+  margin: 0;
+  color: rgba(252, 211, 77, 0.82);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.atlas-loop-readiness > div strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.atlas-loop-readiness > div span {
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.atlas-loop-readiness ol {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-loop-readiness li {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(251, 191, 36, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+  padding: 9px;
+}
+
+.atlas-loop-readiness li.is-done {
+  border-color: rgba(45, 212, 191, 0.24);
+  background: rgba(6, 78, 59, 0.14);
+}
+
+.atlas-loop-readiness li span {
+  color: rgba(252, 211, 77, 0.78);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.atlas-loop-readiness li.is-done span {
+  color: rgba(94, 234, 212, 0.84);
+}
+
+.atlas-loop-readiness li strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.atlas-loop-readiness li small {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .loop-usage {
   display: grid;
   gap: 12px;
@@ -907,6 +1119,15 @@ nextjs-portal,
   letter-spacing: 0;
 }
 
+.loop-reliability__header div > span {
+  display: block;
+  max-width: 760px;
+  margin-top: 6px;
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .loop-reliability__header > span {
   display: inline-flex;
   min-height: 30px;
@@ -1198,6 +1419,12 @@ nextjs-portal,
 .loop-current-run__header strong {
   color: rgba(255, 255, 255, 0.94);
   font-size: 14px;
+}
+
+.loop-current-run__header small {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .loop-current-run__header p {
@@ -1540,6 +1767,15 @@ nextjs-portal,
   font-size: 14px;
 }
 
+.loop-run-timeline__header small,
+.loop-evidence-viewer__header small,
+.loop-merge-gates__header small,
+.loop-goal__summary small {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .loop-run-timeline__header p {
   margin: 0;
   border: 1px solid rgba(45, 212, 191, 0.18);
@@ -1636,6 +1872,19 @@ nextjs-portal,
   padding: 11px;
 }
 
+.loop-evidence-viewer > summary,
+.loop-merge-gates > summary,
+.loop-primitives > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.loop-evidence-viewer > summary::-webkit-details-marker,
+.loop-merge-gates > summary::-webkit-details-marker,
+.loop-primitives > summary::-webkit-details-marker {
+  display: none;
+}
+
 .loop-evidence-viewer__header {
   display: flex;
   align-items: flex-start;
@@ -1678,6 +1927,11 @@ nextjs-portal,
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.loop-evidence-viewer:not([open]) .loop-evidence-viewer__header,
+.loop-merge-gates:not([open]) .loop-merge-gates__header {
+  margin-bottom: 0;
 }
 
 .loop-evidence-viewer article {
@@ -1927,6 +2181,18 @@ nextjs-portal,
   gap: 10px;
 }
 
+.loop-primitives > summary {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.52);
+  padding: 10px;
+}
+
 .loop-primitives article {
   display: grid;
   align-content: start;
@@ -2047,6 +2313,14 @@ nextjs-portal,
   letter-spacing: 0;
 }
 
+.loop-kanban__header div > span {
+  display: block;
+  margin-top: 6px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .loop-kanban__tools {
   display: flex;
   flex: 0 0 auto;
@@ -2127,6 +2401,16 @@ nextjs-portal,
   padding: 8px;
 }
 
+.loop-kanban__menu > div p {
+  max-width: 260px;
+  margin: 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.1);
+  padding: 0 2px 8px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 11px;
+  line-height: 1.38;
+}
+
 .loop-kanban__menu > div button {
   width: 100%;
   justify-content: flex-start;
@@ -2146,6 +2430,22 @@ nextjs-portal,
   padding: 6px 10px;
   color: rgba(226, 232, 240, 0.72);
   font-size: 11px;
+  font-weight: 760;
+}
+
+.loop-kanban__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.loop-kanban__legend span {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.52);
+  padding: 5px 8px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 10px;
   font-weight: 760;
 }
 
@@ -3078,6 +3378,15 @@ nextjs-portal,
   color: rgba(255, 255, 255, 0.96);
   font-size: 22px;
   line-height: 1;
+}
+
+.goal-composer__header span {
+  display: block;
+  max-width: 720px;
+  margin-top: 7px;
+  color: rgba(226, 232, 240, 0.64);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .goal-composer__body {
@@ -4437,6 +4746,25 @@ nextjs-portal,
 
   .loop-panel__body {
     padding: 12px;
+  }
+
+  .atlas-planner-purpose,
+  .atlas-next-action,
+  .atlas-loop-readiness {
+    grid-template-columns: 1fr;
+  }
+
+  .atlas-planner-purpose ol {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .atlas-next-action dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .atlas-loop-readiness ol {
+    grid-template-columns: 1fr;
   }
 
   .loop-reliability__header {

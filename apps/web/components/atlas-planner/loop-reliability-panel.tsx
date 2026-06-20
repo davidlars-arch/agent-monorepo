@@ -63,11 +63,15 @@ export function LoopReliabilityPanel({
   });
 
   return (
-    <section className="loop-reliability" aria-label="Reliable loop planner">
+    <section className="loop-reliability" aria-label="Reliability and run control">
       <div className="loop-reliability__header">
         <div>
-          <p>Reliable loop planner</p>
-          <h3>Next controlled run</h3>
+          <p>Reliability and run control</p>
+          <h3>Board, queue, current run, and evidence must agree</h3>
+          <span>
+            This checks whether the selected board has a runnable goal, whether a run is already claimed, and which
+            command or evidence should be trusted next.
+          </span>
         </div>
         <span>
           <ShieldCheck size={14} />
@@ -150,8 +154,9 @@ export function LoopReliabilityPanel({
       <section className="loop-goal-queue" aria-label="Durable goal queue">
         <div className="loop-goal-queue__header">
           <div>
-            <span>Durable goal queue</span>
+            <span>Goal queue</span>
             <strong>{durableQueuedGoals.length} queued</strong>
+            <p>Approved goals wait here until the controller claims one.</p>
           </div>
           <code>loops/project-controller/goal-queue.json</code>
         </div>
@@ -164,6 +169,7 @@ export function LoopReliabilityPanel({
                   <strong>{goal.title}</strong>
                 </div>
                 <p>
+                  {goal.projectLabel ? `${goal.projectLabel} · ` : ""}
                   {goal.id} · {goal.status} · {goal.estimate} pts
                   {goal.approvedToRun ? " · approved" : ""}
                 </p>
@@ -195,7 +201,7 @@ export function LoopReliabilityPanel({
             ))}
           </div>
         ) : (
-          <p>No durable goals yet. Saving a goal writes it here for the controller.</p>
+          <p>No queued goals for this board. Save a goal from the board, then approve it when it is safe to run.</p>
         )}
       </section>
 
@@ -212,7 +218,8 @@ export function LoopReliabilityPanel({
         <div className="loop-run-timeline__header">
           <div>
             <span>Run timeline</span>
-            <strong>From selected slice to clean main</strong>
+            <strong>Ticket to reviewed result</strong>
+            <small>Ticket -&gt; goal -&gt; queue -&gt; current run -&gt; evidence -&gt; review/merge.</small>
           </div>
           <p>{loopPlannerCommand.ticket ? loopPlannerCommand.ticket.id : "Waiting for an actionable ticket"}</p>
         </div>
@@ -236,14 +243,15 @@ export function LoopReliabilityPanel({
         </div>
       </section>
 
-      <section className="loop-evidence-viewer" aria-label="Loop evidence viewer">
-        <div className="loop-evidence-viewer__header">
+      <details className="loop-evidence-viewer" aria-label="Loop evidence viewer">
+        <summary className="loop-evidence-viewer__header">
           <div>
-            <span>Evidence viewer</span>
+            <span>Evidence and controller memory</span>
             <strong>Proof before satisfaction</strong>
+            <small>Open when reviewing a run, debugging planner state, or deciding whether work is safe to close.</small>
           </div>
           <p>{loopEvidenceSources.length} sources</p>
-        </div>
+        </summary>
         <div className="loop-evidence-viewer__grid">
           {loopEvidenceSources.map((source) => (
             <article key={source.label}>
@@ -290,16 +298,17 @@ export function LoopReliabilityPanel({
             ) : null}
           </div>
         ) : null}
-      </section>
+      </details>
 
-      <section className="loop-merge-gates" aria-label="PR and merge gates">
-        <div className="loop-merge-gates__header">
+      <details className="loop-merge-gates" aria-label="PR and merge gates">
+        <summary className="loop-merge-gates__header">
           <div>
             <span>PR and merge gates</span>
             <strong>External actions stay explicit</strong>
+            <small>These gates explain what must be true before a branch is trusted outside the local runner.</small>
           </div>
           <p>Merge gated</p>
-        </div>
+        </summary>
         <div className="loop-merge-gates__grid">
           {prMergeGates.map((gate) => {
             const GateIcon = gate.icon;
@@ -317,7 +326,7 @@ export function LoopReliabilityPanel({
             );
           })}
         </div>
-      </section>
+      </details>
 
       {loopGoalSummary.goal ? (
         <section className="loop-goal" aria-label="Strict loop goal">
@@ -325,6 +334,7 @@ export function LoopReliabilityPanel({
             <div>
               <span>Strict goal</span>
               <strong>{loopGoalSummary.goal.title}</strong>
+              <small>Goals are execution contracts. They define outcome, stop condition, paths, checks, and approval.</small>
               <p>{loopGoalSummary.goal.statement}</p>
             </div>
             <dl>
@@ -360,7 +370,11 @@ export function LoopReliabilityPanel({
         </section>
       ) : null}
 
-      <div className="loop-primitives" aria-label="Loop reliability primitives">
+      <details className="loop-primitives" aria-label="Loop reliability primitives">
+        <summary>
+          <span>Reliability primitives</span>
+          <strong>State files and locks used by the controller</strong>
+        </summary>
         {reliabilityPrimitives.map((primitive) => (
           <article key={primitive.label}>
             <span>{primitive.label}</span>
@@ -368,7 +382,7 @@ export function LoopReliabilityPanel({
             <p>{primitive.detail}</p>
           </article>
         ))}
-      </div>
+      </details>
     </section>
   );
 }
