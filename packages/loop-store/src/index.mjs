@@ -1,6 +1,10 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export const goalLifecycleStatuses = ["draft", "refined", "approved", "running", "blocked", "satisfied", "archived"];
 export const terminalGoalStatuses = ["done", "archived", "blocked"];
@@ -202,6 +206,181 @@ export function getCurrentRunRecoveryStatus(currentRun, runnerState) {
   };
 }
 
+export async function claimNextAtlasPlannerGoal(root, { now = new Date(), readCommit = readCurrentCommit } = {}) {
+  const loopPaths = getLoopPaths(root);
+  const lock = await acquireFileLock(loopPaths.lockPath, "atlas-loop-runner-api");
+  if (!lock.ok) {
+    return { ok: false, status: "busy", reason: "The project loop is busy. Try again after the current run finishes." };
+  }
+
+  try {
+    const queue = await readGoalQueue(loopPaths.goalQueuePath);
+    const queuedGoal = queue.goals.find(isRunnableQueuedGoal);
+    if (!queuedGoal) {
+      return { ok: true, status: "idle", reason: "No approved Atlas Planner queued goal is ready to run." };
+    }
+
+    if (await hasCurrentRunState(loopPaths.currentRunPath)) {
+      return { ok: true, status: "blocked", reason: "A current run already exists; clear or resume it before claiming another goal." };
+    }
+
+    const claimedAt = now.toISOString();
+    const runId = `run-${queuedGoal.id.toLowerCase()}-${now.getTime().toString(36)}`;
+    const baseCommit = await readCommit(root);
+    const agentRun = buildAtlasAgentRunPlan({ runId, goal: queuedGoal, baseCommit });
+    const claimedGoal = {
+      ...queuedGoal,
+      lifecycleStatus: "running",
+      status: "in-progress",
+      updatedAt: claimedAt
+    };
+    const nextQueue = {
+      version: 1,
+      updatedAt: claimedAt,
+      goals: queue.goals.map((goal) => (goal.id === queuedGoal.id ? claimedGoal : goal))
+    };
+    const currentRun = buildCurrentAtlasRun({ runId, goal: claimedGoal, claimedAt, baseCommit, agentRun });
+
+    await writeJsonAtomically(loopPaths.goalQueuePath, nextQueue);
+    await writeJsonAtomically(loopPaths.currentRunPath, currentRun);
+
+    return { ok: true, status: "claimed", currentRun, goal: claimedGoal };
+  } finally {
+    await releaseFileLock(loopPaths.lockPath, lock.file);
+  }
+}
+
+export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_000, execRunner = execFileAsync } = {}) {
+  const loopPaths = getLoopPaths(root);
+  const currentRun = await readJsonFile(loopPaths.currentRunPath, null);
+  if (!currentRun?.id) {
+    return { ok: false, status: "missing-current-run", reason: "No current run exists. Claim an approved goal first." };
+  }
+
+  const lock = await acquireFileLock(loopPaths.lockPath, "atlas-loop-runner-api");
+  if (!lock.ok) {
+    return { ok: false, status: "busy", reason: "The project loop is busy. Try again after the current run finishes." };
+  }
+
+  try {
+    const recheckedRun = await readJsonFile(loopPaths.currentRunPath, null);
+    if (!recheckedRun?.id || recheckedRun.id !== currentRun.id) {
+      return { ok: false, status: "changed", reason: "Current run changed while the runner action was pending." };
+    }
+
+    const command = buildAtlasRunnerCommand(root, action, recheckedRun);
+    if (!command.ok) {
+      return command;
+    }
+
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await execRunner(command.cmd, command.args, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: timeoutMs
+      });
+      return {
+        ok: true,
+        status: "completed",
+        action,
+        currentRun: recheckedRun,
+        command: renderCommand(command),
+        exitCode: 0,
+        stdout: String(result.stdout ?? "").trim(),
+        stderr: String(result.stderr ?? "").trim(),
+        startedAt,
+        finishedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.killed ? "timed-out" : "failed",
+        action,
+        currentRun: recheckedRun,
+        command: renderCommand(command),
+        exitCode: typeof error?.code === "number" ? error.code : 1,
+        stdout: String(error?.stdout ?? "").trim(),
+        stderr: String(error?.stderr ?? error?.message ?? "").trim(),
+        startedAt,
+        finishedAt: new Date().toISOString()
+      };
+    }
+  } finally {
+    await releaseFileLock(loopPaths.lockPath, lock.file);
+  }
+}
+
+export function buildAtlasRunnerCommand(root, action, currentRun) {
+  if (action === "start-current-run") {
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before starting another runner." };
+    }
+
+    const missing = ["goalId", "branchName", "baseCommit", "id", "goalTitle", "worktreePath", "handoffDir"].filter(
+      (key) => !currentRun?.[key]
+    );
+    if (missing.length > 0) {
+      return { ok: false, status: "invalid-current-run", reason: `Current run is missing: ${missing.join(", ")}.` };
+    }
+
+    const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+    if (existsSync(runnerStatePath)) {
+      return { ok: false, status: "runner-state-exists", reason: "Runner state already exists; use resume-current-run." };
+    }
+
+    return {
+      ok: true,
+      cmd: process.execPath,
+      args: [
+        "scripts/planner-agent-runner.mjs",
+        "--ticket",
+        currentRun.goalId,
+        "--branch",
+        currentRun.branchName,
+        "--base",
+        currentRun.baseCommit,
+        "--run-id",
+        currentRun.id,
+        "--goal-title",
+        currentRun.goalTitle,
+        "--worktree-dir",
+        currentRun.worktreePath,
+        "--handoff-dir",
+        currentRun.handoffDir
+      ]
+    };
+  }
+
+  if (action === "resume-current-run") {
+    if (!currentRun?.handoffDir) {
+      return { ok: false, status: "invalid-current-run", reason: "Current run is missing a handoff directory." };
+    }
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before resuming." };
+    }
+
+    const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+    if (!existsSync(runnerStatePath)) {
+      return { ok: false, status: "missing-runner-state", reason: "Runner state does not exist yet; start the current run first." };
+    }
+
+    const runnerState = parseJsonObject(readFileSync(runnerStatePath, "utf8"));
+    if (terminalRunnerStatuses.includes(runnerState?.status)) {
+      return { ok: false, status: "terminal-runner-state", reason: "Runner state is terminal; clear current-run before starting new work." };
+    }
+
+    return {
+      ok: true,
+      cmd: process.execPath,
+      args: ["scripts/planner-agent-runner.mjs", "--resume", "--handoff-dir", currentRun.handoffDir]
+    };
+  }
+
+  return { ok: false, status: "unsupported-action", reason: "Unsupported Atlas loop runner action." };
+}
+
 export async function acquireFileLock(lockPath, owner = "loop-store") {
   try {
     await mkdir(dirname(lockPath), { recursive: true });
@@ -245,6 +424,106 @@ export function parseJsonObject(value) {
   } catch {
     return null;
   }
+}
+
+function buildAtlasAgentRunPlan({ runId, goal, baseCommit }) {
+  const ticketSlug = sanitizeForBranch(goal.id);
+  const branchName = `worktree/${ticketSlug}`;
+  const worktreePath = `../agent-monorepo-${ticketSlug}`;
+  const handoffDir = join("loops", "project-controller", "runs", runId);
+  const command = [
+    shellQuote("node"),
+    shellQuote("scripts/planner-agent-runner.mjs"),
+    "--ticket",
+    shellQuote(goal.id),
+    "--branch",
+    shellQuote(branchName),
+    "--base",
+    shellQuote(baseCommit),
+    "--run-id",
+    shellQuote(runId),
+    "--goal-title",
+    shellQuote(goal.title),
+    "--worktree-dir",
+    shellQuote(worktreePath),
+    "--handoff-dir",
+    shellQuote(handoffDir)
+  ].join(" ");
+
+  return {
+    branchName,
+    worktreePath,
+    handoffDir,
+    command,
+    makerPromptPath: join(handoffDir, "maker-prompt.md"),
+    checkerPromptPath: join(handoffDir, "checker-prompt.md"),
+    evidencePath: join(handoffDir, "evidence.json")
+  };
+}
+
+function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) {
+  return {
+    version: 1,
+    id: runId,
+    projectId: "atlas-planner",
+    projectLabel: "Atlas Planner",
+    goalId: goal.id,
+    goalTitle: goal.title,
+    status: "running",
+    stage: "claimed",
+    claimedAt,
+    updatedAt: claimedAt,
+    baseCommit,
+    branchName: agentRun.branchName,
+    worktreePath: agentRun.worktreePath,
+    handoffDir: agentRun.handoffDir,
+    runnerCommand: agentRun.command,
+    makerPromptPath: agentRun.makerPromptPath,
+    checkerPromptPath: agentRun.checkerPromptPath,
+    evidencePath: agentRun.evidencePath,
+    selectedTask: {
+      id: goal.id,
+      title: goal.title,
+      estimate: goal.estimate,
+      reason: "Approved Atlas Planner queued goal."
+    },
+    timeline: [
+      { stage: "queued", status: "done", at: claimedAt, detail: "Goal was present in goal-queue.json." },
+      { stage: "claimed", status: "done", at: claimedAt, detail: "Controller claimed the goal for the next run." },
+      { stage: "prepare", status: "next", at: null, detail: "Run the agent runner command to create the branch, worktree, and handoff files." },
+      { stage: "maker", status: "locked", at: null, detail: "Maker work starts after the handoff worktree exists." },
+      { stage: "checker", status: "locked", at: null, detail: "Checker review starts only after maker evidence exists." }
+    ]
+  };
+}
+
+async function readCurrentCommit(root) {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd: root });
+    return stdout.trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function renderCommand(command) {
+  return [command.cmd, ...command.args].map(shellQuote).join(" ");
+}
+
+function sanitizeForBranch(value) {
+  const sanitized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 64);
+
+  return sanitized || "planner-ticket";
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 export function summarizeMemoryValue(value) {
