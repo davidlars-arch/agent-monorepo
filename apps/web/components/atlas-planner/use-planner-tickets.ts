@@ -2,6 +2,7 @@
 
 import {
   buildPlannerTickets,
+  applyRunnerStateToPlannerTickets,
   createPlannerStateExport,
   getDefaultPlannerTicket,
   getKanbanColumns,
@@ -16,6 +17,7 @@ import {
   type PlannerTicketDraft,
   type UsageStatusSnapshot
 } from "@agent/atlas-planner";
+import type { CurrentLoopRunSummary, RunnerStateSummary } from "@agent/loop-store";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -27,14 +29,20 @@ type PlannerTicketsApiState = {
   error?: string;
 };
 
+const plannerRunnerSyncStorageKey = "atlas-planner:runner-sync:v1";
+
 export function usePlannerTickets({
   loopKanban,
   currentCommit,
-  usageStatus
+  usageStatus,
+  currentLoopRun,
+  currentRunnerState
 }: {
   loopKanban: LoopKanbanProject[];
   currentCommit: string;
   usageStatus: UsageStatusSnapshot | null;
+  currentLoopRun?: CurrentLoopRunSummary | null;
+  currentRunnerState?: RunnerStateSummary | null;
 }) {
   const [plannerTickets, setPlannerTickets] = useState<KanbanTicket[]>(() => buildPlannerTickets(loopKanban));
   const [hasLoadedPlannerState, setHasLoadedPlannerState] = useState(false);
@@ -53,6 +61,7 @@ export function usePlannerTickets({
   const isPersistingPlannerStateRef = useRef(false);
   const isApiBackedPlannerStateRef = useRef(false);
   const shouldSkipNextPlannerPersistRef = useRef(false);
+  const syncedRunnerRunIdsRef = useRef<Set<string>>(new Set());
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
 
   const persistPlannerTicketsToApi = useCallback(async (tickets: KanbanTicket[]) => {
@@ -107,6 +116,7 @@ export function usePlannerTickets({
 
     let cancelled = false;
     const timeoutId = window.setTimeout(async () => {
+      syncedRunnerRunIdsRef.current = readSyncedRunnerRunIds();
       const defaultTickets = buildPlannerTickets(loopKanban);
       const apiState = await readPlannerTicketsFromApi();
       if (cancelled) {
@@ -179,6 +189,35 @@ export function usePlannerTickets({
       void persistPlannerTicketsToApi(plannerTickets);
     }, 300);
   }, [hasLoadedPlannerState, persistPlannerTicketsToApi, plannerTickets]);
+
+  useEffect(() => {
+    if (!hasLoadedPlannerState || typeof window === "undefined") {
+      return;
+    }
+
+    const runId = currentLoopRun?.id;
+    const runnerStatus = currentRunnerState?.status;
+    if (!runId || !runnerStatus || !["satisfied", "blocked", "failed"].includes(runnerStatus)) {
+      return;
+    }
+    if (syncedRunnerRunIdsRef.current.has(runId)) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPlannerTickets((current) =>
+        applyRunnerStateToPlannerTickets(current, {
+          currentRun: currentLoopRun,
+          runnerState: currentRunnerState,
+          currentCommit
+        })
+      );
+      syncedRunnerRunIdsRef.current.add(runId);
+      writeSyncedRunnerRunIds(syncedRunnerRunIdsRef.current);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [currentCommit, currentLoopRun, currentRunnerState, hasLoadedPlannerState]);
 
   useEffect(() => {
     return () => {
@@ -466,6 +505,7 @@ export function usePlannerTickets({
   };
 }
 
+<<<<<<< HEAD
 async function readPlannerTicketsFromApi() {
   try {
     const response = await fetch("/api/planner/tickets", { cache: "no-store" });
@@ -478,3 +518,18 @@ async function readPlannerTicketsFromApi() {
     return null;
   }
 }
+=======
+function readSyncedRunnerRunIds() {
+  try {
+    const value = window.localStorage.getItem(plannerRunnerSyncStorageKey);
+    const parsed = value ? (JSON.parse(value) as unknown) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeSyncedRunnerRunIds(runIds: Set<string>) {
+  window.localStorage.setItem(plannerRunnerSyncStorageKey, JSON.stringify([...runIds].slice(-100)));
+}
+>>>>>>> 556f168 (Sync runner outcomes to planner tickets)

@@ -138,7 +138,9 @@ export function AtlasPlannerOverview({
   } = usePlannerTickets({
     loopKanban,
     currentCommit,
-    usageStatus: latestUsageStatus
+    usageStatus: latestUsageStatus,
+    currentLoopRun,
+    currentRunnerState
   });
   const {
     durableQueuedGoals,
