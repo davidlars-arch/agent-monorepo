@@ -50,7 +50,12 @@ export function LoopReliabilityPanel({
 }) {
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
   const claimableQueuedGoal = durableQueuedGoals.find(
-    (goal) => goal.approvedToRun || goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running"
+    (goal) =>
+      goal.approvedToRun === true &&
+      (goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running") &&
+      goal.status !== "done" &&
+      goal.status !== "blocked" &&
+      goal.status !== "archived"
   );
   const loopPlannerDisplayCommand = getLoopPlannerDisplayCommand(loopPlannerCommand.command, {
     hasCurrentRun: Boolean(currentLoopRun),

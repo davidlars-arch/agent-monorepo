@@ -13,6 +13,7 @@ import { Play, RotateCcw, StepForward } from "lucide-react";
 import { useState } from "react";
 
 type LoopRunnerAction = "claim-next-goal" | "start-current-run" | "resume-current-run";
+const terminalRunnerStatuses = new Set(["satisfied", "blocked", "failed", "passed", "merged"]);
 
 export function CurrentRunCard({
   currentLoopRun,
@@ -238,7 +239,7 @@ function getNextLoopRunnerAction({
     };
   }
 
-  if (currentRunnerState) {
+  if (currentRunnerState && !terminalRunnerStatuses.has(currentRunnerState.status)) {
     return {
       action: "resume-current-run" as const,
       label: "Resume runner",
