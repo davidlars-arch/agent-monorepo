@@ -113,6 +113,22 @@ export type ActivityDashboardModel = {
   activityTickets: KanbanTicket[];
 };
 
+export type PlannerRunnerTicketSyncInput = {
+  currentRun?: {
+    id?: string;
+    goalId?: string;
+    updatedAt?: string;
+    selectedTask?: {
+      id?: string;
+    };
+  } | null;
+  runnerState?: {
+    status?: string;
+    updatedAt?: string;
+  } | null;
+  currentCommit?: string;
+};
+
 export type PlannerStateExport = {
   version: 1;
   exportedAt: string;
@@ -416,6 +432,51 @@ export function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
   }));
 }
 
+export function applyRunnerStateToPlannerTickets(
+  tickets: KanbanTicket[],
+  { currentRun, runnerState, currentCommit = "" }: PlannerRunnerTicketSyncInput
+): KanbanTicket[] {
+  const ticketId = currentRun?.selectedTask?.id ?? currentRun?.goalId;
+  const runnerStatus = runnerState?.status;
+  if (!ticketId || !runnerStatus || !["satisfied", "blocked", "failed"].includes(runnerStatus)) {
+    return tickets;
+  }
+
+  const now = runnerState.updatedAt ?? currentRun?.updatedAt ?? new Date().toISOString();
+  let didChange = false;
+  const nextTickets = tickets.map((ticket) => {
+    if (ticket.id !== ticketId) {
+      return ticket;
+    }
+
+    const nextStatus: LoopTicketStatus = runnerStatus === "satisfied" ? "done" : "blocked";
+    const runnerTime = new Date(now).getTime();
+    const ticketTime = new Date(ticket.updatedAt).getTime();
+    if (Number.isFinite(ticketTime) && Number.isFinite(runnerTime) && ticketTime > runnerTime) {
+      return ticket;
+    }
+
+    const completedAt = nextStatus === "done" ? ticket.completedAt ?? now : undefined;
+    const completedCommit =
+      nextStatus === "done" ? ticket.completedCommit ?? (currentCommit && currentCommit !== "unknown" ? currentCommit : undefined) : undefined;
+    const tags = Array.from(new Set([...(ticket.tags ?? []), `runner-${runnerStatus}`]));
+    const updatedTicket = {
+      ...ticket,
+      status: nextStatus,
+      updatedAt: now,
+      movedAt: ticket.status === nextStatus ? ticket.movedAt : now,
+      completedAt,
+      completedCommit,
+      tags
+    };
+
+    didChange = didChange || hasTicketChanged(ticket, updatedTicket);
+    return updatedTicket;
+  });
+
+  return didChange ? nextTickets : tickets;
+}
+
 export function createPlannerStateExport(tickets: KanbanTicket[]): PlannerStateExport {
   return {
     version: plannerStateExportVersion,
@@ -578,6 +639,17 @@ function getPlannerTicketsFromImport(parsedState: unknown) {
   }
 
   return null;
+}
+
+function hasTicketChanged(left: KanbanTicket, right: KanbanTicket) {
+  return (
+    left.status !== right.status ||
+    left.updatedAt !== right.updatedAt ||
+    left.movedAt !== right.movedAt ||
+    left.completedAt !== right.completedAt ||
+    left.completedCommit !== right.completedCommit ||
+    (left.tags ?? []).join("\0") !== (right.tags ?? []).join("\0")
+  );
 }
 
 function coerceImportedTicket(ticket: unknown): KanbanTicket {

@@ -39,6 +39,14 @@ export type CurrentLoopRunSummary = {
   makerPromptPath?: string;
   checkerPromptPath?: string;
   evidencePath?: string;
+  selectedTask?: {
+    id: string;
+    title: string;
+    estimate: number;
+    score?: number;
+    maxEstimate?: number;
+    reason?: string;
+  };
 };
 
 export type RunnerTimelineEvent = {
