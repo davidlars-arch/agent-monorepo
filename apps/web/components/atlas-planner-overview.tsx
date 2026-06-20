@@ -3,7 +3,6 @@
 import {
   buildPlannerTickets,
   createPlannerStateExport,
-  formatPlannerDate,
   formatPlannerDateTime,
   getDefaultDateRange,
   getDefaultPlannerTicket,
@@ -11,7 +10,6 @@ import {
   getLoopGoalSummary,
   getLoopPlannerCommand,
   getUsageMetrics,
-  getWindowDecisionLabel,
   hydratePlannerTickets,
   normalizePlannerTicket,
   parsePlannerStateImport,
@@ -35,23 +33,18 @@ import type {
 } from "@agent/loop-store";
 import {
   Bot,
-  CalendarDays,
   CheckCircle2,
   CircleHelp,
   GitBranch,
-  Download,
   FileText,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
   ListChecks,
   Network,
-  Plus,
   RefreshCw,
-  RotateCcw,
   ShieldCheck,
   Target,
-  Upload,
   Workflow,
   X
 } from "lucide-react";
@@ -69,6 +62,7 @@ import {
   type GoalSafetySettings,
   type GoalVerificationCommand
 } from "./atlas-planner/goal-composer";
+import { KanbanBoard } from "./atlas-planner/kanban-board";
 import { TicketEditor } from "./atlas-planner/ticket-editor";
 
 type LoopSummary = {
@@ -1520,120 +1514,37 @@ export function AtlasPlannerOverview({
             />
           ) : null}
 
-          <section className="loop-kanban" aria-label="Atlas Planner Kanban">
-            <div className="loop-kanban__header">
-              <div>
-                <p>Atlas Planner</p>
-                <h3>Epics and tickets</h3>
-              </div>
-              <div className="loop-kanban__tools">
-                <span>{getWindowDecisionLabel(latestUsageStatus)}</span>
-                <button type="button" onClick={() => setIsActivityDashboardOpen(true)}>
-                  <CalendarDays size={14} />
-                  Dashboard
-                </button>
-                <button type="button" onClick={exportPlannerState}>
-                  <Download size={14} />
-                  Export
-                </button>
-                <button type="button" onClick={() => plannerImportInputRef.current?.click()}>
-                  <Upload size={14} />
-                  Import
-                </button>
-                <button type="button" onClick={resetPlannerState}>
-                  <RotateCcw size={14} />
-                  Reset
-                </button>
-                <button type="button" onClick={() => setIsGoalComposerOpen(true)}>
-                  <Target size={14} />
-                  Create goal
-                </button>
-                <button type="button" onClick={() => openTicketEditor(getDefaultPlannerTicket(loopKanban))}>
-                  <Plus size={14} />
-                  New ticket
-                </button>
-                <input
-                  ref={plannerImportInputRef}
-                  className="loop-kanban__import"
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    importPlannerState(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-              </div>
-            </div>
-            {plannerStateMessage ? <p className="loop-kanban__state-message">{plannerStateMessage}</p> : null}
-            <div className="loop-kanban__columns">
-              {kanbanColumns.map((column) => (
-                <article
-                  key={column.id}
-                  className={`loop-kanban__column${draggingTicketId ? " loop-kanban__column--dragging" : ""}${
-                    dragOverStatus === column.id ? " loop-kanban__column--drop-target" : ""
-                  }`}
-                  onDragEnter={() => setDragOverStatus(column.id)}
-                  onDragOver={(event) => handleColumnDragOver(event, column.id)}
-                  onDragLeave={(event) => handleColumnDragLeave(event, column.id)}
-                  onDrop={(event) => handleDrop(event, column.id)}
-                >
-                  <div className="loop-kanban__column-heading">
-                    <strong>{column.label}</strong>
-                    <span>{column.tickets.length}</span>
-                  </div>
-                  <div className="loop-kanban__cards">
-                    {column.tickets.map((ticket) => (
-                      <section
-                        key={ticket.id}
-                        className={`loop-ticket${draggingTicketId === ticket.id ? " loop-ticket--dragging" : ""}`}
-                        draggable
-                        onClick={(event) => handleTicketClick(event, ticket)}
-                        onDragStart={(event) => {
-                          suppressTicketClick();
-                          setDraggingTicketId(ticket.id);
-                          setDragOverStatus(ticket.status);
-                          event.dataTransfer.setData("text/plain", ticket.id);
-                          event.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => {
-                          suppressTicketClick();
-                          clearDragState();
-                        }}
-                      >
-                        <div className="loop-ticket__topline">
-                          <span>{ticket.projectLabel}</span>
-                          <strong>{ticket.estimate}</strong>
-                        </div>
-                        <h4>{ticket.id}: {ticket.title}</h4>
-                        <p>{ticket.description || ticket.summary}</p>
-                        <div className="loop-ticket__meta">
-                          <span>{ticket.epicLabel}</span>
-                          <small>
-                            {ticket.subtasks.filter((subtask) => subtask.done).length}/{ticket.subtasks.length} tasks ·{" "}
-                            {ticket.fitLabel}
-                          </small>
-                        </div>
-                        <div className="loop-ticket__dates">
-                          <span>Created {formatPlannerDate(ticket.createdAt)}</span>
-                          <span>Moved {formatPlannerDate(ticket.movedAt)}</span>
-                          {ticket.completedAt ? <span>Done {formatPlannerDate(ticket.completedAt)}</span> : null}
-                          {ticket.completedCommit ? <span>Commit {ticket.completedCommit}</span> : null}
-                        </div>
-                        {(ticket.tags ?? []).length > 0 ? (
-                          <div className="loop-ticket__tags" aria-label={`${ticket.id} tags`}>
-                            {(ticket.tags ?? []).slice(0, 4).map((tag) => (
-                              <span key={tag}>#{tag}</span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </section>
-                    ))}
-                    {column.tickets.length === 0 ? <p className="loop-kanban__empty">No tickets here.</p> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <KanbanBoard
+            columns={kanbanColumns}
+            projects={loopKanban}
+            usageStatus={latestUsageStatus}
+            stateMessage={plannerStateMessage}
+            draggingTicketId={draggingTicketId}
+            dragOverStatus={dragOverStatus}
+            importInputRef={plannerImportInputRef}
+            onOpenActivityDashboard={() => setIsActivityDashboardOpen(true)}
+            onExportPlannerState={exportPlannerState}
+            onImportPlannerState={importPlannerState}
+            onResetPlannerState={resetPlannerState}
+            onOpenGoalComposer={() => setIsGoalComposerOpen(true)}
+            onNewTicket={(projects) => openTicketEditor(getDefaultPlannerTicket(projects))}
+            onColumnDragEnter={setDragOverStatus}
+            onColumnDragOver={handleColumnDragOver}
+            onColumnDragLeave={handleColumnDragLeave}
+            onDrop={handleDrop}
+            onTicketClick={handleTicketClick}
+            onTicketDragStart={(event, ticket) => {
+              suppressTicketClick();
+              setDraggingTicketId(ticket.id);
+              setDragOverStatus(ticket.status);
+              event.dataTransfer.setData("text/plain", ticket.id);
+              event.dataTransfer.effectAllowed = "move";
+            }}
+            onTicketDragEnd={() => {
+              suppressTicketClick();
+              clearDragState();
+            }}
+          />
 
           {editingTicket ? (
             <TicketEditor
