@@ -10,11 +10,9 @@ import {
   getKanbanColumns,
   getLoopGoalSummary,
   getLoopPlannerCommand,
-  getTicketTimestamp,
   getUsageMetrics,
   getWindowDecisionLabel,
   hydratePlannerTickets,
-  isTimestampInRange,
   normalizePlannerTicket,
   parsePlannerStateImport,
   plannerTicketStorageKey,
@@ -59,6 +57,7 @@ import {
 } from "lucide-react";
 import type { CSSProperties, DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { ActivityDashboard } from "./atlas-planner/activity-dashboard";
 import {
   GoalComposer,
   getDefaultGoalDraft,
@@ -488,22 +487,6 @@ export function AtlasPlannerOverview({
   const loopGoalSummary = getLoopGoalSummary(loopKanban);
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
   const durableQueuedGoals = queuedGoalState;
-  const completedTicketsInRange = plannerTickets.filter((ticket) =>
-    isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
-  );
-  const completedTickets = [...completedTicketsInRange]
-    .sort((left, right) => new Date(right.completedAt ?? 0).getTime() - new Date(left.completedAt ?? 0).getTime())
-    .slice(0, 5);
-  const activityTickets = plannerTickets
-    .filter((ticket) =>
-      isTimestampInRange(getTicketTimestamp(ticket, activityDateFilter), activityDateRange.start, activityDateRange.end)
-    )
-    .sort(
-      (left, right) =>
-        new Date(getTicketTimestamp(right, activityDateFilter) ?? 0).getTime() -
-        new Date(getTicketTimestamp(left, activityDateFilter) ?? 0).getTime()
-    )
-    .slice(0, 8);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1527,104 +1510,14 @@ export function AtlasPlannerOverview({
           </section>
 
           {isActivityDashboardOpen ? (
-          <section className="loop-activity loop-activity--overlay" aria-label="Atlas Planner activity dashboard">
-            <div className="loop-activity__header">
-              <div>
-                <p>Activity dashboard</p>
-                <h3>Latest movement</h3>
-              </div>
-              <div className="loop-activity__filters">
-                <label>
-                  Timeline
-                  <select
-                    value={activityDateFilter}
-                    onChange={(event) => setActivityDateFilter(event.target.value as PlannerDateFilter)}
-                  >
-                    <option value="updated">Updated</option>
-                    <option value="created">Created</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </label>
-                <label>
-                  From
-                  <input
-                    type="date"
-                    value={activityDateRange.start}
-                    onChange={(event) =>
-                      setActivityDateRange((current) => ({ ...current, start: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  To
-                  <input
-                    type="date"
-                    value={activityDateRange.end}
-                    onChange={(event) => setActivityDateRange((current) => ({ ...current, end: event.target.value }))}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="loop-close-button"
-                  aria-label="Close activity dashboard"
-                  onClick={() => setIsActivityDashboardOpen(false)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="loop-activity__grid">
-              <article className="loop-activity__stat">
-                <span>
-                  <CheckCircle2 size={14} />
-                  Finished
-                </span>
-                <strong>{completedTicketsInRange.length}</strong>
-                <small>{activityDateRange.start} to {activityDateRange.end}</small>
-              </article>
-              <article className="loop-activity__finished">
-                <div>
-                  <strong>Latest finished tickets</strong>
-                  <small>Completed timestamp</small>
-                </div>
-                {completedTickets.length > 0 ? (
-                  completedTickets.map((ticket) => (
-                    <div key={ticket.id} className="loop-activity__row">
-                      <span>{ticket.id}</span>
-                      <p>{ticket.title}</p>
-                      <time>{formatPlannerDateTime(ticket.completedAt)}</time>
-                      {ticket.completedCommit ? <code>{ticket.completedCommit}</code> : null}
-                    </div>
-                  ))
-                ) : (
-                  <p className="loop-activity__empty">No finished tickets in this range.</p>
-                )}
-              </article>
-              <article className="loop-activity__timeline">
-                <div>
-                  <strong>{activityDateFilter} timeline</strong>
-                  <small>Last 7 days by default</small>
-                </div>
-                {activityTickets.length > 0 ? (
-                  activityTickets.map((ticket) => (
-                    <div key={`${ticket.id}-${activityDateFilter}`} className="loop-activity__event">
-                      <span />
-                      <div>
-                        <time>{formatPlannerDateTime(getTicketTimestamp(ticket, activityDateFilter))}</time>
-                        <strong>{ticket.id}: {ticket.title}</strong>
-                        <small>
-                          {ticket.projectLabel} · {ticket.status}
-                        </small>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="loop-activity__empty">No ticket activity in this range.</p>
-                )}
-              </article>
-            </div>
-          </section>
+            <ActivityDashboard
+              tickets={plannerTickets}
+              dateFilter={activityDateFilter}
+              dateRange={activityDateRange}
+              onDateFilterChange={setActivityDateFilter}
+              onDateRangeChange={setActivityDateRange}
+              onClose={() => setIsActivityDashboardOpen(false)}
+            />
           ) : null}
 
           <section className="loop-kanban" aria-label="Atlas Planner Kanban">
