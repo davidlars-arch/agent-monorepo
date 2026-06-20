@@ -179,6 +179,15 @@ export function useAtlasGoals({
           summary: ticket.summary,
           tags: ticket.tags,
           description: ticket.description,
+          goalContract: {
+            statement,
+            stopCondition,
+            scope,
+            maxEstimate: goalDraft.maxEstimate,
+            satisfactionLayers: contract.layers,
+            verificationCommands: goalDraft.verificationCommands,
+            safety: goalDraft.safety
+          },
           subtasks: ticket.subtasks,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt

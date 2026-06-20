@@ -1,5 +1,39 @@
 export type GoalLifecycleStatus = "draft" | "refined" | "approved" | "running" | "blocked" | "satisfied" | "archived";
 
+export type GoalContractLayer = {
+  id: string;
+  label: string;
+  criteria: string;
+  status: "pending" | "scaffolded" | "satisfied" | "blocked" | string;
+  humanGated: boolean;
+};
+
+export type GoalContractVerificationCommand = {
+  id: string;
+  label: string;
+  command: string;
+  required: boolean;
+};
+
+export type GoalContractSafetySettings = {
+  maxIterations: number;
+  maxRepairAttempts: number;
+  tokenBudget: string;
+  timeBudget: string;
+  allowedPaths: string;
+  externalActionPolicy: "disabled" | "pr-only" | "human-gated" | "auto-merge" | string;
+};
+
+export type GoalContract = {
+  statement: string;
+  stopCondition: string;
+  scope: string;
+  maxEstimate: number;
+  satisfactionLayers: GoalContractLayer[];
+  verificationCommands: GoalContractVerificationCommand[];
+  safety: GoalContractSafetySettings;
+};
+
 export type QueuedGoal = {
   id: string;
   title: string;
@@ -10,6 +44,7 @@ export type QueuedGoal = {
   summary: string;
   tags: string[];
   description: string;
+  goalContract: GoalContract;
   subtasks: Array<{ id: string; title: string; done: boolean }>;
   createdAt: string;
   updatedAt: string;
@@ -27,6 +62,7 @@ export type CurrentLoopRunSummary = {
   id: string;
   goalId: string;
   goalTitle: string;
+  goalContract?: GoalContract;
   status: string;
   stage: string;
   claimedAt: string;
@@ -107,12 +143,24 @@ export type RunnerEvidenceFinding = {
   at?: string;
 };
 
+export type RunnerEvidenceLayerProof = {
+  layerId: string;
+  label: string;
+  status: string;
+  criteria?: string;
+  humanGated?: boolean;
+  proof: string[];
+  missing?: string[];
+  at?: string;
+};
+
 export type RunnerEvidenceSummary = {
   status: string;
   repairAttempts: number;
   maxRepairs: number;
   checks: RunnerEvidenceCheck[];
   findings: RunnerEvidenceFinding[];
+  satisfactionLayers?: RunnerEvidenceLayerProof[];
 };
 
 export type ControllerMemorySummary = {

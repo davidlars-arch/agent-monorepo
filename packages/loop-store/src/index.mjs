@@ -74,6 +74,7 @@ export function validateQueuedGoalInput(body, { now = new Date().toISOString() }
   const lifecycleStatus = isGoalLifecycleStatus(body.lifecycleStatus) ? body.lifecycleStatus : "draft";
   const approvedToRun = body.approvedToRun === true && isApprovedLifecycle(lifecycleStatus);
   const estimate = clampInteger(Number(body.estimate ?? 8), 1, 21);
+  const contract = sanitizeGoalContract(body.goalContract, body, estimate);
   const goal = {
     id: body.id.trim().slice(0, 80),
     title: body.title.trim().slice(0, 180),
@@ -84,6 +85,7 @@ export function validateQueuedGoalInput(body, { now = new Date().toISOString() }
     summary: sanitizeString(body.summary, 1000),
     tags: sanitizeGoalTags(body.tags, approvedToRun, lifecycleStatus),
     description: sanitizeString(body.description, 12_000),
+    goalContract: contract,
     subtasks: sanitizeSubtasks(body.subtasks),
     createdAt: sanitizeIsoDate(body.createdAt) ?? now,
     updatedAt: now
@@ -336,6 +338,78 @@ function sanitizeSubtasks(value) {
       title: typeof item.title === "string" ? item.title.trim().slice(0, 240) : "Untitled subtask",
       done: item.done === true
     }));
+}
+
+function sanitizeGoalContract(value, fallback, estimate) {
+  const source = value && typeof value === "object" ? value : {};
+  const statement = sanitizeString(source.statement ?? source.outcome ?? fallback.summary, 4000);
+  const stopCondition = sanitizeString(source.stopCondition ?? fallback.stopCondition, 2000);
+  const scope = sanitizeString(source.scope ?? fallback.scope, 4000);
+  const maxEstimate = clampInteger(Number(source.maxEstimate ?? fallback.estimate ?? estimate), 1, 21);
+
+  return {
+    statement,
+    stopCondition,
+    scope,
+    maxEstimate,
+    satisfactionLayers: sanitizeSatisfactionLayers(source.satisfactionLayers ?? source.layers),
+    verificationCommands: sanitizeVerificationCommands(source.verificationCommands ?? source.verification),
+    safety: sanitizeSafetySettings(source.safety)
+  };
+}
+
+function sanitizeSatisfactionLayers(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: sanitizeString(item.id, 80) || `layer-${index + 1}`,
+      label: sanitizeString(item.label ?? item.title, 160) || `Layer ${index + 1}`,
+      criteria: sanitizeString(item.criteria, 2000),
+      status: sanitizeLayerStatus(item.status),
+      humanGated: item.humanGated === true
+    }));
+}
+
+function sanitizeVerificationCommands(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: sanitizeString(item.id, 80) || `verify-${index + 1}`,
+      label: sanitizeString(item.label ?? item.name, 160) || `Verification ${index + 1}`,
+      command: sanitizeString(item.command, 1000),
+      required: item.required !== false
+    }))
+    .filter((item) => item.command);
+}
+
+function sanitizeSafetySettings(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    maxIterations: clampInteger(Number(source.maxIterations ?? 6), 1, 20),
+    maxRepairAttempts: clampInteger(Number(source.maxRepairAttempts ?? 3), 0, 5),
+    tokenBudget: sanitizeString(source.tokenBudget, 1000),
+    timeBudget: sanitizeString(source.timeBudget, 1000),
+    allowedPaths: sanitizeString(source.allowedPaths, 2000),
+    externalActionPolicy: sanitizeExternalActionPolicy(source.externalActionPolicy)
+  };
+}
+
+function sanitizeLayerStatus(value) {
+  return ["pending", "scaffolded", "satisfied", "blocked"].includes(value) ? value : "pending";
+}
+
+function sanitizeExternalActionPolicy(value) {
+  return ["disabled", "pr-only", "human-gated", "auto-merge"].includes(value) ? value : "human-gated";
 }
 
 function sanitizeIsoDate(value) {

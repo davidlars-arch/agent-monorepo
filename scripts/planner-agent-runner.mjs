@@ -61,8 +61,10 @@ function parseArgs(rawArgs) {
     agentCommand: process.env.ATLAS_AGENT_COMMAND ?? "",
     base: "HEAD",
     dryRun: false,
+    goalContract: null,
     goalTitle: "",
     maxRepairs: 0,
+    maxRepairsProvided: false,
     resume: false
   };
 
@@ -87,6 +89,7 @@ function parseArgs(rawArgs) {
         "--worktree-dir",
         "--run-id",
         "--goal-title",
+        "--goal-contract-json",
         "--handoff-dir",
         "--agent-command",
         "--maker-command",
@@ -112,6 +115,8 @@ function parseArgs(rawArgs) {
         options.runId = value;
       } else if (arg === "--goal-title") {
         options.goalTitle = value;
+      } else if (arg === "--goal-contract-json") {
+        options.goalContract = parseGoalContractArg(value);
       } else if (arg === "--handoff-dir") {
         options.handoffDir = value;
       } else if (arg === "--agent-command") {
@@ -124,6 +129,7 @@ function parseArgs(rawArgs) {
         options.repairCommand = value;
       } else if (arg === "--max-repairs") {
         options.maxRepairs = Number.parseInt(value, 10);
+        options.maxRepairsProvided = true;
       }
 
       index += 1;
@@ -188,6 +194,7 @@ function buildPlan(options) {
     ticketId: options.ticketId,
     runId,
     goalTitle: options.goalTitle,
+    goalContract: normalizeGoalContract(options.goalContract, { title: options.goalTitle }),
     branch: options.branch,
     base: options.base,
     worktreePath,
@@ -235,6 +242,7 @@ function buildResumePlan(options) {
     ticketId: state.ticketId,
     runId: state.runId,
     goalTitle: state.goalTitle ?? "",
+    goalContract: normalizeGoalContract(state.goalContract, { title: state.goalTitle ?? "" }),
     branch: state.branch,
     base: state.base,
     worktreePath,
@@ -243,7 +251,7 @@ function buildResumePlan(options) {
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
-    maxRepairs: options.maxRepairs,
+    maxRepairs: options.maxRepairsProvided ? options.maxRepairs : clampRepairAttempts(state.maxRepairs),
     files: state.files ?? {
       state: relative(process.cwd(), statePath),
       makerPrompt: relative(process.cwd(), join(handoffDir, "maker-prompt.md")),
@@ -292,6 +300,14 @@ function validateIdValue(value, flag) {
   }
 }
 
+function clampRepairAttempts(value) {
+  const attempts = Number(value);
+  if (!Number.isInteger(attempts)) {
+    return 0;
+  }
+  return Math.min(5, Math.max(0, attempts));
+}
+
 function sanitizeName(value) {
   const sanitized = value
     .trim()
@@ -320,6 +336,7 @@ function writeRunFiles(plan) {
         runId: plan.runId,
         ticketId: plan.ticketId,
         goalTitle: plan.goalTitle,
+        goalContract: plan.goalContract,
         branch: plan.branch,
         base: plan.base,
         worktreePath: plan.worktreePath,
@@ -352,6 +369,7 @@ function writeRunFiles(plan) {
         status: "awaiting-maker",
         repairAttempts: 0,
         maxRepairs: plan.maxRepairs,
+        satisfactionLayers: createInitialLayerEvidence(plan.goalContract),
         checks: [],
         findings: [],
         events: []
@@ -480,7 +498,39 @@ function hasBlockerFindings(event) {
   return Boolean(
     event.structuredStatus === "blocked" ||
       event.structuredStatus === "failed" ||
-      event.structuredFindings?.some((finding) => finding.severity === "blocker")
+      event.structuredFindings?.some((finding) => finding.severity === "blocker") ||
+      hasUnsatisfiedLayerProof(event)
+  );
+}
+
+function hasUnsatisfiedLayerProof(event) {
+  if (event.stage !== "checker") {
+    return false;
+  }
+
+  const requiredLayerIds = Array.isArray(event.requiredSatisfactionLayerIds) ? event.requiredSatisfactionLayerIds : [];
+  const layerProof = Array.isArray(event.structuredSatisfactionLayers) ? event.structuredSatisfactionLayers : [];
+  if (requiredLayerIds.length === 0 && layerProof.length === 0) {
+    return false;
+  }
+
+  const byId = new Map(layerProof.map((layer) => [firstString(layer.layerId, layer.label) ?? "", layer]));
+  for (const requiredLayerId of requiredLayerIds) {
+    const layer = byId.get(requiredLayerId);
+    if (!isLayerProofSatisfied(layer)) {
+      return true;
+    }
+  }
+
+  return layerProof.some((layer) => !isLayerProofSatisfied(layer));
+}
+
+function isLayerProofSatisfied(layer) {
+  return Boolean(
+    layer &&
+      layer.status === "satisfied" &&
+      stringList(layer.proof).length > 0 &&
+      stringList(layer.missing).length === 0
   );
 }
 
@@ -525,6 +575,7 @@ function runLoopCommand(stage, command, plan, details = {}) {
     startedAt,
     finishedAt: new Date().toISOString(),
     repairAttempt: details.attempt ?? 0,
+    requiredSatisfactionLayerIds: getRequiredSatisfactionLayerIds(plan.goalContract),
     ...parseStructuredCheckerOutput(stage, result.stdout, result.stderr)
   };
 }
@@ -538,6 +589,16 @@ function getStagePromptPath(stage, plan) {
   }
 
   return "";
+}
+
+function getRequiredSatisfactionLayerIds(goalContract) {
+  if (!goalContract || !Array.isArray(goalContract.satisfactionLayers)) {
+    return [];
+  }
+
+  return goalContract.satisfactionLayers
+    .map((layer) => firstString(layer.id, layer.layerId, layer.label))
+    .filter(Boolean);
 }
 
 function expandCommandTemplate(command, values) {
@@ -571,7 +632,8 @@ function parseStructuredCheckerOutput(stage, stdout, stderr) {
   return {
     structuredStatus: typeof parsed.status === "string" ? parsed.status : undefined,
     structuredSummary: typeof parsed.summary === "string" ? parsed.summary : undefined,
-    structuredFindings
+    structuredFindings,
+    structuredSatisfactionLayers: normalizeLayerProof(parsed.satisfactionLayers ?? parsed.layerProof)
   };
 }
 
@@ -616,8 +678,52 @@ function normalizeCheckerFinding(finding) {
   };
 }
 
+function normalizeLayerProof(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item) => {
+      const layerId = firstString(item.layerId, item.id);
+      const label = firstString(item.label, item.title);
+      if (!layerId && !label) {
+        return null;
+      }
+
+      return {
+        layerId: layerId || label,
+        label: label || layerId,
+        status: normalizeLayerProofStatus(firstString(item.status) ?? "pending"),
+        criteria: firstString(item.criteria),
+        humanGated: item.humanGated === true,
+        proof: stringList(item.proof ?? item.evidence),
+        missing: stringList(item.missing ?? item.gaps),
+        at: firstString(item.at)
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeLayerProofStatus(value) {
+  const status = value.toLowerCase();
+  return ["pending", "scaffolded", "satisfied", "blocked"].includes(status) ? status : "pending";
+}
+
 function firstString(...values) {
   return values.find((value) => typeof value === "string" && value.trim() !== "")?.trim();
+}
+
+function stringList(value) {
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 20);
 }
 
 function appendEvidenceEvent(plan, event) {
@@ -654,6 +760,10 @@ function appendEvidenceEvent(plan, event) {
     ];
   }
 
+  if (event.structuredSatisfactionLayers?.length) {
+    next.satisfactionLayers = mergeLayerEvidence(next.satisfactionLayers ?? evidence.satisfactionLayers ?? [], event.structuredSatisfactionLayers, event);
+  }
+
   if (hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
     next.findings = [
       ...(next.findings ?? evidence.findings ?? []),
@@ -685,6 +795,32 @@ function appendEvidenceEvent(plan, event) {
   writeJson(evidencePath, next);
 }
 
+function mergeLayerEvidence(existing, incoming, event) {
+  const byId = new Map();
+  for (const layer of Array.isArray(existing) ? existing : []) {
+    if (layer && typeof layer === "object") {
+      byId.set(firstString(layer.layerId, layer.id, layer.label) ?? "", layer);
+    }
+  }
+
+  for (const layer of incoming) {
+    const key = firstString(layer.layerId, layer.label) ?? "";
+    const previous = byId.get(key) ?? {};
+    byId.set(key, {
+      ...previous,
+      ...layer,
+      proof: [...stringList(previous.proof), ...stringList(layer.proof)],
+      missing: [...stringList(previous.missing), ...stringList(layer.missing)],
+      at: layer.at ?? event.finishedAt,
+      stage: event.stage,
+      command: event.command,
+      repairAttempt: event.repairAttempt
+    });
+  }
+
+  return Array.from(byId.values()).filter((layer) => firstString(layer.layerId, layer.label));
+}
+
 function updateEvidenceStatus(plan, status, repairAttempts) {
   const evidencePath = join(plan.handoffDir, "evidence.json");
   const evidence = readJson(evidencePath);
@@ -713,6 +849,7 @@ function writeJson(path, value) {
 }
 
 function renderMakerPrompt(plan) {
+  const contract = renderGoalContract(plan.goalContract);
   return `# Maker Handoff
 
 - Run: \`${plan.runId}\`
@@ -724,6 +861,10 @@ function renderMakerPrompt(plan) {
 
 Implement one bounded slice for this ticket in the worktree. Keep the diff scoped, run the relevant checks, and update \`${plan.files.evidence}\` with changed files, verification commands, and a short summary.
 
+## Goal Contract
+
+${contract}
+
 Runtime env:
 
 - \`ATLAS_STAGE=maker\`
@@ -733,21 +874,35 @@ Runtime env:
 }
 
 function renderCheckerPrompt(plan) {
+  const contract = renderGoalContract(plan.goalContract);
   return `# Checker Handoff
 
 - Run: \`${plan.runId}\`
 - Ticket: \`${plan.ticketId}\`
+- Goal: ${plan.goalTitle || "No goal title supplied."}
 - Branch: \`${plan.branch}\`
 - Worktree: \`${plan.worktreePath}\`
 - Evidence: \`${plan.files.evidence}\`
 
 Review the maker diff and verification evidence. Record blocker findings before any merge or satisfaction decision. Do not mark the run satisfied from maker output alone.
 
+## Goal Contract
+
+${contract}
+
 If you find blockers, print structured JSON to stdout so the runner can record it:
 
 \`\`\`json
 {
   "status": "blocked",
+  "satisfactionLayers": [
+    {
+      "layerId": "goal-contract",
+      "status": "blocked",
+      "proof": [],
+      "missing": ["Describe the missing layer proof."]
+    }
+  ],
   "findings": [
     {
       "severity": "blocker",
@@ -762,6 +917,124 @@ If you find blockers, print structured JSON to stdout so the runner can record i
 
 Use \`status: "passed"\` with an empty \`findings\` array when the diff satisfies the goal and evidence requirements.
 `;
+}
+
+function parseGoalContractArg(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    throw new Error("--goal-contract-json must be valid JSON object text");
+  }
+}
+
+function normalizeGoalContract(value, fallback = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    statement: firstString(source.statement, source.outcome, fallback.title) ?? "",
+    stopCondition: firstString(source.stopCondition) ?? "",
+    scope: firstString(source.scope) ?? "",
+    maxEstimate: Number.isFinite(Number(source.maxEstimate)) ? Number(source.maxEstimate) : undefined,
+    satisfactionLayers: normalizeContractLayers(source.satisfactionLayers ?? source.layers),
+    verificationCommands: normalizeVerificationCommands(source.verificationCommands ?? source.verification),
+    safety: normalizeSafetySettings(source.safety)
+  };
+}
+
+function normalizeContractLayers(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: firstString(item.id) ?? `layer-${index + 1}`,
+      label: firstString(item.label, item.title) ?? `Layer ${index + 1}`,
+      criteria: firstString(item.criteria) ?? "",
+      status: normalizeLayerProofStatus(firstString(item.status) ?? "pending"),
+      humanGated: item.humanGated === true
+    }));
+}
+
+function normalizeVerificationCommands(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 20)
+    .map((item, index) => ({
+      id: firstString(item.id) ?? `verify-${index + 1}`,
+      label: firstString(item.label, item.name) ?? `Verification ${index + 1}`,
+      command: firstString(item.command) ?? "",
+      required: item.required !== false
+    }))
+    .filter((item) => item.command);
+}
+
+function normalizeSafetySettings(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    maxIterations: Number.isFinite(Number(source.maxIterations)) ? Number(source.maxIterations) : undefined,
+    maxRepairAttempts: Number.isFinite(Number(source.maxRepairAttempts)) ? Number(source.maxRepairAttempts) : undefined,
+    tokenBudget: firstString(source.tokenBudget) ?? "",
+    timeBudget: firstString(source.timeBudget) ?? "",
+    allowedPaths: firstString(source.allowedPaths) ?? "",
+    externalActionPolicy: firstString(source.externalActionPolicy) ?? ""
+  };
+}
+
+function createInitialLayerEvidence(contract) {
+  return contract.satisfactionLayers.map((layer) => ({
+    layerId: layer.id,
+    label: layer.label,
+    status: layer.status,
+    criteria: layer.criteria,
+    humanGated: layer.humanGated,
+    proof: [],
+    missing: []
+  }));
+}
+
+function renderGoalContract(contract) {
+  const layers = contract.satisfactionLayers.length
+    ? contract.satisfactionLayers
+        .map((layer) => `- [${layer.status}${layer.humanGated ? ", human-gated" : ""}] ${layer.id} - ${layer.label}: ${layer.criteria}`)
+        .join("\n")
+    : "- No satisfaction layers supplied.";
+  const verification = contract.verificationCommands.length
+    ? contract.verificationCommands
+        .map((item) => `- [${item.required ? "required" : "optional"}] ${item.label}: \`${item.command}\``)
+        .join("\n")
+    : "- No verification commands supplied.";
+  const safetyLines = [
+    ["Max estimate", contract.maxEstimate],
+    ["Max iterations", contract.safety.maxIterations],
+    ["Max repair attempts", contract.safety.maxRepairAttempts],
+    ["Token budget", contract.safety.tokenBudget],
+    ["Time budget", contract.safety.timeBudget],
+    ["Allowed paths", contract.safety.allowedPaths],
+    ["External actions", contract.safety.externalActionPolicy]
+  ]
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(([label, value]) => `- ${label}: ${value}`)
+    .join("\n");
+
+  return `Statement: ${contract.statement || "No statement supplied."}
+
+Stop condition: ${contract.stopCondition || "No stop condition supplied."}
+
+Scope: ${contract.scope || "No scope supplied."}
+
+Satisfaction layers:
+${layers}
+
+Verification commands:
+${verification}
+
+Safety settings:
+${safetyLines || "- No safety settings supplied."}`;
 }
 
 function fail(message, details) {
