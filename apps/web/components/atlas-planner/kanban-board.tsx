@@ -4,7 +4,6 @@ import {
   formatPlannerDate,
   getWindowDecisionLabel,
   type KanbanTicket,
-  type LoopKanbanProject,
   type LoopTicketStatus,
   type PlannerTicketDraft,
   type UsageStatusSnapshot
@@ -20,7 +19,6 @@ type KanbanColumn = {
 
 export function KanbanBoard({
   columns,
-  projects,
   usageStatus,
   stateMessage,
   draggingTicketId,
@@ -41,7 +39,6 @@ export function KanbanBoard({
   onTicketDragEnd
 }: {
   columns: KanbanColumn[];
-  projects: LoopKanbanProject[];
   usageStatus: UsageStatusSnapshot | null;
   stateMessage: string;
   draggingTicketId: string | null;
@@ -52,7 +49,7 @@ export function KanbanBoard({
   onImportPlannerState: (file: File | undefined) => void;
   onResetPlannerState: () => void;
   onOpenGoalComposer: () => void;
-  onNewTicket: (projects: LoopKanbanProject[]) => void;
+  onNewTicket: () => void;
   onColumnDragEnter: (status: LoopTicketStatus) => void;
   onColumnDragOver: (event: DragEvent<HTMLElement>, status: LoopTicketStatus) => void;
   onColumnDragLeave: (event: DragEvent<HTMLElement>, status: LoopTicketStatus) => void;
@@ -90,7 +87,7 @@ export function KanbanBoard({
             <Target size={14} />
             Create goal
           </button>
-          <button type="button" onClick={() => onNewTicket(projects)}>
+          <button type="button" onClick={onNewTicket}>
             <Plus size={14} />
             New ticket
           </button>
