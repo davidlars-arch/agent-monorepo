@@ -149,9 +149,9 @@
             {
               "id": "WA-3",
               "title": "Persist board changes from UI",
-              "status": "backlog",
+              "status": "done",
               "estimate": 13,
-              "summary": "Add a controlled editor for moving tickets between columns."
+              "summary": "Board edits are persisted through the repo-backed planner tickets API with browser fallback."
             }
           ]
         }
@@ -292,23 +292,23 @@
               "title": "Build reliable loop control panel",
               "status": "in-progress",
               "estimate": 8,
-              "summary": "Expose the next loop command, token fit, stop condition, maker/checker split, and state-memory contract in Atlas Planner.",
+              "summary": "Expose the next loop command, token fit, stop condition, maker/checker split, state-memory contract, and start/resume actions in Atlas Planner.",
               "tags": ["loop-engineering", "reliability"]
             },
             {
               "id": "AP-4",
               "title": "Persist controller run evidence",
-              "status": "backlog",
+              "status": "in-progress",
               "estimate": 8,
-              "summary": "Read latest-report.md and state.json into the planner so completed work has command, status, and verification evidence.",
+              "summary": "Read latest-report.md, state.json, decisions, current-run, runner state, and structured satisfaction evidence into the planner.",
               "tags": ["state-memory", "evidence"]
             },
             {
               "id": "AP-5",
               "title": "Add verifier handoff workflow",
-              "status": "backlog",
+              "status": "in-progress",
               "estimate": 5,
-              "summary": "Make maker/checker handoff explicit before a loop can mark a ticket done.",
+              "summary": "Make maker/checker handoff carry the full goal contract and block satisfaction until checker evidence passes.",
               "tags": ["maker-checker", "verification"]
             },
             {
@@ -318,6 +318,54 @@
               "estimate": 21,
               "summary": "Link planner tickets to worktree branches, agent run evidence, verification output, and commit history.",
               "tags": ["worktree", "agent-runner", "evidence"]
+            },
+            {
+              "id": "AP-15",
+              "title": "Pass full goal contract into runner handoff",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Persist statement, stop condition, scope, satisfaction layers, verification commands, and safety settings in current-run and runner prompts.",
+              "tags": ["goal-contract", "runner", "handoff"]
+            },
+            {
+              "id": "AP-16",
+              "title": "Add start and resume loop controls",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Add an Atlas API and UI controls to claim approved goals, run/resume the agent runner, and stream or refresh runner state.",
+              "tags": ["loop-start", "ui", "api"]
+            },
+            {
+              "id": "AP-17",
+              "title": "Wire maker and checker agent commands",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Configure bounded maker, checker, and repair command templates so Atlas Planner can execute real isolated agent work.",
+              "tags": ["agent-runner", "maker-checker", "repair-loop"]
+            },
+            {
+              "id": "AP-18",
+              "title": "Sync terminal runs back to goals",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "When runner state becomes satisfied, blocked, or failed, update goal-queue lifecycle, planner ticket status, current-run recovery, and evidence timestamps consistently.",
+              "tags": ["goal-lifecycle", "runner-sync"]
+            },
+            {
+              "id": "AP-19",
+              "title": "Record satisfaction-layer proof",
+              "status": "backlog",
+              "estimate": 8,
+              "summary": "Require checker evidence to map verification output and findings to each goal layer before a run can be marked satisfied.",
+              "tags": ["evidence", "satisfaction-layers", "checker"]
+            },
+            {
+              "id": "AP-20",
+              "title": "Implement PR and merge gate automation",
+              "status": "backlog",
+              "estimate": 13,
+              "summary": "Create gated PR creation, CI/review status capture, merge approval, post-merge pull, and worktree cleanup for completed runs.",
+              "tags": ["github", "merge-gates", "worktree-cleanup"]
             }
           ]
         }
