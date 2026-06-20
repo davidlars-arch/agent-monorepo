@@ -318,6 +318,31 @@ export function runAtlasLoopRunnerAction(
       finishedAt?: string;
     }
 >;
+export function prepareAtlasLoopRunnerHandoff(
+  root: string,
+  action: "start-current-run" | "resume-current-run"
+): Promise<
+  | {
+      ok: true;
+      status: "handoff-required";
+      action: string;
+      currentRun: CurrentLoopRunSummary;
+      command: string;
+      reason: string;
+    }
+  | {
+      ok: false;
+      status:
+        | "missing-current-run"
+        | "invalid-current-run"
+        | "runner-state-exists"
+        | "missing-runner-state"
+        | "terminal-current-run"
+        | "terminal-runner-state"
+        | "unsupported-action";
+      reason: string;
+    }
+>;
 export function syncTerminalAtlasRun(
   root: string,
   currentRun: Partial<CurrentLoopRunSummary> | null | undefined

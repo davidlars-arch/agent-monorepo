@@ -1586,6 +1586,7 @@ nextjs-portal,
   color: rgba(226, 232, 240, 0.68);
   font-size: 11px;
   line-height: 1.38;
+  overflow-wrap: anywhere;
 }
 
 .loop-run-controls article p {
