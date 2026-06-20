@@ -17,6 +17,7 @@ import type {
 } from "@agent/loop-store";
 import { CheckCircle2, GitBranch, ShieldCheck, Workflow } from "lucide-react";
 import {
+  getLoopPlannerDisplayCommand,
   getLoopRunTimeline,
   loopEvidenceSources,
   prMergeGates,
@@ -48,6 +49,13 @@ export function LoopReliabilityPanel({
   onUpdateQueuedGoalLifecycle: (goal: QueuedGoalSummary, lifecycleStatus: GoalLifecycleStatus) => void;
 }) {
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
+  const claimableQueuedGoal = durableQueuedGoals.find(
+    (goal) => goal.approvedToRun || goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running"
+  );
+  const loopPlannerDisplayCommand = getLoopPlannerDisplayCommand(loopPlannerCommand.command, {
+    hasCurrentRun: Boolean(currentLoopRun),
+    hasClaimableQueuedGoal: Boolean(claimableQueuedGoal)
+  });
 
   return (
     <section className="loop-reliability" aria-label="Reliable loop planner">
@@ -68,7 +76,7 @@ export function LoopReliabilityPanel({
             <Workflow size={14} />
             Run
           </span>
-          <code>{loopPlannerCommand.command}</code>
+          <code>{loopPlannerDisplayCommand}</code>
         </article>
         <article>
           <span>
@@ -192,6 +200,7 @@ export function LoopReliabilityPanel({
         currentRunnerEvidence={currentRunnerEvidence}
         controllerLock={controllerLock}
         currentRunRecovery={currentRunRecovery}
+        claimableQueuedGoal={claimableQueuedGoal}
       />
 
       <section className="loop-run-timeline" aria-label="Loop run timeline">
