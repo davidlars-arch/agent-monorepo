@@ -1,0 +1,485 @@
+"use client";
+
+import {
+  formatPlannerDateTime,
+  getLoopGoalSummary,
+  type LoopPlannerCommand
+} from "@agent/atlas-planner";
+import type {
+  ControllerMemorySummary,
+  CurrentLoopRunSummary,
+  GoalLifecycleStatus,
+  QueuedGoalSummary,
+  RunnerEvidenceSummary,
+  RunnerStateSummary
+} from "@agent/loop-store";
+import { CheckCircle2, GitBranch, ShieldCheck, Workflow } from "lucide-react";
+import {
+  getLoopRunTimeline,
+  loopEvidenceSources,
+  prMergeGates,
+  reliabilityPrimitives
+} from "./overview-data";
+
+export function LoopReliabilityPanel({
+  loopPlannerCommand,
+  loopGoalSummary,
+  durableQueuedGoals,
+  currentLoopRun,
+  currentRunnerState,
+  currentRunnerEvidence,
+  controllerMemory,
+  onUpdateQueuedGoalLifecycle
+}: {
+  loopPlannerCommand: LoopPlannerCommand;
+  loopGoalSummary: ReturnType<typeof getLoopGoalSummary>;
+  durableQueuedGoals: QueuedGoalSummary[];
+  currentLoopRun?: CurrentLoopRunSummary | null;
+  currentRunnerState?: RunnerStateSummary | null;
+  currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerMemory?: ControllerMemorySummary | null;
+  onUpdateQueuedGoalLifecycle: (goal: QueuedGoalSummary, lifecycleStatus: GoalLifecycleStatus) => void;
+}) {
+  const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
+
+  return (
+    <section className="loop-reliability" aria-label="Reliable loop planner">
+      <div className="loop-reliability__header">
+        <div>
+          <p>Reliable loop planner</p>
+          <h3>Next controlled run</h3>
+        </div>
+        <span>
+          <ShieldCheck size={14} />
+          Maker/checker required
+        </span>
+      </div>
+
+      <div className="loop-command-strip">
+        <article>
+          <span>
+            <Workflow size={14} />
+            Run
+          </span>
+          <code>{loopPlannerCommand.command}</code>
+        </article>
+        <article>
+          <span>
+            <CheckCircle2 size={14} />
+            Verify
+          </span>
+          <code>{loopPlannerCommand.verificationCommand}</code>
+        </article>
+        <article>
+          <span>
+            <GitBranch size={14} />
+            Stop
+          </span>
+          <p>{loopPlannerCommand.stopCondition}</p>
+        </article>
+      </div>
+
+      <div className="loop-decision">
+        <div>
+          <span>Recommended ticket</span>
+          <strong>
+            {loopPlannerCommand.ticket
+              ? `${loopPlannerCommand.ticket.id}: ${loopPlannerCommand.ticket.title}`
+              : "No actionable ticket"}
+          </strong>
+          <p>{loopPlannerCommand.reason}</p>
+          {loopPlannerCommand.decision.selected ? (
+            <div className="loop-decision__score" aria-label="Planner score breakdown">
+              <span>fit {loopPlannerCommand.decision.selected.breakdown.fit}</span>
+              <span>value {loopPlannerCommand.decision.selected.breakdown.value}</span>
+              <span>ready {loopPlannerCommand.decision.selected.breakdown.readiness}</span>
+              <span>fresh {loopPlannerCommand.decision.selected.breakdown.freshness}</span>
+              <span>risk {loopPlannerCommand.decision.selected.breakdown.risk}</span>
+            </div>
+          ) : null}
+          {loopPlannerCommand.decision.skipped.length > 0 ? (
+            <p className="loop-decision__skipped">
+              Deferred:{" "}
+              {loopPlannerCommand.decision.skipped
+                .slice(0, 2)
+                .map((candidate) => `${candidate.ticket.id} (${candidate.ticket.estimate} pts)`)
+                .join(", ")}
+            </p>
+          ) : null}
+        </div>
+        <dl>
+          <div>
+            <dt>Score</dt>
+            <dd>{loopPlannerCommand.decision.selected?.score ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Token gate</dt>
+            <dd>{loopPlannerCommand.maxEstimate} pts</dd>
+          </div>
+          <div>
+            <dt>Open</dt>
+            <dd>{loopPlannerCommand.counts.backlog + loopPlannerCommand.counts["in-progress"]}</dd>
+          </div>
+          <div>
+            <dt>Review</dt>
+            <dd>{loopPlannerCommand.counts.review}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <section className="loop-goal-queue" aria-label="Durable goal queue">
+        <div className="loop-goal-queue__header">
+          <div>
+            <span>Durable goal queue</span>
+            <strong>{durableQueuedGoals.length} queued</strong>
+          </div>
+          <code>loops/project-controller/goal-queue.json</code>
+        </div>
+        {durableQueuedGoals.length > 0 ? (
+          <div className="loop-goal-queue__list">
+            {durableQueuedGoals.slice(0, 4).map((goal) => (
+              <article key={goal.id}>
+                <div>
+                  <span>{goal.lifecycleStatus}</span>
+                  <strong>{goal.title}</strong>
+                </div>
+                <p>
+                  {goal.id} · {goal.status} · {goal.estimate} pts
+                  {goal.approvedToRun ? " · approved" : ""}
+                </p>
+                <div className="loop-goal-queue__actions">
+                  {goal.lifecycleStatus === "draft" || goal.lifecycleStatus === "refined" ? (
+                    <button type="button" onClick={() => onUpdateQueuedGoalLifecycle(goal, "approved")}>
+                      Approve
+                    </button>
+                  ) : null}
+                  {goal.lifecycleStatus !== "blocked" &&
+                  goal.lifecycleStatus !== "satisfied" &&
+                  goal.lifecycleStatus !== "archived" ? (
+                    <button type="button" onClick={() => onUpdateQueuedGoalLifecycle(goal, "blocked")}>
+                      Block
+                    </button>
+                  ) : null}
+                  {goal.lifecycleStatus !== "satisfied" && goal.lifecycleStatus !== "archived" ? (
+                    <button type="button" onClick={() => onUpdateQueuedGoalLifecycle(goal, "satisfied")}>
+                      Satisfy
+                    </button>
+                  ) : null}
+                  {goal.lifecycleStatus !== "archived" ? (
+                    <button type="button" onClick={() => onUpdateQueuedGoalLifecycle(goal, "archived")}>
+                      Archive
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>No durable goals yet. Saving a goal writes it here for the controller.</p>
+        )}
+      </section>
+
+      <section className="loop-current-run" aria-label="Current loop run">
+        <div className="loop-current-run__header">
+          <div>
+            <span>Current run</span>
+            <strong>{currentLoopRun ? currentLoopRun.goalTitle : "No claimed goal"}</strong>
+          </div>
+          <p>{currentLoopRun ? currentLoopRun.stage : "idle"}</p>
+        </div>
+        {currentLoopRun ? (
+          <dl>
+            <div>
+              <dt>Run</dt>
+              <dd>{currentLoopRun.id}</dd>
+            </div>
+            <div>
+              <dt>Goal</dt>
+              <dd>{currentLoopRun.goalId}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{currentLoopRun.status}</dd>
+            </div>
+            <div>
+              <dt>Base</dt>
+              <dd>{currentLoopRun.baseCommit}</dd>
+            </div>
+            {currentLoopRun.branchName ? (
+              <div>
+                <dt>Branch</dt>
+                <dd>{currentLoopRun.branchName}</dd>
+              </div>
+            ) : null}
+            {currentLoopRun.worktreePath ? (
+              <div>
+                <dt>Worktree</dt>
+                <dd>{currentLoopRun.worktreePath}</dd>
+              </div>
+            ) : null}
+            {currentLoopRun.handoffDir ? (
+              <div>
+                <dt>Handoff</dt>
+                <dd>{currentLoopRun.handoffDir}</dd>
+              </div>
+            ) : null}
+            {currentLoopRun.runnerCommand ? (
+              <div>
+                <dt>Runner</dt>
+                <dd>{currentLoopRun.runnerCommand}</dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : (
+          <p>Claiming an approved queued goal writes `loops/project-controller/current-run.json`.</p>
+        )}
+        {currentLoopRun && (currentRunnerState || currentRunnerEvidence) ? (
+          <div className="loop-run-artifacts">
+            {currentRunnerState ? (
+              <article className="loop-run-artifacts__state">
+                <div className="loop-run-artifacts__title">
+                  <span>Runner state</span>
+                  <strong>{currentRunnerState.stage}</strong>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{currentRunnerState.status}</dd>
+                  </div>
+                  <div>
+                    <dt>Repairs</dt>
+                    <dd>
+                      {currentRunnerState.repairAttempts}/{currentRunnerState.maxRepairs}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Updated</dt>
+                    <dd>{formatPlannerDateTime(currentRunnerState.updatedAt)}</dd>
+                  </div>
+                </dl>
+                {currentRunnerState.timeline.length > 0 ? (
+                  <ol>
+                    {currentRunnerState.timeline.slice(-4).map((event, index) => (
+                      <li key={`${event.stage}-${event.status}-${event.at ?? index}`}>
+                        <span>{event.status}</span>
+                        <strong>{event.stage}</strong>
+                        <p>{event.detail}</p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+              </article>
+            ) : null}
+            {currentRunnerEvidence ? (
+              <article className="loop-run-artifacts__evidence">
+                <div className="loop-run-artifacts__title">
+                  <span>Runner evidence</span>
+                  <strong>{currentRunnerEvidence.status}</strong>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Checks</dt>
+                    <dd>{currentRunnerEvidence.checks.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Findings</dt>
+                    <dd>{currentRunnerEvidence.findings.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Repairs</dt>
+                    <dd>
+                      {currentRunnerEvidence.repairAttempts}/{currentRunnerEvidence.maxRepairs}
+                    </dd>
+                  </div>
+                </dl>
+                {currentRunnerEvidence.checks.length > 0 ? (
+                  <div className="loop-run-artifacts__checks">
+                    {currentRunnerEvidence.checks.slice(-3).map((check) => (
+                      <p key={`${check.stage}-${check.finishedAt}-${check.repairAttempt}`}>
+                        <span>{check.stage}</span>
+                        <strong>exit {check.exitCode}</strong>
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {currentRunnerEvidence.findings.length > 0 ? (
+                  <div className="loop-run-artifacts__findings">
+                    {currentRunnerEvidence.findings.slice(-3).map((finding, index) => (
+                      <p key={`${finding.stage}-${finding.summary}-${index}`}>
+                        <span>{finding.severity}</span>
+                        <strong>{finding.summary}</strong>
+                        {finding.file ? <small>{finding.file}</small> : null}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="loop-run-timeline" aria-label="Loop run timeline">
+        <div className="loop-run-timeline__header">
+          <div>
+            <span>Run timeline</span>
+            <strong>From selected slice to clean main</strong>
+          </div>
+          <p>{loopPlannerCommand.ticket ? loopPlannerCommand.ticket.id : "Waiting for an actionable ticket"}</p>
+        </div>
+        <div className="loop-run-timeline__rail">
+          {loopRunTimeline.map((step) => {
+            const StepIcon = step.icon;
+            return (
+              <article key={step.id} className={`loop-run-timeline__step loop-run-timeline__step--${step.status}`}>
+                <div className="loop-run-timeline__icon">
+                  <StepIcon size={15} />
+                </div>
+                <div>
+                  <span>{step.status}</span>
+                  <strong>{step.label}</strong>
+                  <p>{step.detail}</p>
+                  <small>{step.evidence}</small>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="loop-evidence-viewer" aria-label="Loop evidence viewer">
+        <div className="loop-evidence-viewer__header">
+          <div>
+            <span>Evidence viewer</span>
+            <strong>Proof before satisfaction</strong>
+          </div>
+          <p>{loopEvidenceSources.length} sources</p>
+        </div>
+        <div className="loop-evidence-viewer__grid">
+          {loopEvidenceSources.map((source) => (
+            <article key={source.label}>
+              <div>
+                <span>{source.status}</span>
+                <strong>{source.label}</strong>
+              </div>
+              <code>{source.path}</code>
+              <p>{source.detail}</p>
+            </article>
+          ))}
+        </div>
+        {controllerMemory ? (
+          <div className="loop-controller-memory">
+            {controllerMemory.latestReport ? (
+              <article>
+                <div>
+                  <span>Latest report</span>
+                  <strong>{formatPlannerDateTime(controllerMemory.latestReport.updatedAt)}</strong>
+                </div>
+                <code>{controllerMemory.latestReport.path}</code>
+                <p>{controllerMemory.latestReport.excerpt || "Report file exists but has no readable summary."}</p>
+              </article>
+            ) : null}
+            {controllerMemory.controllerState ? (
+              <article>
+                <div>
+                  <span>Controller state</span>
+                  <strong>{formatPlannerDateTime(controllerMemory.controllerState.updatedAt)}</strong>
+                </div>
+                <code>{controllerMemory.controllerState.path}</code>
+                <p>{controllerMemory.controllerState.summary}</p>
+              </article>
+            ) : null}
+            {controllerMemory.decisionLog ? (
+              <article>
+                <div>
+                  <span>Decision log</span>
+                  <strong>{controllerMemory.decisionLog.count} entries</strong>
+                </div>
+                <code>{controllerMemory.decisionLog.path}</code>
+                <p>{controllerMemory.decisionLog.lastDecision || "No decision lines recorded yet."}</p>
+              </article>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="loop-merge-gates" aria-label="PR and merge gates">
+        <div className="loop-merge-gates__header">
+          <div>
+            <span>PR and merge gates</span>
+            <strong>External actions stay explicit</strong>
+          </div>
+          <p>Merge gated</p>
+        </div>
+        <div className="loop-merge-gates__grid">
+          {prMergeGates.map((gate) => {
+            const GateIcon = gate.icon;
+            return (
+              <article key={gate.label}>
+                <div className="loop-merge-gates__icon">
+                  <GateIcon size={15} />
+                </div>
+                <div>
+                  <span>{gate.status}</span>
+                  <strong>{gate.label}</strong>
+                  <p>{gate.detail}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {loopGoalSummary.goal ? (
+        <section className="loop-goal" aria-label="Strict loop goal">
+          <div className="loop-goal__summary">
+            <div>
+              <span>Strict goal</span>
+              <strong>{loopGoalSummary.goal.title}</strong>
+              <p>{loopGoalSummary.goal.statement}</p>
+            </div>
+            <dl>
+              <div>
+                <dt>Layers</dt>
+                <dd>{loopGoalSummary.totalLayers}</dd>
+              </div>
+              <div>
+                <dt>Satisfied</dt>
+                <dd>{loopGoalSummary.satisfiedLayers}</dd>
+              </div>
+              <div>
+                <dt>Scaffolded</dt>
+                <dd>{loopGoalSummary.counts.scaffolded}</dd>
+              </div>
+              <div>
+                <dt>Pending</dt>
+                <dd>{loopGoalSummary.counts.pending}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="loop-goal__layers">
+            {loopGoalSummary.goal.layers.map((layer) => (
+              <article key={layer.id} className={`loop-goal__layer loop-goal__layer--${layer.status}`}>
+                <div>
+                  <span>{layer.status}</span>
+                  <strong>{layer.label}</strong>
+                </div>
+                <p>{layer.criteria[0]}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="loop-primitives" aria-label="Loop reliability primitives">
+        {reliabilityPrimitives.map((primitive) => (
+          <article key={primitive.label}>
+            <span>{primitive.label}</span>
+            <strong>{primitive.value}</strong>
+            <p>{primitive.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

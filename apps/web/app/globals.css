@@ -1900,6 +1900,7 @@ nextjs-portal,
 }
 
 .loop-kanban__tools button,
+.loop-kanban__menu summary,
 .ticket-editor button,
 .goal-composer button {
   border: 1px solid rgba(226, 232, 240, 0.16);
@@ -1916,6 +1917,51 @@ nextjs-portal,
   align-items: center;
   gap: 6px;
   padding: 7px 11px;
+}
+
+.loop-kanban__menu {
+  position: relative;
+}
+
+.loop-kanban__menu summary {
+  display: inline-flex;
+  min-height: 34px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+}
+
+.loop-kanban__menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.loop-kanban__menu[open] summary {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: rgba(8, 13, 30, 0.86);
+}
+
+.loop-kanban__menu > div {
+  position: absolute;
+  z-index: 34;
+  right: 0;
+  top: calc(100% + 8px);
+  display: grid;
+  min-width: 148px;
+  gap: 6px;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.96);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 8px;
+}
+
+.loop-kanban__menu > div button {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .loop-kanban__import {
@@ -1935,6 +1981,25 @@ nextjs-portal,
   font-weight: 760;
 }
 
+.loop-activity-modal {
+  position: fixed;
+  z-index: 68;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.loop-activity-modal__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(34, 211, 238, 0.14), transparent 0 36%),
+    rgba(2, 3, 10, 0.74);
+  backdrop-filter: blur(14px);
+}
+
 .loop-activity {
   display: grid;
   gap: 12px;
@@ -1947,9 +2012,10 @@ nextjs-portal,
 }
 
 .loop-activity--overlay {
-  position: absolute;
+  position: relative;
   z-index: 30;
-  inset: 14px;
+  width: min(1040px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
   overflow: auto;
   border-color: rgba(125, 211, 252, 0.32);
   background:
@@ -3768,7 +3834,7 @@ nextjs-portal,
   }
 
   .loop-activity--overlay {
-    inset: 16px 22px 22px;
+    max-height: min(780px, calc(100vh - 48px));
     padding: 18px;
   }
 
@@ -4347,7 +4413,7 @@ nextjs-portal,
   }
 
   .loop-activity--overlay {
-    inset: 10px;
+    max-height: calc(100vh - 20px);
   }
 
   .loop-activity__header,
@@ -4494,6 +4560,15 @@ nextjs-portal,
 
   .loop-activity__filters {
     display: grid;
+  }
+
+  .loop-activity-modal {
+    padding: 10px;
+  }
+
+  .loop-kanban__menu > div {
+    left: 0;
+    right: auto;
   }
 
   .ticket-editor__timestamps {
