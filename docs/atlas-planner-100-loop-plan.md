@@ -1,6 +1,6 @@
 # Atlas Planner 100% Loop Readiness Plan
 
-Status: planned
+Status: in progress
 Owner branch: `worktree/atlas-planner-ui-first-loop-readiness`
 
 ## Current State
@@ -14,6 +14,8 @@ Current readiness:
 - Approved goal: missing
 - Current run state: missing
 - Runner evidence: missing
+- Web runner execution: not proven for long OpenClaw runs
+- Repeat-review gate: not yet explicit as a separate independent stage
 
 The controller dry run confirms the blocker:
 
@@ -35,6 +37,8 @@ Atlas Planner is at 100% first-loop readiness when all of these are true:
 - A review subagent can audit the produced diff/evidence.
 - Any review findings are implemented.
 - A second review subagent pass finds no merge-blocking issues.
+- The UI/API runner path can start work without killing long OpenClaw commands at the request timeout.
+- The exact first-loop command set is documented for claim, start/resume, runner commands, PR policy, and recovery.
 - The run remains human-gated before external actions or merge.
 
 ## Execution Rules
@@ -115,7 +119,68 @@ Review:
 
 - Subagent audits `current-run.json`, goal queue lifecycle, branch/worktree path, and handoff paths.
 
-## Task 3 - Start Runner And Produce Evidence
+## Task 3 - Fix Web Runner Execution Model
+
+Worktree:
+
+```sh
+git worktree add ../agent-monorepo-atlas-loop-web-runner-execution worktree/atlas-loop-web-runner-execution
+```
+
+Goal:
+
+- Decide and implement the browser-safe execution model for `POST /api/atlas-loop-runner`.
+- Avoid claiming the UI can run real OpenClaw work while the route caps execution at 60 seconds.
+- Prefer an async/background runner action if feasible; otherwise make the UI explicitly hand off to CLI for long runs.
+- Preserve the same-origin write guard and file lock behavior.
+
+Checks:
+
+```sh
+npm run test:atlas-loop-runner
+npm run typecheck -w @agent/web
+npm run lint -w @agent/web
+```
+
+Review:
+
+- Subagent audits timeout behavior, lock release behavior, UI affordance accuracy, and recovery after a runner process outlives a browser request.
+
+## Task 4 - Configure First-Loop Runner Commands
+
+Worktree:
+
+```sh
+git worktree add ../agent-monorepo-atlas-loop-command-policy worktree/atlas-loop-command-policy
+```
+
+Goal:
+
+- Pin the exact command policy for the first loop.
+- Configure or document `ATLAS_AGENT_COMMAND`, `ATLAS_MAKER_COMMAND`, `ATLAS_CHECKER_COMMAND`, and `ATLAS_PR_COMMAND`.
+- Keep PR creation and merge human-gated unless explicitly enabled.
+- Make repeat review a distinct command/stage, not just an implicit checker rerun.
+
+Recommended first-loop command policy:
+
+```sh
+export ATLAS_AGENT_COMMAND='node scripts/atlas-openclaw-agent-command.mjs'
+export ATLAS_OPENCLAW_TIMEOUT_SECONDS=900
+unset ATLAS_PR_COMMAND
+```
+
+Checks:
+
+```sh
+npm run test:planner-agent-runner
+npm run test:atlas-runner-wrappers
+```
+
+Review:
+
+- Subagent audits command safety, prompt separation, PR policy, repeat-review independence, and whether the policy can be copied by an operator without guessing.
+
+## Task 5 - Start Runner And Produce Evidence
 
 Worktree:
 
@@ -140,8 +205,9 @@ npm run test:atlas-loop-runner
 Review:
 
 - Subagent checks runner state, evidence completeness, repair limits, checker findings, and satisfaction-layer proof.
+- A second independent review subagent checks the same run evidence after fixes and must report no merge-blocking issues.
 
-## Task 4 - Review UI Readiness Against Real State
+## Task 6 - Review UI Readiness Against Real State
 
 Worktree:
 
@@ -167,7 +233,7 @@ Review:
 
 - Subagent audits the UI against actual state transitions and mobile/desktop screenshots.
 
-## Task 5 - Final Integration And Human Gate
+## Task 7 - Final Integration And Human Gate
 
 Worktree:
 
@@ -199,6 +265,18 @@ Review:
 - First subagent: code and state review.
 - Second subagent: operational dry-run review.
 - Fix all valid findings and repeat until both are clean.
+
+## Current Audit Findings
+
+Latest independent audit found these remaining blockers:
+
+- No live approved goal exists.
+- No live current run exists to start/resume.
+- No evidence artifact exists for the first loop.
+- UI-triggered long OpenClaw runner execution is likely not viable with the current request timeout.
+- Repeat review is still a prompt/config convention rather than a demonstrated independent gate.
+- `ATLAS_PR_COMMAND` is intentionally not configured by default, so PR creation is a human-gated policy choice rather than proven automation.
+- The operator path needs one copyable command set for goal creation, claim, start/resume, OpenClaw adapter, PR policy, and recovery.
 
 ## Stop Conditions
 
