@@ -39,6 +39,14 @@ export type CurrentLoopRunSummary = {
   makerPromptPath?: string;
   checkerPromptPath?: string;
   evidencePath?: string;
+  selectedTask?: {
+    id: string;
+    title: string;
+    estimate: number;
+    score?: number;
+    maxEstimate?: number;
+    reason?: string;
+  };
 };
 
 export type RunnerTimelineEvent = {
@@ -55,6 +63,29 @@ export type RunnerStateSummary = {
   maxRepairs: number;
   updatedAt: string;
   timeline: RunnerTimelineEvent[];
+};
+
+export type ControllerLockSummary = {
+  exists: boolean;
+  stale: boolean;
+  removable: boolean;
+  reason: string;
+  owner?: string;
+  pid?: number | null;
+  startedAt?: string;
+  ageMs?: number | null;
+  modifiedAgeMs?: number | null;
+  pidRunning?: boolean | null;
+};
+
+export type CurrentRunRecoveryStatus = {
+  active: boolean;
+  terminal: boolean;
+  clearable: boolean;
+  reason: string;
+  runnerStatus?: string;
+  currentStatus?: string;
+  stage?: string;
 };
 
 export type RunnerEvidenceCheck = {
@@ -117,6 +148,7 @@ export type LoopPaths = {
 
 export const goalLifecycleStatuses: GoalLifecycleStatus[];
 export const terminalGoalStatuses: string[];
+export const terminalRunnerStatuses: string[];
 
 export function isGoalLifecycleStatus(value: unknown): value is GoalLifecycleStatus;
 export function getLoopPaths(root: string): LoopPaths;
@@ -137,6 +169,14 @@ export function updateGoalLifecycle(
 ): QueuedGoal | null;
 export function isRunnableQueuedGoal(goal: Partial<QueuedGoal> | null | undefined): boolean;
 export function hasCurrentRunState(currentRunPath: string): Promise<boolean>;
+export function readControllerLockSummary(
+  lockPath: string,
+  options?: { now?: Date; staleAfterMs?: number }
+): Promise<ControllerLockSummary>;
+export function getCurrentRunRecoveryStatus(
+  currentRun: Partial<CurrentLoopRunSummary> | null | undefined,
+  runnerState: Partial<RunnerStateSummary> | null | undefined
+): CurrentRunRecoveryStatus;
 export function acquireFileLock(lockPath: string, owner?: string): Promise<{ ok: true; file: unknown } | { ok: false }>;
 export function releaseFileLock(lockPath: string, file: unknown): Promise<void>;
 export function writeJsonAtomically(path: string, value: unknown): Promise<void>;
