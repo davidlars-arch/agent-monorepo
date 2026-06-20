@@ -220,6 +220,8 @@ export function runAtlasLoopRunnerAction(
         | "invalid-current-run"
         | "runner-state-exists"
         | "missing-runner-state"
+        | "terminal-current-run"
+        | "terminal-runner-state"
         | "unsupported-action"
         | "busy"
         | "changed"
@@ -244,7 +246,13 @@ export function buildAtlasRunnerCommand(
   | { ok: true; cmd: string; args: string[] }
   | {
       ok: false;
-      status: "invalid-current-run" | "runner-state-exists" | "missing-runner-state" | "unsupported-action";
+      status:
+        | "invalid-current-run"
+        | "runner-state-exists"
+        | "missing-runner-state"
+        | "terminal-current-run"
+        | "terminal-runner-state"
+        | "unsupported-action";
       reason: string;
     };
 export function acquireFileLock(lockPath: string, owner?: string): Promise<{ ok: true; file: unknown } | { ok: false }>;

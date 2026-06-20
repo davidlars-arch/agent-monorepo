@@ -312,6 +312,10 @@ export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_00
 
 export function buildAtlasRunnerCommand(root, action, currentRun) {
   if (action === "start-current-run") {
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before starting another runner." };
+    }
+
     const missing = ["goalId", "branchName", "baseCommit", "id", "goalTitle", "worktreePath", "handoffDir"].filter(
       (key) => !currentRun?.[key]
     );
@@ -351,10 +355,18 @@ export function buildAtlasRunnerCommand(root, action, currentRun) {
     if (!currentRun?.handoffDir) {
       return { ok: false, status: "invalid-current-run", reason: "Current run is missing a handoff directory." };
     }
+    if (terminalRunnerStatuses.includes(currentRun?.status)) {
+      return { ok: false, status: "terminal-current-run", reason: "Current run is terminal; clear it before resuming." };
+    }
 
     const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
     if (!existsSync(runnerStatePath)) {
       return { ok: false, status: "missing-runner-state", reason: "Runner state does not exist yet; start the current run first." };
+    }
+
+    const runnerState = parseJsonObject(readFileSync(runnerStatePath, "utf8"));
+    if (terminalRunnerStatuses.includes(runnerState?.status)) {
+      return { ok: false, status: "terminal-runner-state", reason: "Runner state is terminal; clear current-run before starting new work." };
     }
 
     return {

@@ -117,6 +117,25 @@ test("runAtlasLoopRunnerAction resumes only when runner state exists", async () 
   ]);
 });
 
+test("runAtlasLoopRunnerAction does not resume terminal runs", async () => {
+  const root = await makeLoopRoot({ queuedGoals: [] });
+  await writeCurrentRun(root);
+  await mkdir(join(root, "loops/project-controller/runs/run-ap-16"), { recursive: true });
+  await writeFile(
+    join(root, "loops/project-controller/runs/run-ap-16/runner-state.json"),
+    `${JSON.stringify({ version: 1, runId: "run-ap-16", worktreePath: root, status: "satisfied", stage: "checker-passed" })}\n`
+  );
+
+  const result = await runAtlasLoopRunnerAction(root, "resume-current-run", {
+    execRunner: async () => {
+      throw new Error("should not run");
+    }
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "terminal-runner-state");
+});
+
 async function makeLoopRoot({ queuedGoals }) {
   const root = await mkdtemp(join(tmpdir(), "atlas-loop-runner-actions-"));
   await mkdir(join(root, "loops/project-controller"), { recursive: true });
