@@ -6,14 +6,17 @@ import {
   type LoopPlannerCommand
 } from "@agent/atlas-planner";
 import type {
+  ControllerLockSummary,
   ControllerMemorySummary,
   CurrentLoopRunSummary,
+  CurrentRunRecoveryStatus,
   GoalLifecycleStatus,
   QueuedGoalSummary,
   RunnerEvidenceSummary,
   RunnerStateSummary
 } from "@agent/loop-store";
 import { CheckCircle2, GitBranch, ShieldCheck, Workflow } from "lucide-react";
+import { useState } from "react";
 import {
   getLoopRunTimeline,
   loopEvidenceSources,
@@ -28,6 +31,8 @@ export function LoopReliabilityPanel({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
+  controllerLock,
+  currentRunRecovery,
   controllerMemory,
   onUpdateQueuedGoalLifecycle
 }: {
@@ -37,10 +42,37 @@ export function LoopReliabilityPanel({
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerLock?: ControllerLockSummary | null;
+  currentRunRecovery?: CurrentRunRecoveryStatus | null;
   controllerMemory?: ControllerMemorySummary | null;
   onUpdateQueuedGoalLifecycle: (goal: QueuedGoalSummary, lifecycleStatus: GoalLifecycleStatus) => void;
 }) {
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
+  const [runRecoveryMessage, setRunRecoveryMessage] = useState("");
+  const [isRunRecoveryBusy, setIsRunRecoveryBusy] = useState(false);
+
+  async function runRecoveryAction(action: "clear-stale-lock" | "clear-terminal-current-run") {
+    setIsRunRecoveryBusy(true);
+    setRunRecoveryMessage("");
+    try {
+      const response = await fetch("/api/atlas-run-recovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        setRunRecoveryMessage(payload?.error ?? "Run recovery action failed.");
+        return;
+      }
+
+      window.location.reload();
+    } catch {
+      setRunRecoveryMessage("Run recovery API is unavailable.");
+    } finally {
+      setIsRunRecoveryBusy(false);
+    }
+  }
 
   return (
     <section className="loop-reliability" aria-label="Reliable loop planner">
@@ -187,6 +219,43 @@ export function LoopReliabilityPanel({
           </div>
           <p>{currentLoopRun ? currentLoopRun.stage : "idle"}</p>
         </div>
+        {controllerLock?.exists || currentRunRecovery?.active ? (
+          <div className="loop-run-recovery">
+            {controllerLock?.exists ? (
+              <article>
+                <div>
+                  <span>{controllerLock.stale ? "stale lock" : "controller lock"}</span>
+                  <strong>{controllerLock.owner || `pid ${controllerLock.pid ?? "unknown"}`}</strong>
+                </div>
+                <p>{controllerLock.reason}</p>
+                {controllerLock.removable ? (
+                  <button type="button" disabled={isRunRecoveryBusy} onClick={() => runRecoveryAction("clear-stale-lock")}>
+                    Clear stale lock
+                  </button>
+                ) : null}
+              </article>
+            ) : null}
+            {currentRunRecovery?.active ? (
+              <article>
+                <div>
+                  <span>{currentRunRecovery.terminal ? "terminal run" : "active run"}</span>
+                  <strong>{currentRunRecovery.runnerStatus || currentRunRecovery.currentStatus || "unknown"}</strong>
+                </div>
+                <p>{currentRunRecovery.reason}</p>
+                {currentRunRecovery.clearable ? (
+                  <button
+                    type="button"
+                    disabled={isRunRecoveryBusy}
+                    onClick={() => runRecoveryAction("clear-terminal-current-run")}
+                  >
+                    Clear current-run
+                  </button>
+                ) : null}
+              </article>
+            ) : null}
+            {runRecoveryMessage ? <p className="loop-run-recovery__message">{runRecoveryMessage}</p> : null}
+          </div>
+        ) : null}
         {currentLoopRun ? (
           <dl>
             <div>

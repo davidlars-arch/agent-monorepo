@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 export const goalLifecycleStatuses = ["draft", "refined", "approved", "running", "blocked", "satisfied", "archived"];
 export const terminalGoalStatuses = ["done", "archived", "blocked"];
+export const terminalRunnerStatuses = ["satisfied", "blocked", "failed", "passed", "merged"];
 
 export function isGoalLifecycleStatus(value) {
   return goalLifecycleStatuses.includes(value);
@@ -124,6 +125,81 @@ export async function hasCurrentRunState(currentRunPath) {
   }
 }
 
+export async function readControllerLockSummary(lockPath, { now = new Date(), staleAfterMs = 30 * 60 * 1000 } = {}) {
+  let rawLock;
+  try {
+    rawLock = await readFile(lockPath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return {
+        exists: false,
+        stale: false,
+        removable: false,
+        reason: "No controller lock is present."
+      };
+    }
+
+    return {
+      exists: true,
+      stale: false,
+      removable: false,
+      reason: "Controller lock could not be read."
+    };
+  }
+
+  const lockStat = await stat(lockPath).catch(() => null);
+  const parsed = parseJsonObject(rawLock);
+  const pid = Number(parsed?.pid);
+  const startedAt = typeof parsed?.startedAt === "string" ? parsed.startedAt : "";
+  const owner = typeof parsed?.owner === "string" ? parsed.owner : "";
+  const startedTime = startedAt ? new Date(startedAt).getTime() : Number.NaN;
+  const modifiedAgeMs = lockStat ? Math.max(0, now.getTime() - lockStat.mtime.getTime()) : null;
+  const ageMs = Number.isFinite(startedTime) ? Math.max(0, now.getTime() - startedTime) : modifiedAgeMs;
+  const pidRunning = Number.isInteger(pid) && pid > 0 ? isProcessRunning(pid) : null;
+  const malformed = !parsed || !startedAt || !Number.isInteger(pid);
+  const stale = (malformed && ageMs !== null && ageMs >= staleAfterMs) || (ageMs !== null && ageMs >= staleAfterMs && pidRunning === false);
+
+  return {
+    exists: true,
+    stale,
+    removable: stale,
+    reason: getControllerLockReason({ malformed, ageMs, staleAfterMs, pidRunning }),
+    owner,
+    pid: Number.isInteger(pid) ? pid : null,
+    startedAt,
+    ageMs,
+    modifiedAgeMs,
+    pidRunning
+  };
+}
+
+export function getCurrentRunRecoveryStatus(currentRun, runnerState) {
+  if (!currentRun) {
+    return {
+      active: false,
+      terminal: false,
+      clearable: false,
+      reason: "No current run is present."
+    };
+  }
+
+  const runnerStatus = typeof runnerState?.status === "string" ? runnerState.status : "";
+  const currentStatus = typeof currentRun?.status === "string" ? currentRun.status : "";
+  const terminal = terminalRunnerStatuses.includes(runnerStatus) || terminalRunnerStatuses.includes(currentStatus);
+
+  return {
+    active: true,
+    terminal,
+    clearable: terminal,
+    reason: terminal
+      ? `Runner is terminal (${runnerStatus || currentStatus}); current-run can be cleared.`
+      : "Current run is not terminal yet. Keep it until the runner reports satisfied, blocked, failed, passed, or merged.",
+    runnerStatus,
+    currentStatus,
+    stage: typeof runnerState?.stage === "string" ? runnerState.stage : currentRun?.stage
+  };
+}
+
 export async function acquireFileLock(lockPath, owner = "loop-store") {
   try {
     await mkdir(dirname(lockPath), { recursive: true });
@@ -183,6 +259,34 @@ export function summarizeMemoryValue(value) {
     return `${Object.keys(value).length} keys`;
   }
   return "empty";
+}
+
+function getControllerLockReason({ malformed, ageMs, staleAfterMs, pidRunning }) {
+  if (malformed && ageMs !== null && ageMs >= staleAfterMs) {
+    return "Controller lock is malformed and can be cleared after inspection.";
+  }
+  if (malformed) {
+    return "Controller lock is malformed but recent; leave it in place in case it is being written.";
+  }
+  if (pidRunning === true) {
+    return "Controller lock owner process is still running.";
+  }
+  if (ageMs === null) {
+    return "Controller lock age is unknown.";
+  }
+  if (ageMs >= staleAfterMs && pidRunning === false) {
+    return "Controller lock is stale and the owner process is not running.";
+  }
+  return "Controller lock is recent; leave it in place.";
+}
+
+function isProcessRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
 }
 
 function isProjectRoot(candidate) {

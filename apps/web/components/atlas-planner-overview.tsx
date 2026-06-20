@@ -10,8 +10,10 @@ import {
   type UsageStatusSnapshot
 } from "@agent/atlas-planner";
 import type {
+  ControllerLockSummary,
   ControllerMemorySummary,
   CurrentLoopRunSummary,
+  CurrentRunRecoveryStatus,
   QueuedGoalSummary,
   RunnerEvidenceSummary,
   RunnerStateSummary
@@ -73,6 +75,8 @@ export function AtlasPlannerOverview({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
+  controllerLock,
+  currentRunRecovery,
   controllerMemory,
   currentCommit,
   initialGoalComposerOpen = false,
@@ -86,6 +90,8 @@ export function AtlasPlannerOverview({
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerLock?: ControllerLockSummary | null;
+  currentRunRecovery?: CurrentRunRecoveryStatus | null;
   controllerMemory?: ControllerMemorySummary | null;
   currentCommit: string;
   initialGoalComposerOpen?: boolean;
@@ -278,6 +284,8 @@ export function AtlasPlannerOverview({
             currentLoopRun={currentLoopRun}
             currentRunnerState={currentRunnerState}
             currentRunnerEvidence={currentRunnerEvidence}
+            controllerLock={controllerLock}
+            currentRunRecovery={currentRunRecovery}
             controllerMemory={controllerMemory}
             onUpdateQueuedGoalLifecycle={updateQueuedGoalLifecycle}
           />

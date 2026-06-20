@@ -2,8 +2,10 @@
 
 import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
 import type {
+  ControllerLockSummary,
   ControllerMemorySummary,
   CurrentLoopRunSummary,
+  CurrentRunRecoveryStatus,
   QueuedGoalSummary,
   RunnerEvidenceSummary,
   RunnerStateSummary
@@ -222,6 +224,8 @@ export function EarthGlobe({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
+  controllerLock,
+  currentRunRecovery,
   controllerMemory,
   currentCommit = "unknown"
 }: {
@@ -234,6 +238,8 @@ export function EarthGlobe({
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerLock?: ControllerLockSummary | null;
+  currentRunRecovery?: CurrentRunRecoveryStatus | null;
   controllerMemory?: ControllerMemorySummary | null;
   currentCommit?: string;
 }) {
@@ -898,6 +904,8 @@ export function EarthGlobe({
           currentLoopRun={currentLoopRun}
           currentRunnerState={currentRunnerState}
           currentRunnerEvidence={currentRunnerEvidence}
+          controllerLock={controllerLock}
+          currentRunRecovery={currentRunRecovery}
           controllerMemory={controllerMemory}
           currentCommit={currentCommit}
           initialGoalComposerOpen={initialGoalComposerOpen}
