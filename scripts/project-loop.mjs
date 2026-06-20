@@ -129,6 +129,15 @@ async function readGoalQueue() {
   }
 }
 
+async function hasCurrentRunState() {
+  try {
+    JSON.parse(await readFile(currentRunPath, "utf8"));
+    return true;
+  } catch (error) {
+    return error?.code !== "ENOENT";
+  }
+}
+
 function selectProjects(projects, currentState, at) {
   if (projectIds.length > 0) {
     const found = projects.filter((project) => projectIds.includes(project.id));
@@ -220,6 +229,10 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
 
   const queuedGoal = goalQueue.goals.find((goal) => goal.id === plannedTask.id);
   if (!queuedGoal || !isRunnableQueuedGoal(queuedGoal)) {
+    return null;
+  }
+
+  if (await hasCurrentRunState()) {
     return null;
   }
 
@@ -623,7 +636,7 @@ function queuedGoalTickets(project) {
 function isRunnableQueuedGoal(goal) {
   return (
     goal.approvedToRun === true &&
-    goal.lifecycleStatus === "approved" &&
+    ["approved", "running"].includes(goal.lifecycleStatus) &&
     !["done", "archived", "blocked"].includes(goal.status)
   );
 }

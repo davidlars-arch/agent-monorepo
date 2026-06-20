@@ -1330,7 +1330,12 @@ export function AtlasPlannerOverview({
       if (!response.ok) {
         throw new Error("Queue write failed.");
       }
+      const payload = (await response.json()) as { goal?: QueuedGoalSummary };
       setPlannerTickets((current) => [ticket, ...current]);
+      if (payload.goal) {
+        const queuedGoal = payload.goal;
+        setQueuedGoalState((current) => [queuedGoal, ...current.filter((goal) => goal.id !== queuedGoal.id)]);
+      }
       setPlannerStateMessage(`Created ${ticketId} and queued it for the loop runner.`);
     } catch {
       setPlannerStateMessage(`Could not create ${ticketId}. Queue write failed.`);
