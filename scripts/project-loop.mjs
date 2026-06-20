@@ -574,7 +574,7 @@ function chooseTaskForWindow(project, currentUsageStatus) {
 
   const shortWindowLeft = parseFirstPercent(currentUsageStatus?.shortWindow);
   const maxEstimate = estimateBudgetForWindow(shortWindowLeft);
-  const candidates = tickets
+  const scoredTickets = tickets
     .filter((ticket) => ticket.status !== "done" && ticket.status !== "blocked")
     .map((ticket) => {
       const scoreBreakdown = getPlannerScoreBreakdown(ticket, project, maxEstimate);
@@ -586,10 +586,13 @@ function chooseTaskForWindow(project, currentUsageStatus) {
         shortWindowLeft,
         maxEstimate
       };
-    })
-    .sort((left, right) => right.score - left.score || right.estimate - left.estimate || left.id.localeCompare(right.id));
+    });
+  const claimCandidate = claimGoal ? scoredTickets.find((ticket) => ticket.tags?.includes("queued-goal")) : null;
+  const candidates = scoredTickets.sort(
+    (left, right) => right.score - left.score || right.estimate - left.estimate || left.id.localeCompare(right.id)
+  );
 
-  const selected = candidates[0] ?? tickets.find((ticket) => ticket.status !== "done") ?? tickets[0];
+  const selected = claimCandidate ?? candidates[0] ?? tickets.find((ticket) => ticket.status !== "done") ?? tickets[0];
   const selectedBreakdown = selected.scoreBreakdown ?? getPlannerScoreBreakdown(selected, project, maxEstimate);
 
   return {

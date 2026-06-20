@@ -69,6 +69,42 @@ test("approved queued goals are selected before ordinary planner tickets", async
   assert.match(report, /Durable Goal Queue/);
 });
 
+test("--claim-goal selects approved queued work even when the usage window can fit a larger ticket", async () => {
+  const root = await makeLoopRoot({
+    registry: makeRegistryWithLargeActiveTicket(),
+    usageStatus: {
+      recordedAt: "2026-06-19T20:00:00.000Z",
+      model: "gpt-5-codex",
+      context: "large",
+      currentTokens: "12000",
+      shortWindow: "94% left",
+      weekly: "80% left"
+    },
+    queuedGoals: [
+      {
+        id: "GOAL-FIRST",
+        title: "First loop goal",
+        lifecycleStatus: "approved",
+        approvedToRun: true,
+        status: "backlog",
+        estimate: 3,
+        summary: "Claim this before normal board work.",
+        tags: ["goal", "loop", "approved-to-run"],
+        description: "First loop goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-19T20:00:00.000Z",
+        updatedAt: "2026-06-19T20:00:00.000Z"
+      }
+    ]
+  });
+
+  const { stdout } = await runController(root, ["--dry-run", "--project", "atlas-planner", "--claim-goal"]);
+
+  assert.match(stdout, /selected `GOAL-FIRST`/);
+  assert.doesNotMatch(stdout, /selected `AP-6`/);
+});
+
 test("unapproved queued goals are visible but not selected for runner work", async () => {
   const root = await makeLoopRoot({
     queuedGoals: [
@@ -332,7 +368,7 @@ test("--claim-goal without a queued goal does not write current-run", async () =
   await assert.rejects(readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
 });
 
-async function makeLoopRoot({ queuedGoals, registry = makeRegistry() }) {
+async function makeLoopRoot({ queuedGoals, registry = makeRegistry(), usageStatus = null }) {
   const root = await mkdtemp(join(tmpdir(), "project-loop-"));
   await mkdir(join(root, "loops/project-controller"), { recursive: true });
   await mkdir(join(root, "loops/usage-status"), { recursive: true });
@@ -347,7 +383,7 @@ async function makeLoopRoot({ queuedGoals, registry = makeRegistry() }) {
   await writeFile(
     join(root, "loops/usage-status/latest-status.json"),
     `${JSON.stringify(
-      {
+      usageStatus ?? {
         recordedAt: "2026-06-19T20:00:00.000Z",
         model: "gpt-5-codex",
         context: "small",
@@ -430,6 +466,33 @@ function makeRegistryWithRepoHealth() {
         ]
       }
     ]
+  };
+}
+
+function makeRegistryWithLargeActiveTicket() {
+  const registry = makeRegistry();
+  return {
+    ...registry,
+    projects: registry.projects.map((project) =>
+      project.id !== "atlas-planner"
+        ? project
+        : {
+            ...project,
+            epics: project.epics.map((epic) => ({
+              ...epic,
+              tickets: [
+                {
+                  id: "AP-6",
+                  title: "Agent worktree runner MVP",
+                  status: "in-progress",
+                  estimate: 21,
+                  summary: "Large active work should not steal a claim-goal run.",
+                  tags: ["loop-engineering"]
+                }
+              ]
+            }))
+          }
+    )
   };
 }
 
