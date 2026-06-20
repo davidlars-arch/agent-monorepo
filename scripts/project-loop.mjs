@@ -210,7 +210,8 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
   const claimedAt = startedAt.toISOString();
   const runId = `run-${queuedGoal.id.toLowerCase()}-${startedAt.getTime().toString(36)}`;
   const baseCommit = await readCurrentCommit();
-  const agentRun = buildAgentRunPlan({ runId, goal: queuedGoal, plannedTask, baseCommit });
+  const goalContract = contractForGoal(queuedGoal);
+  const agentRun = buildAgentRunPlan({ runId, goal: queuedGoal, goalContract, plannedTask, baseCommit });
   const claimedGoal = {
     ...queuedGoal,
     lifecycleStatus: "running",
@@ -232,6 +233,7 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     projectLabel: project.label,
     goalId: claimedGoal.id,
     goalTitle: claimedGoal.title,
+    goalContract,
     status: "running",
     stage: "claimed",
     claimedAt,
@@ -277,12 +279,12 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
   };
 }
 
-function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
+function buildAgentRunPlan({ runId, goal, goalContract, plannedTask, baseCommit }) {
   const ticketSlug = sanitizeForBranch(plannedTask.id);
   const branchName = `worktree/${ticketSlug}`;
   const worktreePath = `../agent-monorepo-${ticketSlug}`;
   const handoffDir = join("loops", "project-controller", "runs", runId);
-  const command = [
+  const commandParts = [
     shellQuote("node"),
     shellQuote("scripts/planner-agent-runner.mjs"),
     "--ticket",
@@ -295,11 +297,18 @@ function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
     shellQuote(runId),
     "--goal-title",
     shellQuote(goal.title),
+    "--goal-contract-json",
+    shellQuote(JSON.stringify(goalContract)),
     "--worktree-dir",
     shellQuote(worktreePath),
     "--handoff-dir",
     shellQuote(handoffDir)
-  ].join(" ");
+  ];
+  const maxRepairAttempts = Number(goalContract.safety?.maxRepairAttempts);
+  if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0 && maxRepairAttempts <= 5) {
+    commandParts.push("--max-repairs", shellQuote(String(maxRepairAttempts)));
+  }
+  const command = commandParts.join(" ");
 
   return {
     branchName,
@@ -310,6 +319,31 @@ function buildAgentRunPlan({ runId, goal, plannedTask, baseCommit }) {
     checkerPromptPath: join(handoffDir, "checker-prompt.md"),
     evidencePath: join(handoffDir, "evidence.json")
   };
+}
+
+function contractForGoal(goal) {
+  const contract = goal.goalContract && typeof goal.goalContract === "object" ? goal.goalContract : {};
+  return {
+    statement: firstString(contract.statement, contract.outcome, goal.summary),
+    stopCondition: firstString(contract.stopCondition),
+    scope: firstString(contract.scope),
+    maxEstimate: Number.isFinite(Number(contract.maxEstimate)) ? Number(contract.maxEstimate) : goal.estimate,
+    satisfactionLayers: Array.isArray(contract.satisfactionLayers)
+      ? contract.satisfactionLayers
+      : Array.isArray(contract.layers)
+        ? contract.layers
+        : [],
+    verificationCommands: Array.isArray(contract.verificationCommands)
+      ? contract.verificationCommands
+      : Array.isArray(contract.verification)
+        ? contract.verification
+        : [],
+    safety: contract.safety && typeof contract.safety === "object" && !Array.isArray(contract.safety) ? contract.safety : {}
+  };
+}
+
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim() !== "")?.trim() ?? "";
 }
 
 async function readCurrentCommit() {

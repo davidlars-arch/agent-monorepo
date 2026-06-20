@@ -11,6 +11,7 @@ const scriptPath = resolve("scripts/planner-agent-runner.mjs");
 
 test("dry run prints the worktree and handoff plan without writing files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-dry-"));
+  const goalContract = makeGoalContract();
 
   const { stdout } = await execFileAsync(
     "node",
@@ -26,7 +27,9 @@ test("dry run prints the worktree and handoff plan without writing files", async
       "--run-id",
       "run-ap-6",
       "--goal-title",
-      "Agent worktree runner MVP"
+      "Agent worktree runner MVP",
+      "--goal-contract-json",
+      JSON.stringify(goalContract)
     ],
     { cwd: root }
   );
@@ -37,6 +40,9 @@ test("dry run prints the worktree and handoff plan without writing files", async
   assert.equal(plan.runId, "run-ap-6");
   assert.equal(plan.branch, "worktree/ap-6");
   assert.equal(plan.base, "abc1234");
+  assert.equal(plan.goalContract.statement, "Complete the durable contract handoff.");
+  assert.equal(plan.goalContract.satisfactionLayers[0].label, "Queue preservation");
+  assert.equal(plan.goalContract.verificationCommands[0].command, "npm run test:planner-agent-runner");
   assert.match(plan.worktreePath, /agent-monorepo-worktree-ap-6$/);
   assert.equal(plan.files.makerPrompt, "loops/project-controller/runs/run-ap-6/maker-prompt.md");
   await assert.rejects(readFile(join(root, "loops/project-controller/runs/run-ap-6/runner-state.json"), "utf8"));
@@ -45,6 +51,7 @@ test("dry run prints the worktree and handoff plan without writing files", async
 test("runner creates a worktree and writes maker/checker handoff files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-"));
   const worktreePath = join(tmpdir(), `planner-agent-runner-worktree-${Date.now()}`);
+  const goalContract = makeGoalContract();
 
   await execFileAsync("git", ["init"], { cwd: root });
   await execFileAsync("git", ["config", "user.email", "runner@example.test"], { cwd: root });
@@ -65,6 +72,8 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
       "run-ap-6",
       "--goal-title",
       "Agent worktree runner MVP",
+      "--goal-contract-json",
+      JSON.stringify(goalContract),
       "--worktree-dir",
       worktreePath
     ],
@@ -81,9 +90,17 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
   assert.equal(state.status, "prepared");
   assert.equal(state.stage, "maker-handoff");
   assert.equal(state.worktreePath, worktreePath);
+  assert.equal(state.goalContract.safety.allowedPaths, "packages/loop-store/**, scripts/**");
   assert.match(makerPrompt, /Implement one bounded slice/);
+  assert.match(makerPrompt, /Complete the durable contract handoff/);
+  assert.match(makerPrompt, /Queue preservation: Queue stores structured layers/);
+  assert.match(makerPrompt, /npm run test:planner-agent-runner/);
+  assert.match(makerPrompt, /External actions: human-gated/);
   assert.match(checkerPrompt, /Do not mark the run satisfied from maker output alone/);
+  assert.match(checkerPrompt, /"satisfactionLayers"/);
   assert.equal(evidence.status, "awaiting-maker");
+  assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
+  assert.deepEqual(evidence.satisfactionLayers[0].proof, []);
 });
 
 test("runner executes maker and checker commands and records passing evidence", async () => {
@@ -262,6 +279,46 @@ test("runner adapter uses stage env vars and records structured checker findings
   assert.equal(evidence.findings[0].file, "maker-output.txt");
 });
 
+test("runner records structured checker satisfaction layer proof", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-layer-proof-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }], findings: [] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-11",
+      "--branch",
+      "worktree/ap-11-runner-test",
+      "--run-id",
+      "run-ap-11",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-11/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
+  assert.equal(evidence.satisfactionLayers[0].status, "satisfied");
+  assert.deepEqual(evidence.satisfactionLayers[0].proof, ["Queue contains goalContract."]);
+});
+
 async function createGitFixture(prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   const worktreePath = await mkdtemp(join(tmpdir(), `${prefix}worktree-`));
@@ -275,4 +332,45 @@ async function createGitFixture(prefix) {
   await execFileAsync("git", ["commit", "-m", "initial"], { cwd: root });
 
   return { root, worktreePath };
+}
+
+function makeGoalContract() {
+  return {
+    statement: "Complete the durable contract handoff.",
+    stopCondition: "Stop when runner prompts and evidence contain the contract.",
+    scope: "Loop store, project loop, and runner handoff only.",
+    maxEstimate: 5,
+    satisfactionLayers: [
+      {
+        id: "queue-preservation",
+        label: "Queue preservation",
+        criteria: "Queue stores structured layers.",
+        status: "pending",
+        humanGated: false
+      },
+      {
+        id: "runner-proof",
+        label: "Runner proof",
+        criteria: "Evidence has a structured place for layer proof.",
+        status: "pending",
+        humanGated: true
+      }
+    ],
+    verificationCommands: [
+      {
+        id: "planner-runner",
+        label: "Planner runner tests",
+        command: "npm run test:planner-agent-runner",
+        required: true
+      }
+    ],
+    safety: {
+      maxIterations: 4,
+      maxRepairAttempts: 2,
+      tokenBudget: "Stay inside the current window.",
+      timeBudget: "One focused run.",
+      allowedPaths: "packages/loop-store/**, scripts/**",
+      externalActionPolicy: "human-gated"
+    }
+  };
 }
