@@ -12,7 +12,7 @@ import {
   type GoalDraftLayer,
   type GoalSafetySettings,
   type GoalVerificationCommand
-} from "./goal-composer";
+} from "./goal-composer-model";
 
 export function useAtlasGoals({
   loopKanban,
