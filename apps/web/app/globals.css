@@ -1111,6 +1111,31 @@ nextjs-portal,
   line-height: 1.38;
 }
 
+.loop-goal-queue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.loop-goal-queue__actions button {
+  min-width: 0;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 7px;
+  background: rgba(14, 165, 233, 0.08);
+  padding: 5px 7px;
+  color: rgba(224, 242, 254, 0.88);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.loop-goal-queue__actions button:hover {
+  border-color: rgba(125, 211, 252, 0.38);
+  background: rgba(14, 165, 233, 0.14);
+  color: #ffffff;
+}
+
 .loop-current-run {
   display: grid;
   gap: 10px;
@@ -1197,6 +1222,127 @@ nextjs-portal,
   color: rgba(226, 232, 240, 0.64);
   font-size: 11px;
   line-height: 1.38;
+}
+
+.loop-run-artifacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.loop-run-artifacts article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.44);
+  padding: 9px;
+}
+
+.loop-run-artifacts__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.loop-run-artifacts__title span,
+.loop-run-artifacts li span,
+.loop-run-artifacts__checks span,
+.loop-run-artifacts__findings span {
+  color: rgba(252, 211, 77, 0.82);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loop-run-artifacts__title strong {
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+}
+
+.loop-run-artifacts dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.loop-run-artifacts dl div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 7px;
+}
+
+.loop-run-artifacts dt {
+  color: rgba(148, 163, 184, 0.8);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loop-run-artifacts dd {
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-run-artifacts ol,
+.loop-run-artifacts__checks,
+.loop-run-artifacts__findings {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+.loop-run-artifacts li,
+.loop-run-artifacts__checks p,
+.loop-run-artifacts__findings p {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  border-left: 2px solid rgba(251, 191, 36, 0.34);
+  padding-left: 8px;
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 11px;
+  line-height: 1.36;
+}
+
+.loop-run-artifacts li {
+  list-style: none;
+}
+
+.loop-run-artifacts li strong,
+.loop-run-artifacts__checks strong,
+.loop-run-artifacts__findings strong {
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+}
+
+.loop-run-artifacts li p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.64);
+}
+
+.loop-run-artifacts__findings small {
+  overflow-wrap: anywhere;
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
 }
 
 .loop-run-timeline__header {
@@ -1399,6 +1545,30 @@ nextjs-portal,
   color: rgba(226, 232, 240, 0.64);
   font-size: 11px;
   line-height: 1.38;
+}
+
+.loop-controller-memory {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.loop-controller-memory article {
+  border-color: rgba(125, 211, 252, 0.16);
+  background: rgba(8, 47, 73, 0.18);
+}
+
+.loop-controller-memory article > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.loop-controller-memory article strong {
+  color: rgba(224, 242, 254, 0.9);
+  font-size: 11px;
+  text-align: right;
 }
 
 .loop-merge-gates {
@@ -4067,6 +4237,15 @@ nextjs-portal,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .loop-run-artifacts,
+  .loop-run-artifacts dl {
+    grid-template-columns: 1fr;
+  }
+
+  .loop-run-artifacts__title {
+    display: grid;
+  }
+
   .loop-run-timeline__rail {
     grid-template-columns: 1fr;
   }
@@ -4077,6 +4256,14 @@ nextjs-portal,
 
   .loop-evidence-viewer__grid {
     grid-template-columns: 1fr;
+  }
+
+  .loop-controller-memory {
+    grid-template-columns: 1fr;
+  }
+
+  .loop-controller-memory article > div {
+    display: grid;
   }
 
   .loop-merge-gates__header {

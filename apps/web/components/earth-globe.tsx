@@ -64,6 +64,75 @@ type CurrentLoopRunSummary = {
   claimedAt: string;
   updatedAt: string;
   baseCommit: string;
+  branchName?: string;
+  worktreePath?: string;
+  handoffDir?: string;
+  runnerCommand?: string;
+  makerPromptPath?: string;
+  checkerPromptPath?: string;
+  evidencePath?: string;
+};
+
+type RunnerTimelineEvent = {
+  stage: string;
+  status: string;
+  at: string | null;
+  detail: string;
+};
+
+type RunnerStateSummary = {
+  status: string;
+  stage: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  updatedAt: string;
+  timeline: RunnerTimelineEvent[];
+};
+
+type RunnerEvidenceCheck = {
+  stage: string;
+  command: string;
+  exitCode: number;
+  startedAt: string;
+  finishedAt: string;
+  repairAttempt: number;
+};
+
+type RunnerEvidenceFinding = {
+  severity: string;
+  stage: string;
+  summary: string;
+  file?: string;
+  line?: number;
+  recommendation?: string;
+  at?: string;
+};
+
+type RunnerEvidenceSummary = {
+  status: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  checks: RunnerEvidenceCheck[];
+  findings: RunnerEvidenceFinding[];
+};
+
+type ControllerMemorySummary = {
+  latestReport?: {
+    path: string;
+    updatedAt: string;
+    excerpt: string;
+  };
+  controllerState?: {
+    path: string;
+    updatedAt: string;
+    summary: string;
+  };
+  decisionLog?: {
+    path: string;
+    updatedAt: string;
+    count: number;
+    lastDecision: string;
+  };
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
@@ -234,6 +303,9 @@ export function EarthGlobe({
   loopKanban,
   queuedGoals,
   currentLoopRun,
+  currentRunnerState,
+  currentRunnerEvidence,
+  controllerMemory,
   currentCommit = "unknown"
 }: {
   initialOpenProjectId?: string;
@@ -243,6 +315,9 @@ export function EarthGlobe({
   loopKanban?: LoopKanbanProject[];
   queuedGoals?: QueuedGoalSummary[];
   currentLoopRun?: CurrentLoopRunSummary | null;
+  currentRunnerState?: RunnerStateSummary | null;
+  currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerMemory?: ControllerMemorySummary | null;
   currentCommit?: string;
 }) {
   const hasInitialProject = Boolean(initialOpenProjectId && projectLocations[initialOpenProjectId]);
@@ -904,6 +979,9 @@ export function EarthGlobe({
           loopKanban={loopKanban ?? []}
           queuedGoals={queuedGoals ?? []}
           currentLoopRun={currentLoopRun}
+          currentRunnerState={currentRunnerState}
+          currentRunnerEvidence={currentRunnerEvidence}
+          controllerMemory={controllerMemory}
           currentCommit={currentCommit}
           initialGoalComposerOpen={initialGoalComposerOpen}
           showExplainer={isLoopExplainerOpen}

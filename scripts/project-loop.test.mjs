@@ -93,8 +93,120 @@ test("--claim-goal writes current-run state and moves the queued goal to running
   assert.equal(queue.goals[0].status, "in-progress");
   assert.equal(currentRun.goalId, "GOAL-CLAIM");
   assert.equal(currentRun.stage, "claimed");
-  assert.equal(currentRun.timeline[2].stage, "planning");
+  assert.equal(currentRun.branchName, "worktree/goal-claim");
+  assert.equal(currentRun.worktreePath, "../agent-monorepo-goal-claim");
+  assert.match(currentRun.runnerCommand, /scripts\/planner-agent-runner\.mjs/);
+  assert.equal(currentRun.handoffDir, `loops/project-controller/runs/${currentRun.id}`);
+  assert.equal(currentRun.makerPromptPath, `loops/project-controller/runs/${currentRun.id}/maker-prompt.md`);
+  assert.equal(currentRun.checkerPromptPath, `loops/project-controller/runs/${currentRun.id}/checker-prompt.md`);
+  assert.equal(currentRun.evidencePath, `loops/project-controller/runs/${currentRun.id}/evidence.json`);
+  assert.equal(currentRun.timeline[2].stage, "prepare");
+  assert.equal(currentRun.timeline[3].stage, "maker");
   assert.match(report, /Goal claim: `GOAL-CLAIM` claimed/);
+  assert.match(report, /branch `worktree\/goal-claim`/);
+  assert.match(report, /planner-agent-runner\.mjs/);
+});
+
+test("--claim-goal can claim an already-running queued goal without current-run state", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "GOAL-RUNNING",
+        title: "Running goal without run state",
+        lifecycleStatus: "running",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 3,
+        summary: "A running queued goal should still be claimable if current-run is missing.",
+        tags: ["goal", "loop", "goal-running", "approved-to-run"],
+        description: "Running goal.",
+        subtasks: [],
+        createdAt: "2026-06-19T20:00:00.000Z",
+        updatedAt: "2026-06-19T20:00:00.000Z"
+      }
+    ]
+  });
+
+  await runController(root, ["--project", "atlas-planner", "--claim-goal"]);
+
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const report = await readFile(join(root, "loops/project-controller/latest-report.md"), "utf8");
+
+  assert.equal(currentRun.goalId, "GOAL-RUNNING");
+  assert.match(report, /Goal claim: `GOAL-RUNNING` claimed/);
+});
+
+test("--claim-goal does not overwrite an existing current-run state", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "GOAL-ACTIVE",
+        title: "Active running goal",
+        lifecycleStatus: "running",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 3,
+        summary: "A running queued goal with active state should not be reclaimed.",
+        tags: ["goal", "loop", "goal-running", "approved-to-run"],
+        description: "Active goal.",
+        subtasks: [],
+        createdAt: "2026-06-19T20:00:00.000Z",
+        updatedAt: "2026-06-19T20:00:00.000Z"
+      }
+    ]
+  });
+  await writeFile(
+    join(root, "loops/project-controller/current-run.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        id: "run-existing",
+        goalId: "GOAL-ACTIVE",
+        status: "running",
+        stage: "maker"
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  await runController(root, ["--project", "atlas-planner", "--claim-goal"]);
+
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const report = await readFile(join(root, "loops/project-controller/latest-report.md"), "utf8");
+
+  assert.equal(currentRun.id, "run-existing");
+  assert.doesNotMatch(report, /Goal claim: `GOAL-ACTIVE` claimed/);
+});
+
+test("--claim-goal does not overwrite malformed current-run state", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "GOAL-MALFORMED",
+        title: "Running goal with malformed run state",
+        lifecycleStatus: "running",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 3,
+        summary: "A malformed current run file should still block reclaiming.",
+        tags: ["goal", "loop", "goal-running", "approved-to-run"],
+        description: "Malformed current run guard.",
+        subtasks: [],
+        createdAt: "2026-06-19T20:00:00.000Z",
+        updatedAt: "2026-06-19T20:00:00.000Z"
+      }
+    ]
+  });
+  await writeFile(join(root, "loops/project-controller/current-run.json"), "{");
+
+  await runController(root, ["--project", "atlas-planner", "--claim-goal"]);
+
+  const currentRun = await readFile(join(root, "loops/project-controller/current-run.json"), "utf8");
+  const report = await readFile(join(root, "loops/project-controller/latest-report.md"), "utf8");
+
+  assert.equal(currentRun, "{");
+  assert.doesNotMatch(report, /Goal claim: `GOAL-MALFORMED` claimed/);
 });
 
 test("--dry-run --claim-goal is read-only and does not write current-run state", async () => {

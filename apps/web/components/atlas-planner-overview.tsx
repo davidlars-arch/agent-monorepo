@@ -134,6 +134,75 @@ type CurrentLoopRunSummary = {
   claimedAt: string;
   updatedAt: string;
   baseCommit: string;
+  branchName?: string;
+  worktreePath?: string;
+  handoffDir?: string;
+  runnerCommand?: string;
+  makerPromptPath?: string;
+  checkerPromptPath?: string;
+  evidencePath?: string;
+};
+
+type RunnerTimelineEvent = {
+  stage: string;
+  status: string;
+  at: string | null;
+  detail: string;
+};
+
+type RunnerStateSummary = {
+  status: string;
+  stage: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  updatedAt: string;
+  timeline: RunnerTimelineEvent[];
+};
+
+type RunnerEvidenceCheck = {
+  stage: string;
+  command: string;
+  exitCode: number;
+  startedAt: string;
+  finishedAt: string;
+  repairAttempt: number;
+};
+
+type RunnerEvidenceFinding = {
+  severity: string;
+  stage: string;
+  summary: string;
+  file?: string;
+  line?: number;
+  recommendation?: string;
+  at?: string;
+};
+
+type RunnerEvidenceSummary = {
+  status: string;
+  repairAttempts: number;
+  maxRepairs: number;
+  checks: RunnerEvidenceCheck[];
+  findings: RunnerEvidenceFinding[];
+};
+
+type ControllerMemorySummary = {
+  latestReport?: {
+    path: string;
+    updatedAt: string;
+    excerpt: string;
+  };
+  controllerState?: {
+    path: string;
+    updatedAt: string;
+    summary: string;
+  };
+  decisionLog?: {
+    path: string;
+    updatedAt: string;
+    count: number;
+    lastDecision: string;
+  };
 };
 
 const goalLifecycleStages: Array<{ id: GoalLifecycleStatus; label: string; detail: string }> = [
@@ -760,6 +829,9 @@ export function AtlasPlannerOverview({
   loopKanban,
   queuedGoals,
   currentLoopRun,
+  currentRunnerState,
+  currentRunnerEvidence,
+  controllerMemory,
   currentCommit,
   initialGoalComposerOpen = false,
   showExplainer,
@@ -770,6 +842,9 @@ export function AtlasPlannerOverview({
   loopKanban: LoopKanbanProject[];
   queuedGoals?: QueuedGoalSummary[];
   currentLoopRun?: CurrentLoopRunSummary | null;
+  currentRunnerState?: RunnerStateSummary | null;
+  currentRunnerEvidence?: RunnerEvidenceSummary | null;
+  controllerMemory?: ControllerMemorySummary | null;
   currentCommit: string;
   initialGoalComposerOpen?: boolean;
   showExplainer: boolean;
@@ -791,6 +866,7 @@ export function AtlasPlannerOverview({
   const [dragOverStatus, setDragOverStatus] = useState<LoopTicketStatus | null>(null);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
+  const [queuedGoalState, setQueuedGoalState] = useState<QueuedGoalSummary[]>(() => queuedGoals ?? []);
   const editorCloseTimeoutRef = useRef<number | null>(null);
   const plannerImportInputRef = useRef<HTMLInputElement | null>(null);
   const suppressTicketClickRef = useRef(false);
@@ -800,7 +876,7 @@ export function AtlasPlannerOverview({
   const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus);
   const loopGoalSummary = getLoopGoalSummary(loopKanban);
   const loopRunTimeline = getLoopRunTimeline(loopPlannerCommand);
-  const durableQueuedGoals = queuedGoals ?? [];
+  const durableQueuedGoals = queuedGoalState;
   const completedTicketsInRange = plannerTickets.filter((ticket) =>
     isTimestampInRange(ticket.completedAt, activityDateRange.start, activityDateRange.end)
   );
@@ -1254,7 +1330,12 @@ export function AtlasPlannerOverview({
       if (!response.ok) {
         throw new Error("Queue write failed.");
       }
+      const payload = (await response.json()) as { goal?: QueuedGoalSummary };
       setPlannerTickets((current) => [ticket, ...current]);
+      if (payload.goal) {
+        const queuedGoal = payload.goal;
+        setQueuedGoalState((current) => [queuedGoal, ...current.filter((goal) => goal.id !== queuedGoal.id)]);
+      }
       setPlannerStateMessage(`Created ${ticketId} and queued it for the loop runner.`);
     } catch {
       setPlannerStateMessage(`Could not create ${ticketId}. Queue write failed.`);
@@ -1262,6 +1343,47 @@ export function AtlasPlannerOverview({
     }
     setGoalDraft(getDefaultGoalDraft());
     closeGoalComposer();
+  }
+
+  async function updateQueuedGoalLifecycle(goal: QueuedGoalSummary, lifecycleStatus: GoalLifecycleStatus) {
+    const previousGoals = queuedGoalState;
+    const approvedToRun = lifecycleStatus === "approved" || lifecycleStatus === "running";
+    const nextStatus = getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun);
+    const updatedGoal: QueuedGoalSummary = {
+      ...goal,
+      lifecycleStatus,
+      approvedToRun,
+      status: nextStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    setQueuedGoalState((current) => current.map((candidate) => (candidate.id === goal.id ? updatedGoal : candidate)));
+    setPlannerStateMessage(`${goal.id} moved to ${lifecycleStatus}.`);
+
+    try {
+      const response = await fetch("/api/atlas-goals", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: goal.id,
+          lifecycleStatus,
+          approvedToRun
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Goal lifecycle update failed.");
+      }
+
+      const payload = (await response.json()) as { goal?: QueuedGoalSummary };
+      if (payload.goal) {
+        setQueuedGoalState((current) => current.map((candidate) => (candidate.id === goal.id ? payload.goal! : candidate)));
+      }
+    } catch (error) {
+      setQueuedGoalState(previousGoals);
+      setPlannerStateMessage(error instanceof Error ? error.message : "Goal lifecycle update failed.");
+    }
   }
 
   return (
@@ -1460,6 +1582,28 @@ export function AtlasPlannerOverview({
                         {goal.id} · {goal.status} · {goal.estimate} pts
                         {goal.approvedToRun ? " · approved" : ""}
                       </p>
+                      <div className="loop-goal-queue__actions">
+                        {goal.lifecycleStatus === "draft" || goal.lifecycleStatus === "refined" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "approved")}>
+                            Approve
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "blocked" && goal.lifecycleStatus !== "satisfied" && goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "blocked")}>
+                            Block
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "satisfied" && goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "satisfied")}>
+                            Satisfy
+                          </button>
+                        ) : null}
+                        {goal.lifecycleStatus !== "archived" ? (
+                          <button type="button" onClick={() => updateQueuedGoalLifecycle(goal, "archived")}>
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -1494,10 +1638,118 @@ export function AtlasPlannerOverview({
                     <dt>Base</dt>
                     <dd>{currentLoopRun.baseCommit}</dd>
                   </div>
+                  {currentLoopRun.branchName ? (
+                    <div>
+                      <dt>Branch</dt>
+                      <dd>{currentLoopRun.branchName}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.worktreePath ? (
+                    <div>
+                      <dt>Worktree</dt>
+                      <dd>{currentLoopRun.worktreePath}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.handoffDir ? (
+                    <div>
+                      <dt>Handoff</dt>
+                      <dd>{currentLoopRun.handoffDir}</dd>
+                    </div>
+                  ) : null}
+                  {currentLoopRun.runnerCommand ? (
+                    <div>
+                      <dt>Runner</dt>
+                      <dd>{currentLoopRun.runnerCommand}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               ) : (
                 <p>Claiming an approved queued goal writes `loops/project-controller/current-run.json`.</p>
               )}
+              {currentLoopRun && (currentRunnerState || currentRunnerEvidence) ? (
+                <div className="loop-run-artifacts">
+                  {currentRunnerState ? (
+                    <article className="loop-run-artifacts__state">
+                      <div className="loop-run-artifacts__title">
+                        <span>Runner state</span>
+                        <strong>{currentRunnerState.stage}</strong>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>Status</dt>
+                          <dd>{currentRunnerState.status}</dd>
+                        </div>
+                        <div>
+                          <dt>Repairs</dt>
+                          <dd>
+                            {currentRunnerState.repairAttempts}/{currentRunnerState.maxRepairs}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Updated</dt>
+                          <dd>{formatPlannerDateTime(currentRunnerState.updatedAt)}</dd>
+                        </div>
+                      </dl>
+                      {currentRunnerState.timeline.length > 0 ? (
+                        <ol>
+                          {currentRunnerState.timeline.slice(-4).map((event, index) => (
+                            <li key={`${event.stage}-${event.status}-${event.at ?? index}`}>
+                              <span>{event.status}</span>
+                              <strong>{event.stage}</strong>
+                              <p>{event.detail}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                    </article>
+                  ) : null}
+                  {currentRunnerEvidence ? (
+                    <article className="loop-run-artifacts__evidence">
+                      <div className="loop-run-artifacts__title">
+                        <span>Runner evidence</span>
+                        <strong>{currentRunnerEvidence.status}</strong>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>Checks</dt>
+                          <dd>{currentRunnerEvidence.checks.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Findings</dt>
+                          <dd>{currentRunnerEvidence.findings.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Repairs</dt>
+                          <dd>
+                            {currentRunnerEvidence.repairAttempts}/{currentRunnerEvidence.maxRepairs}
+                          </dd>
+                        </div>
+                      </dl>
+                      {currentRunnerEvidence.checks.length > 0 ? (
+                        <div className="loop-run-artifacts__checks">
+                          {currentRunnerEvidence.checks.slice(-3).map((check) => (
+                            <p key={`${check.stage}-${check.finishedAt}-${check.repairAttempt}`}>
+                              <span>{check.stage}</span>
+                              <strong>exit {check.exitCode}</strong>
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      {currentRunnerEvidence.findings.length > 0 ? (
+                        <div className="loop-run-artifacts__findings">
+                          {currentRunnerEvidence.findings.slice(-3).map((finding, index) => (
+                            <p key={`${finding.stage}-${finding.summary}-${index}`}>
+                              <span>{finding.severity}</span>
+                              <strong>{finding.summary}</strong>
+                              {finding.file ? <small>{finding.file}</small> : null}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             <section className="loop-run-timeline" aria-label="Loop run timeline">
@@ -1548,6 +1800,40 @@ export function AtlasPlannerOverview({
                   </article>
                 ))}
               </div>
+              {controllerMemory ? (
+                <div className="loop-controller-memory">
+                  {controllerMemory.latestReport ? (
+                    <article>
+                      <div>
+                        <span>Latest report</span>
+                        <strong>{formatPlannerDateTime(controllerMemory.latestReport.updatedAt)}</strong>
+                      </div>
+                      <code>{controllerMemory.latestReport.path}</code>
+                      <p>{controllerMemory.latestReport.excerpt || "Report file exists but has no readable summary."}</p>
+                    </article>
+                  ) : null}
+                  {controllerMemory.controllerState ? (
+                    <article>
+                      <div>
+                        <span>Controller state</span>
+                        <strong>{formatPlannerDateTime(controllerMemory.controllerState.updatedAt)}</strong>
+                      </div>
+                      <code>{controllerMemory.controllerState.path}</code>
+                      <p>{controllerMemory.controllerState.summary}</p>
+                    </article>
+                  ) : null}
+                  {controllerMemory.decisionLog ? (
+                    <article>
+                      <div>
+                        <span>Decision log</span>
+                        <strong>{controllerMemory.decisionLog.count} entries</strong>
+                      </div>
+                      <code>{controllerMemory.decisionLog.path}</code>
+                      <p>{controllerMemory.decisionLog.lastDecision || "No decision lines recorded yet."}</p>
+                    </article>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             <section className="loop-merge-gates" aria-label="PR and merge gates">
