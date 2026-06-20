@@ -17,7 +17,15 @@ import {
   type UsageStatusSnapshot
 } from "@agent/atlas-planner";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type PlannerTicketsApiState = {
+  ok?: boolean;
+  source?: "repo" | "missing" | "invalid";
+  revision?: string;
+  tickets?: KanbanTicket[];
+  error?: string;
+};
 
 export function usePlannerTickets({
   loopKanban,
@@ -39,33 +47,113 @@ export function usePlannerTickets({
   const plannerImportInputRef = useRef<HTMLInputElement | null>(null);
   const suppressTicketClickRef = useRef(false);
   const suppressTicketClickTimeoutRef = useRef<number | null>(null);
+  const plannerStateRevisionRef = useRef("");
+  const plannerStatePersistTimeoutRef = useRef<number | null>(null);
+  const queuedPlannerTicketsRef = useRef<KanbanTicket[] | null>(null);
+  const isPersistingPlannerStateRef = useRef(false);
+  const isApiBackedPlannerStateRef = useRef(false);
+  const shouldSkipNextPlannerPersistRef = useRef(false);
   const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+
+  const persistPlannerTicketsToApi = useCallback(async (tickets: KanbanTicket[]) => {
+    queuedPlannerTicketsRef.current = tickets;
+    if (isPersistingPlannerStateRef.current) {
+      return;
+    }
+
+    isPersistingPlannerStateRef.current = true;
+    try {
+      while (queuedPlannerTicketsRef.current) {
+        const ticketsToPersist = queuedPlannerTicketsRef.current;
+        queuedPlannerTicketsRef.current = null;
+        const response = await fetch("/api/planner/tickets", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            baseRevision: plannerStateRevisionRef.current,
+            tickets: ticketsToPersist
+          })
+        });
+        const payload = (await response.json().catch(() => null)) as PlannerTicketsApiState | null;
+
+        if (!response.ok) {
+          if (response.status === 409) {
+            isApiBackedPlannerStateRef.current = false;
+            queuedPlannerTicketsRef.current = null;
+            setPlannerStateMessage(payload?.error ?? "Planner tickets changed on disk. Reload before saving again.");
+            return;
+          }
+
+          setPlannerStateMessage(payload?.error ?? "Planner tickets could not be saved to disk. Browser fallback is still updated.");
+          return;
+        }
+
+        plannerStateRevisionRef.current = payload?.revision ?? "";
+      }
+    } catch {
+      setPlannerStateMessage("Planner ticket API is unavailable. Browser fallback is still updated.");
+    } finally {
+      isPersistingPlannerStateRef.current = false;
+      if (queuedPlannerTicketsRef.current && isApiBackedPlannerStateRef.current) {
+        void persistPlannerTicketsToApi(queuedPlannerTicketsRef.current);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      const defaultTickets = buildPlannerTickets(loopKanban);
+      const apiState = await readPlannerTicketsFromApi();
+      if (cancelled) {
+        return;
+      }
+      if (apiState) {
+        const repoTickets = hydratePlannerTickets(apiState.tickets ?? []);
+        const repoTicketIds = new Set(repoTickets.map((ticket) => ticket.id));
+        setPlannerTickets([...repoTickets, ...defaultTickets.filter((ticket) => !repoTicketIds.has(ticket.id))]);
+        plannerStateRevisionRef.current = apiState.revision ?? "";
+        isApiBackedPlannerStateRef.current = apiState.source !== "invalid";
+        shouldSkipNextPlannerPersistRef.current = true;
+        setHasLoadedPlannerState(true);
+        setPlannerStateMessage(
+          apiState.source === "missing"
+            ? "Planner ticket file is not initialized yet. The next edit will create it."
+            : apiState.source === "invalid"
+              ? "Planner ticket file could not be read. Using browser fallback."
+              : ""
+        );
+        return;
+      }
+
       try {
         const stored = window.localStorage.getItem(plannerTicketStorageKey);
-        const defaultTickets = buildPlannerTickets(loopKanban);
         if (!stored) {
+          shouldSkipNextPlannerPersistRef.current = true;
           setPlannerTickets(defaultTickets);
           return;
         }
 
         const storedTickets = hydratePlannerTickets(JSON.parse(stored) as KanbanTicket[]);
         const storedTicketIds = new Set(storedTickets.map((ticket) => ticket.id));
+        shouldSkipNextPlannerPersistRef.current = true;
         setPlannerTickets([...storedTickets, ...defaultTickets.filter((ticket) => !storedTicketIds.has(ticket.id))]);
       } catch {
+        shouldSkipNextPlannerPersistRef.current = true;
         setPlannerTickets(buildPlannerTickets(loopKanban));
       } finally {
         setHasLoadedPlannerState(true);
       }
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [loopKanban]);
 
   useEffect(() => {
@@ -74,12 +162,31 @@ export function usePlannerTickets({
     }
 
     window.localStorage.setItem(plannerTicketStorageKey, JSON.stringify(plannerTickets));
-  }, [hasLoadedPlannerState, plannerTickets]);
+    if (shouldSkipNextPlannerPersistRef.current) {
+      shouldSkipNextPlannerPersistRef.current = false;
+      return;
+    }
+
+    if (!isApiBackedPlannerStateRef.current) {
+      return;
+    }
+
+    if (plannerStatePersistTimeoutRef.current) {
+      window.clearTimeout(plannerStatePersistTimeoutRef.current);
+    }
+
+    plannerStatePersistTimeoutRef.current = window.setTimeout(() => {
+      void persistPlannerTicketsToApi(plannerTickets);
+    }, 300);
+  }, [hasLoadedPlannerState, persistPlannerTicketsToApi, plannerTickets]);
 
   useEffect(() => {
     return () => {
       if (editorCloseTimeoutRef.current) {
         window.clearTimeout(editorCloseTimeoutRef.current);
+      }
+      if (plannerStatePersistTimeoutRef.current) {
+        window.clearTimeout(plannerStatePersistTimeoutRef.current);
       }
       if (suppressTicketClickTimeoutRef.current) {
         window.clearTimeout(suppressTicketClickTimeoutRef.current);
@@ -357,4 +464,17 @@ export function usePlannerTickets({
     handleTicketDragStart,
     handleTicketDragEnd
   };
+}
+
+async function readPlannerTicketsFromApi() {
+  try {
+    const response = await fetch("/api/planner/tickets", { cache: "no-store" });
+    const payload = (await response.json().catch(() => null)) as PlannerTicketsApiState | null;
+    if (!response.ok || !payload?.ok || !Array.isArray(payload.tickets)) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
 }
