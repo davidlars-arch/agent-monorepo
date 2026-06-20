@@ -34,51 +34,53 @@ export function ActivityDashboard({
   );
 
   return (
-    <section className="loop-activity loop-activity--overlay" aria-label="Atlas Planner activity dashboard">
-      <div className="loop-activity__header">
-        <div>
-          <p>Activity dashboard</p>
-          <h3>Latest movement</h3>
+    <div className="loop-activity-modal" role="dialog" aria-modal="true" aria-labelledby="loop-activity-title">
+      <button type="button" className="loop-activity-modal__scrim" aria-label="Close activity dashboard" onClick={onClose} />
+      <section className="loop-activity loop-activity--overlay" aria-label="Atlas Planner activity dashboard">
+        <div className="loop-activity__header">
+          <div>
+            <p>Activity dashboard</p>
+            <h3 id="loop-activity-title">Latest movement</h3>
+          </div>
+          <div className="loop-activity__filters">
+            <label>
+              Timeline
+              <select value={dateFilter} onChange={(event) => onDateFilterChange(event.target.value as PlannerDateFilter)}>
+                <option value="updated">Updated</option>
+                <option value="created">Created</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+            <label>
+              From
+              <input
+                type="date"
+                value={dateRange.start}
+                onChange={(event) =>
+                  onDateRangeChange((current) => updatePlannerDateRange(current, { start: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              To
+              <input
+                type="date"
+                value={dateRange.end}
+                onChange={(event) =>
+                  onDateRangeChange((current) => updatePlannerDateRange(current, { end: event.target.value }))
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="loop-close-button"
+              aria-label="Close activity dashboard"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
-        <div className="loop-activity__filters">
-          <label>
-            Timeline
-            <select value={dateFilter} onChange={(event) => onDateFilterChange(event.target.value as PlannerDateFilter)}>
-              <option value="updated">Updated</option>
-              <option value="created">Created</option>
-              <option value="completed">Completed</option>
-            </select>
-          </label>
-          <label>
-            From
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(event) =>
-                onDateRangeChange((current) => updatePlannerDateRange(current, { start: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            To
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(event) =>
-                onDateRangeChange((current) => updatePlannerDateRange(current, { end: event.target.value }))
-              }
-            />
-          </label>
-          <button
-            type="button"
-            className="loop-close-button"
-            aria-label="Close activity dashboard"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
 
       <div className="loop-activity__grid">
         <article className="loop-activity__stat">
@@ -134,6 +136,7 @@ export function ActivityDashboard({
           )}
         </article>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }

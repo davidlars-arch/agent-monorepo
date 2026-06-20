@@ -8,7 +8,7 @@ import {
   type PlannerTicketDraft,
   type UsageStatusSnapshot
 } from "@agent/atlas-planner";
-import { CalendarDays, Download, Plus, RotateCcw, Target, Upload } from "lucide-react";
+import { CalendarDays, Download, MoreHorizontal, Plus, RotateCw, Target, Upload } from "lucide-react";
 import type { DragEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
 
 type KanbanColumn = {
@@ -71,18 +71,6 @@ export function KanbanBoard({
             <CalendarDays size={14} />
             Dashboard
           </button>
-          <button type="button" onClick={onExportPlannerState}>
-            <Download size={14} />
-            Export
-          </button>
-          <button type="button" onClick={() => importInputRef.current?.click()}>
-            <Upload size={14} />
-            Import
-          </button>
-          <button type="button" onClick={onResetPlannerState}>
-            <RotateCcw size={14} />
-            Reset
-          </button>
           <button type="button" onClick={onOpenGoalComposer}>
             <Target size={14} />
             Create goal
@@ -91,6 +79,26 @@ export function KanbanBoard({
             <Plus size={14} />
             New ticket
           </button>
+          <details className="loop-kanban__menu">
+            <summary>
+              <MoreHorizontal size={14} />
+              Manage
+            </summary>
+            <div>
+              <button type="button" onClick={onExportPlannerState}>
+                <Download size={14} />
+                Export
+              </button>
+              <button type="button" onClick={() => importInputRef.current?.click()}>
+                <Upload size={14} />
+                Import
+              </button>
+              <button type="button" onClick={onResetPlannerState}>
+                <RotateCw size={14} />
+                Reset
+              </button>
+            </div>
+          </details>
           <input
             ref={importInputRef}
             className="loop-kanban__import"
