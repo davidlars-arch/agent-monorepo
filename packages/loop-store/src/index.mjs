@@ -281,11 +281,14 @@ export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_00
         maxBuffer: 8 * 1024 * 1024,
         timeout: timeoutMs
       });
+      const sync = await syncTerminalAtlasRun(root, recheckedRun);
       return {
         ok: true,
         status: "completed",
         action,
-        currentRun: recheckedRun,
+        currentRun: sync.currentRun ?? recheckedRun,
+        goal: sync.goal,
+        sync,
         command: renderCommand(command),
         exitCode: 0,
         stdout: String(result.stdout ?? "").trim(),
@@ -298,7 +301,7 @@ export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_00
         ok: false,
         status: error?.killed ? "timed-out" : "failed",
         action,
-        currentRun: recheckedRun,
+        currentRun: (await syncTerminalAtlasRun(root, recheckedRun)).currentRun ?? recheckedRun,
         command: renderCommand(command),
         exitCode: typeof error?.code === "number" ? error.code : 1,
         stdout: String(error?.stdout ?? "").trim(),
@@ -310,6 +313,52 @@ export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_00
   } finally {
     await releaseFileLock(loopPaths.lockPath, lock.file);
   }
+}
+
+export async function syncTerminalAtlasRun(root, currentRun) {
+  if (!currentRun?.handoffDir || !currentRun?.goalId) {
+    return { ok: true, status: "skipped", reason: "Current run is missing handoff or goal id." };
+  }
+
+  const loopPaths = getLoopPaths(root);
+  const runnerStatePath = resolveRepoPath(root, join(currentRun.handoffDir, "runner-state.json"));
+  const runnerState = await readJsonFile(runnerStatePath, null);
+  const runnerStatus = typeof runnerState?.status === "string" ? runnerState.status : "";
+  if (!terminalRunnerStatuses.includes(runnerStatus)) {
+    return { ok: true, status: "non-terminal", runnerStatus };
+  }
+
+  const updatedAt = typeof runnerState.updatedAt === "string" ? runnerState.updatedAt : new Date().toISOString();
+  const lifecycleStatus = getGoalLifecycleForRunnerStatus(runnerStatus);
+  const queue = await readGoalQueue(loopPaths.goalQueuePath);
+  let syncedGoal = null;
+  const nextGoals = queue.goals.map((goal) => {
+    if (goal.id !== currentRun.goalId) {
+      return goal;
+    }
+    syncedGoal = updateGoalLifecycle(goal, lifecycleStatus, lifecycleStatus === "satisfied", { now: updatedAt });
+    return syncedGoal;
+  });
+
+  const nextCurrentRun = {
+    ...currentRun,
+    status: runnerStatus,
+    stage: typeof runnerState.stage === "string" ? runnerState.stage : currentRun.stage,
+    updatedAt,
+    runnerStatus,
+    runnerUpdatedAt: updatedAt
+  };
+
+  if (syncedGoal) {
+    await writeJsonAtomically(loopPaths.goalQueuePath, {
+      version: 1,
+      updatedAt,
+      goals: nextGoals
+    });
+  }
+  await writeJsonAtomically(loopPaths.currentRunPath, nextCurrentRun);
+
+  return { ok: true, status: "synced", runnerStatus, lifecycleStatus, goal: syncedGoal, currentRun: nextCurrentRun };
 }
 
 export function buildAtlasRunnerCommand(root, action, currentRun) {
@@ -604,6 +653,13 @@ function isProjectRoot(candidate) {
 
 function isApprovedLifecycle(lifecycleStatus) {
   return lifecycleStatus === "approved" || lifecycleStatus === "running";
+}
+
+function getGoalLifecycleForRunnerStatus(runnerStatus) {
+  if (runnerStatus === "satisfied" || runnerStatus === "passed" || runnerStatus === "merged") {
+    return "satisfied";
+  }
+  return "blocked";
 }
 
 function sanitizeString(value, maxLength) {

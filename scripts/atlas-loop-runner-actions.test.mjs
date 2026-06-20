@@ -88,6 +88,109 @@ test("runAtlasLoopRunnerAction starts the current run with local runner args", a
   assert.equal(calls[0].options.cwd, root);
 });
 
+test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued goal", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "AP-16",
+        title: "Add start and resume loop controls",
+        lifecycleStatus: "running",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 5,
+        summary: "Backend action route.",
+        tags: ["goal", "approved-to-run"],
+        description: "Claimed goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-20T10:00:00.000Z",
+        updatedAt: "2026-06-20T12:00:00.000Z"
+      }
+    ]
+  });
+  await writeCurrentRun(root);
+
+  const result = await runAtlasLoopRunnerAction(root, "start-current-run", {
+    execRunner: async () => {
+      await mkdir(join(root, "loops/project-controller/runs/run-ap-16"), { recursive: true });
+      await writeFile(
+        join(root, "loops/project-controller/runs/run-ap-16/runner-state.json"),
+        `${JSON.stringify(
+          {
+            version: 1,
+            runId: "run-ap-16",
+            worktreePath: root,
+            status: "satisfied",
+            stage: "checker-passed",
+            updatedAt: "2026-06-20T13:00:00.000Z"
+          },
+          null,
+          2
+        )}\n`
+      );
+      return { stdout: "{\"status\":\"satisfied\"}\n", stderr: "" };
+    }
+  });
+
+  const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.sync.status, "synced");
+  assert.equal(result.goal.lifecycleStatus, "satisfied");
+  assert.equal(queue.goals[0].lifecycleStatus, "satisfied");
+  assert.equal(queue.goals[0].status, "done");
+  assert.equal(currentRun.status, "satisfied");
+  assert.equal(currentRun.stage, "checker-passed");
+});
+
+test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "AP-16",
+        title: "Add start and resume loop controls",
+        lifecycleStatus: "running",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 5,
+        summary: "Backend action route.",
+        tags: ["goal", "approved-to-run"],
+        description: "Claimed goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-20T10:00:00.000Z",
+        updatedAt: "2026-06-20T12:00:00.000Z"
+      }
+    ]
+  });
+  await writeCurrentRun(root);
+
+  const result = await runAtlasLoopRunnerAction(root, "start-current-run", {
+    execRunner: async () => {
+      await mkdir(join(root, "loops/project-controller/runs/run-ap-16"), { recursive: true });
+      await writeFile(
+        join(root, "loops/project-controller/runs/run-ap-16/runner-state.json"),
+        `${JSON.stringify({ version: 1, runId: "run-ap-16", worktreePath: root, status: "failed", stage: "maker-failed" })}\n`
+      );
+      const error = new Error("runner failed");
+      error.code = 1;
+      error.stdout = "";
+      error.stderr = "runner failed";
+      throw error;
+    }
+  });
+
+  const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+
+  assert.equal(result.ok, false);
+  assert.equal(queue.goals[0].lifecycleStatus, "blocked");
+  assert.equal(queue.goals[0].status, "blocked");
+  assert.equal(currentRun.status, "failed");
+  assert.equal(currentRun.stage, "maker-failed");
+});
+
 test("runAtlasLoopRunnerAction resumes only when runner state exists", async () => {
   const root = await makeLoopRoot({ queuedGoals: [] });
   await writeCurrentRun(root);

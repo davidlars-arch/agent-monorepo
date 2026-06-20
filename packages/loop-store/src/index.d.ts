@@ -254,6 +254,16 @@ export function runAtlasLoopRunnerAction(
       status: "completed";
       action: string;
       currentRun: CurrentLoopRunSummary;
+      goal?: QueuedGoal | null;
+      sync?: {
+        ok: true;
+        status: "skipped" | "non-terminal" | "synced";
+        reason?: string;
+        runnerStatus?: string;
+        lifecycleStatus?: string;
+        goal?: QueuedGoal | null;
+        currentRun?: CurrentLoopRunSummary;
+      };
       command: string;
       exitCode: 0;
       stdout: string;
@@ -286,6 +296,18 @@ export function runAtlasLoopRunnerAction(
       finishedAt?: string;
     }
 >;
+export function syncTerminalAtlasRun(
+  root: string,
+  currentRun: Partial<CurrentLoopRunSummary> | null | undefined
+): Promise<{
+  ok: true;
+  status: "skipped" | "non-terminal" | "synced";
+  reason?: string;
+  runnerStatus?: string;
+  lifecycleStatus?: string;
+  goal?: QueuedGoal | null;
+  currentRun?: CurrentLoopRunSummary;
+}>;
 export function buildAtlasRunnerCommand(
   root: string,
   action: "start-current-run" | "resume-current-run" | string,
