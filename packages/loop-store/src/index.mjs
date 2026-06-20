@@ -403,6 +403,7 @@ export function buildAtlasRunnerCommand(root, action, currentRun) {
     if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
       args.push("--max-repairs", String(Math.min(5, maxRepairAttempts)));
     }
+    addRunnerCommandArgs(args, currentRun.runnerCommands ?? getRunnerCommandConfig());
 
     return {
       ok: true,
@@ -514,12 +515,15 @@ function buildAtlasAgentRunPlan({ runId, goal, baseCommit }) {
   if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
     commandParts.push("--max-repairs", shellQuote(String(Math.min(5, maxRepairAttempts))));
   }
+  const runnerCommands = getRunnerCommandConfig();
+  addRunnerCommandArgs(commandParts, runnerCommands, shellQuote);
   const command = commandParts.join(" ");
 
   return {
     branchName,
     worktreePath,
     handoffDir,
+    runnerCommands,
     command,
     makerPromptPath: join(handoffDir, "maker-prompt.md"),
     checkerPromptPath: join(handoffDir, "checker-prompt.md"),
@@ -544,6 +548,7 @@ function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) 
     branchName: agentRun.branchName,
     worktreePath: agentRun.worktreePath,
     handoffDir: agentRun.handoffDir,
+    runnerCommands: agentRun.runnerCommands,
     runnerCommand: agentRun.command,
     makerPromptPath: agentRun.makerPromptPath,
     checkerPromptPath: agentRun.checkerPromptPath,
@@ -575,6 +580,38 @@ async function readCurrentCommit(root) {
 
 function renderCommand(command) {
   return [command.cmd, ...command.args].map(shellQuote).join(" ");
+}
+
+function getRunnerCommandConfig(env = process.env) {
+  return {
+    agentCommand: stringEnv(env.ATLAS_AGENT_COMMAND),
+    makerCommand: stringEnv(env.ATLAS_MAKER_COMMAND),
+    checkerCommand: stringEnv(env.ATLAS_CHECKER_COMMAND),
+    repairCommand: stringEnv(env.ATLAS_REPAIR_COMMAND),
+    prCommand: stringEnv(env.ATLAS_PR_COMMAND)
+  };
+}
+
+function addRunnerCommandArgs(parts, runnerCommands, quote = (value) => value) {
+  if (runnerCommands.agentCommand) {
+    parts.push("--agent-command", quote(runnerCommands.agentCommand));
+  }
+  if (runnerCommands.makerCommand) {
+    parts.push("--maker-command", quote(runnerCommands.makerCommand));
+  }
+  if (runnerCommands.checkerCommand) {
+    parts.push("--checker-command", quote(runnerCommands.checkerCommand));
+  }
+  if (runnerCommands.repairCommand) {
+    parts.push("--repair-command", quote(runnerCommands.repairCommand));
+  }
+  if (runnerCommands.prCommand) {
+    parts.push("--pr-command", quote(runnerCommands.prCommand));
+  }
+}
+
+function stringEnv(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 function sanitizeForBranch(value) {

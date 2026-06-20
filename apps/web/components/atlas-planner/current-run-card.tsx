@@ -346,6 +346,26 @@ function RunnerEvidenceCard({ currentRunnerEvidence }: { currentRunnerEvidence: 
           ))}
         </div>
       ) : null}
+      {currentRunnerEvidence.satisfactionLayers?.length ? (
+        <div className="loop-run-artifacts__findings">
+          {currentRunnerEvidence.satisfactionLayers.slice(0, 3).map((layer) => (
+            <p key={layer.layerId}>
+              <span>{layer.status}</span>
+              <strong>{layer.label}</strong>
+              {layer.missing?.length ? <small>{layer.missing[0]}</small> : <small>{layer.proof[0] ?? "Proof pending"}</small>}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {currentRunnerEvidence.pullRequest ? (
+        <div className="loop-run-artifacts__findings">
+          <p>
+            <span>{currentRunnerEvidence.pullRequest.status}</span>
+            <strong>Pull request</strong>
+            {currentRunnerEvidence.pullRequest.detail ? <small>{currentRunnerEvidence.pullRequest.detail}</small> : null}
+          </p>
+        </div>
+      ) : null}
     </article>
   );
 }

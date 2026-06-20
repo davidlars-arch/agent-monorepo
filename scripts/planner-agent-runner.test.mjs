@@ -135,6 +135,7 @@ test("runner executes maker and checker commands and records passing evidence", 
   assert.equal(state.status, "satisfied");
   assert.equal(state.stage, "checker-passed");
   assert.equal(evidence.status, "checker-passed");
+  assert.equal(evidence.pullRequest.status, "ready");
   assert.equal(evidence.checks.length, 2);
   assert.deepEqual(
     evidence.checks.map((check) => check.stage),
@@ -183,6 +184,80 @@ test("runner stops after bounded repair attempts and records checker blockers", 
   assert.equal(evidence.repairAttempts, 1);
   assert.equal(evidence.findings.filter((finding) => finding.stage === "checker").length, 2);
   assert.equal(repairLog, "1\n");
+});
+
+test("runner runs configured PR command after checker satisfaction", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-pr-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-20",
+      "--branch",
+      "worktree/ap-20-runner-test",
+      "--run-id",
+      "run-ap-20",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      "--pr-command",
+      'node -e \'require("fs").writeFileSync("pr.txt", process.env.ATLAS_BRANCH); console.log("https://example.test/pr/20")\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20/evidence.json"), "utf8"));
+  const prMarker = await readFile(join(worktreePath, "pr.txt"), "utf8");
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "pr-created");
+  assert.equal(state.stage, "pr-created");
+  assert.equal(evidence.pullRequest.status, "created");
+  assert.match(evidence.pullRequest.detail, /example\.test\/pr\/20/);
+  assert.equal(evidence.events.at(-1).stage, "pr");
+  assert.equal(prMarker, "worktree/ap-20-runner-test");
+});
+
+test("runner blocks when configured PR command fails", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-pr-block-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-20B",
+      "--branch",
+      "worktree/ap-20b-runner-test",
+      "--run-id",
+      "run-ap-20b",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      "--pr-command",
+      "node -e 'process.exit(5)'"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20b/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-20b/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "pr-blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(evidence.pullRequest.status, "blocked");
 });
 
 test("runner resumes an existing handoff without recreating the worktree", async () => {

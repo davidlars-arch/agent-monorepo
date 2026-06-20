@@ -59,6 +59,7 @@ try {
 function parseArgs(rawArgs) {
   const options = {
     agentCommand: process.env.ATLAS_AGENT_COMMAND ?? "",
+    prCommand: process.env.ATLAS_PR_COMMAND ?? "",
     base: "HEAD",
     dryRun: false,
     goalContract: null,
@@ -95,6 +96,7 @@ function parseArgs(rawArgs) {
         "--maker-command",
         "--checker-command",
         "--repair-command",
+        "--pr-command",
         "--max-repairs"
       ].includes(arg)
     ) {
@@ -127,6 +129,8 @@ function parseArgs(rawArgs) {
         options.checkerCommand = value;
       } else if (arg === "--repair-command") {
         options.repairCommand = value;
+      } else if (arg === "--pr-command") {
+        options.prCommand = value;
       } else if (arg === "--max-repairs") {
         options.maxRepairs = Number.parseInt(value, 10);
         options.maxRepairsProvided = true;
@@ -203,6 +207,7 @@ function buildPlan(options) {
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
+    prCommand: options.prCommand,
     maxRepairs: options.maxRepairs,
     files,
     commands: [
@@ -251,6 +256,7 @@ function buildResumePlan(options) {
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
+    prCommand: options.prCommand,
     maxRepairs: options.maxRepairsProvided ? options.maxRepairs : clampRepairAttempts(state.maxRepairs),
     files: state.files ?? {
       state: relative(process.cwd(), statePath),
@@ -344,6 +350,7 @@ function writeRunFiles(plan) {
         stage: "maker-handoff",
         repairAttempts: 0,
         maxRepairs: plan.maxRepairs,
+        prCommand: plan.prCommand,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         timeline: [
@@ -370,6 +377,12 @@ function writeRunFiles(plan) {
         repairAttempts: 0,
         maxRepairs: plan.maxRepairs,
         satisfactionLayers: createInitialLayerEvidence(plan.goalContract),
+        pullRequest: {
+          status: plan.prCommand ? "configured" : "human-gated",
+          detail: plan.prCommand
+            ? "PR command is configured and will run after checker satisfaction."
+            : "PR creation stays human-gated until ATLAS_PR_COMMAND or --pr-command is configured."
+        },
         checks: [],
         findings: [],
         events: []
@@ -414,14 +427,7 @@ function maybeRunAgentLoop(plan) {
   let checker = runLoopCommand("checker", checkerCommand, plan);
   appendEvidenceEvent(plan, checker);
   if (isCommandPassed(checker)) {
-    updateEvidenceStatus(plan, "checker-passed", 0);
-    updateRunnerState(plan, {
-      status: "satisfied",
-      stage: "checker-passed",
-      repairAttempts: 0,
-      timelineEvent: { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command }
-    });
-    return { status: "satisfied", stage: "checker-passed", repairAttempts: 0 };
+    return completeSatisfiedRun(plan, 0, { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command });
   }
 
   let repairAttempts = 0;
@@ -455,14 +461,7 @@ function maybeRunAgentLoop(plan) {
     checker = runLoopCommand("checker", checkerCommand, plan, { attempt });
     appendEvidenceEvent(plan, checker);
     if (isCommandPassed(checker)) {
-      updateEvidenceStatus(plan, "checker-passed-after-repair", attempt);
-      updateRunnerState(plan, {
-        status: "satisfied",
-        stage: "checker-passed",
-        repairAttempts: attempt,
-        timelineEvent: { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command }
-      });
-      return { status: "satisfied", stage: "checker-passed", repairAttempts: attempt };
+      return completeSatisfiedRun(plan, attempt, { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command });
     }
   }
 
@@ -476,6 +475,57 @@ function maybeRunAgentLoop(plan) {
   return { status: "blocked", stage: "checker-blocked", repairAttempts };
 }
 
+function completeSatisfiedRun(plan, repairAttempts, checkerTimelineEvent) {
+  updateEvidenceStatus(plan, repairAttempts > 0 ? "checker-passed-after-repair" : "checker-passed", repairAttempts);
+  updateRunnerState(plan, {
+    status: "satisfied",
+    stage: "checker-passed",
+    repairAttempts,
+    timelineEvent: checkerTimelineEvent
+  });
+
+  const prCommand = plan.prCommand || "";
+  if (!prCommand) {
+    updatePullRequestGate(plan, {
+      status: "ready",
+      detail: "Local maker/checker evidence passed. PR creation is ready but still human-gated until ATLAS_PR_COMMAND is configured."
+    });
+    return { status: "satisfied", stage: "checker-passed", repairAttempts };
+  }
+
+  const pr = runLoopCommand("pr", prCommand, plan);
+  appendEvidenceEvent(plan, pr);
+  if (!isCommandPassed(pr)) {
+    updatePullRequestGate(plan, {
+      status: "blocked",
+      command: pr.command,
+      detail: pr.stderr || pr.stdout || "PR command failed.",
+      at: pr.finishedAt
+    });
+    updateRunnerState(plan, {
+      status: "blocked",
+      stage: "pr-blocked",
+      repairAttempts,
+      timelineEvent: { stage: "pr", status: "failed", at: pr.finishedAt, detail: pr.command }
+    });
+    return { status: "blocked", stage: "pr-blocked", repairAttempts };
+  }
+
+  updatePullRequestGate(plan, {
+    status: "created",
+    command: pr.command,
+    detail: pr.stdout || "PR command completed.",
+    at: pr.finishedAt
+  });
+  updateRunnerState(plan, {
+    status: "satisfied",
+    stage: "pr-created",
+    repairAttempts,
+    timelineEvent: { stage: "pr", status: "done", at: pr.finishedAt, detail: pr.command }
+  });
+  return { status: "satisfied", stage: "pr-created", repairAttempts };
+}
+
 function resolveStageCommand(stage, plan) {
   if (stage === "maker") {
     return plan.makerCommand || plan.agentCommand || "";
@@ -485,6 +535,9 @@ function resolveStageCommand(stage, plan) {
   }
   if (stage === "repair") {
     return plan.repairCommand || plan.agentCommand || "";
+  }
+  if (stage === "pr") {
+    return plan.prCommand || "";
   }
 
   return "";
@@ -541,6 +594,8 @@ function runLoopCommand(stage, command, plan, details = {}) {
   const expandedCommand = expandCommandTemplate(command, {
     evidencePath: join(plan.handoffDir, "evidence.json"),
     handoffDir: plan.handoffDir,
+    branch: plan.branch,
+    base: plan.base,
     prompt,
     promptPath,
     repairAttempt: String(details.attempt ?? 0),
@@ -562,7 +617,9 @@ function runLoopCommand(stage, command, plan, details = {}) {
       ATLAS_PROMPT_PATH: promptPath,
       ATLAS_HANDOFF_DIR: plan.handoffDir,
       ATLAS_EVIDENCE_PATH: join(plan.handoffDir, "evidence.json"),
-      ATLAS_REPAIR_ATTEMPT: String(details.attempt ?? 0)
+      ATLAS_REPAIR_ATTEMPT: String(details.attempt ?? 0),
+      ATLAS_BRANCH: plan.branch,
+      ATLAS_BASE: plan.base
     }
   });
 
@@ -585,6 +642,9 @@ function getStagePromptPath(stage, plan) {
     return join(plan.handoffDir, "maker-prompt.md");
   }
   if (stage === "checker") {
+    return join(plan.handoffDir, "checker-prompt.md");
+  }
+  if (stage === "pr") {
     return join(plan.handoffDir, "checker-prompt.md");
   }
 
@@ -825,6 +885,18 @@ function updateEvidenceStatus(plan, status, repairAttempts) {
   const evidencePath = join(plan.handoffDir, "evidence.json");
   const evidence = readJson(evidencePath);
   writeJson(evidencePath, { ...evidence, status, repairAttempts });
+}
+
+function updatePullRequestGate(plan, update) {
+  const evidencePath = join(plan.handoffDir, "evidence.json");
+  const evidence = readJson(evidencePath);
+  writeJson(evidencePath, {
+    ...evidence,
+    pullRequest: {
+      ...(evidence.pullRequest ?? {}),
+      ...update
+    }
+  });
 }
 
 function updateRunnerState(plan, update) {

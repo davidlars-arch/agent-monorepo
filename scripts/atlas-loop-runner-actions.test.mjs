@@ -88,6 +88,38 @@ test("runAtlasLoopRunnerAction starts the current run with local runner args", a
   assert.equal(calls[0].options.cwd, root);
 });
 
+test("runAtlasLoopRunnerAction passes configured maker checker and PR commands", async () => {
+  const root = await makeLoopRoot({ queuedGoals: [] });
+  await writeCurrentRun(root, {
+    runnerCommands: {
+      makerCommand: "make maker",
+      checkerCommand: "make checker",
+      repairCommand: "make repair",
+      prCommand: "gh pr create --fill"
+    }
+  });
+
+  const calls = [];
+  const result = await runAtlasLoopRunnerAction(root, "start-current-run", {
+    execRunner: async (file, args) => {
+      calls.push({ file, args });
+      return { stdout: "{\"status\":\"created\"}\n", stderr: "" };
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls[0].args.slice(-8), [
+    "--maker-command",
+    "make maker",
+    "--checker-command",
+    "make checker",
+    "--repair-command",
+    "make repair",
+    "--pr-command",
+    "gh pr create --fill"
+  ]);
+});
+
 test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued goal", async () => {
   const root = await makeLoopRoot({
     queuedGoals: [
@@ -256,7 +288,7 @@ async function makeLoopRoot({ queuedGoals }) {
   return root;
 }
 
-async function writeCurrentRun(root) {
+async function writeCurrentRun(root, update = {}) {
   await writeFile(
     join(root, "loops/project-controller/current-run.json"),
     `${JSON.stringify(
@@ -273,7 +305,8 @@ async function writeCurrentRun(root) {
         baseCommit: "abc1234",
         branchName: "worktree/ap-16",
         worktreePath: "../agent-monorepo-ap-16",
-        handoffDir: "loops/project-controller/runs/run-ap-16"
+        handoffDir: "loops/project-controller/runs/run-ap-16",
+        ...update
       },
       null,
       2

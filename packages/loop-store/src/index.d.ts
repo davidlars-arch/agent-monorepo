@@ -75,6 +75,7 @@ export type CurrentLoopRunSummary = {
   worktreePath?: string;
   handoffDir?: string;
   runnerCommand?: string;
+  runnerCommands?: RunnerCommandConfig;
   makerPromptPath?: string;
   checkerPromptPath?: string;
   evidencePath?: string;
@@ -87,6 +88,14 @@ export type CurrentLoopRunSummary = {
     reason?: string;
   };
   timeline?: RunnerTimelineEvent[];
+};
+
+export type RunnerCommandConfig = {
+  agentCommand?: string;
+  makerCommand?: string;
+  checkerCommand?: string;
+  repairCommand?: string;
+  prCommand?: string;
 };
 
 export type RunnerTimelineEvent = {
@@ -165,6 +174,12 @@ export type RunnerEvidenceSummary = {
   checks: RunnerEvidenceCheck[];
   findings: RunnerEvidenceFinding[];
   satisfactionLayers?: RunnerEvidenceLayerProof[];
+  pullRequest?: {
+    status: string;
+    detail?: string;
+    command?: string;
+    at?: string;
+  };
 };
 
 export type ControllerMemorySummary = {

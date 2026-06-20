@@ -338,9 +338,9 @@
             {
               "id": "AP-17",
               "title": "Wire maker and checker agent commands",
-              "status": "backlog",
+              "status": "done",
               "estimate": 13,
-              "summary": "Configure bounded maker, checker, and repair command templates so Atlas Planner can execute real isolated agent work.",
+              "summary": "Configure bounded maker, checker, repair, and PR command templates through runner state and environment-backed commands.",
               "tags": ["agent-runner", "maker-checker", "repair-loop"]
             },
             {
@@ -362,9 +362,9 @@
             {
               "id": "AP-20",
               "title": "Implement PR and merge gate automation",
-              "status": "backlog",
+              "status": "in-progress",
               "estimate": 13,
-              "summary": "Create gated PR creation, CI/review status capture, merge approval, post-merge pull, and worktree cleanup for completed runs.",
+              "summary": "Create/update PR evidence through a configured PR command after checker satisfaction; merge remains human-gated.",
               "tags": ["github", "merge-gates", "worktree-cleanup"]
             }
           ]
