@@ -70,7 +70,7 @@ git worktree add ../agent-monorepo-atlas-loop-seed-goal worktree/atlas-loop-seed
 
 Goal:
 
-- Create one approved Atlas Planner goal through the UI/API path.
+- Create one approved Atlas Planner goal through the shared loop-store seed path.
 - Ensure `goal-queue.json` is valid and repo-scoped to `atlas-planner`.
 - Use a small, safe first-loop goal that exercises the runner without broad product scope.
 
@@ -85,6 +85,8 @@ Recommended first goal:
 Checks:
 
 ```sh
+npm run loop:seed-atlas-first-goal -- --dry-run
+npm run loop:seed-atlas-first-goal
 npm run loop:projects -- --project atlas-planner --dry-run --claim-goal
 node --test scripts/project-loop.test.mjs
 ```

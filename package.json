@@ -14,6 +14,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "loop:projects": "node scripts/project-loop.mjs",
+    "loop:seed-atlas-first-goal": "node scripts/seed-atlas-first-loop-goal.mjs",
     "planner:agent-runner": "node scripts/planner-agent-runner.mjs",
     "test:atlas-loop-runner": "node --test scripts/atlas-loop-runner-actions.test.mjs",
     "test:atlas-runner-wrappers": "node --test scripts/atlas-runner-wrapper.test.mjs",
