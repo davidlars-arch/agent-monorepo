@@ -430,10 +430,13 @@ export function buildAtlasRunnerCommand(root, action, currentRun) {
       return { ok: false, status: "terminal-runner-state", reason: "Runner state is terminal; clear current-run before starting new work." };
     }
 
+    const args = ["scripts/planner-agent-runner.mjs", "--resume", "--handoff-dir", currentRun.handoffDir];
+    addRunnerCommandArgs(args, currentRun.runnerCommands ?? getRunnerCommandConfig());
+
     return {
       ok: true,
       cmd: process.execPath,
-      args: ["scripts/planner-agent-runner.mjs", "--resume", "--handoff-dir", currentRun.handoffDir]
+      args
     };
   }
 

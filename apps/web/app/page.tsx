@@ -94,7 +94,9 @@ async function readCurrentRunnerEvidence(currentLoopRun: CurrentLoopRunSummary |
       repairAttempts: evidence.repairAttempts ?? 0,
       maxRepairs: evidence.maxRepairs ?? 0,
       checks: Array.isArray(evidence.checks) ? evidence.checks.slice(-8) : [],
-      findings: Array.isArray(evidence.findings) ? evidence.findings.slice(-8) : []
+      findings: Array.isArray(evidence.findings) ? evidence.findings.slice(-8) : [],
+      satisfactionLayers: Array.isArray(evidence.satisfactionLayers) ? evidence.satisfactionLayers.slice(0, 12) : [],
+      pullRequest: evidence.pullRequest
     };
   } catch {
     return null;

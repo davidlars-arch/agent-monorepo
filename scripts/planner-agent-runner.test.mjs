@@ -143,6 +143,72 @@ test("runner executes maker and checker commands and records passing evidence", 
   );
 });
 
+test("runner reads stage-specific command configuration from env", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-env-command-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-7B",
+      "--branch",
+      "worktree/ap-7b-runner-test",
+      "--run-id",
+      "run-ap-7b",
+      "--worktree-dir",
+      worktreePath
+    ],
+    {
+      cwd: root,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        ATLAS_MAKER_COMMAND: 'node -e \'require("fs").writeFileSync("maker-output.txt", "env command\\n")\'',
+        ATLAS_CHECKER_COMMAND: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("env command") || process.exit(2)\''
+      }
+    }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-7b/runner-state.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.match(state.makerCommand, /env command/);
+  assert.match(state.checkerCommand, /env command/);
+});
+
+test("runner allows repair env command with generic agent fallback checker", async () => {
+  const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-env-repair-"));
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--dry-run",
+      "--ticket",
+      "AP-7C",
+      "--branch",
+      "worktree/ap-7c-runner-test",
+      "--run-id",
+      "run-ap-7c"
+    ],
+    {
+      cwd: root,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        ATLAS_AGENT_COMMAND: "node scripts/atlas-openclaw-agent-command.mjs",
+        ATLAS_REPAIR_COMMAND: "node scripts/custom-repair.mjs"
+      }
+    }
+  );
+
+  const plan = JSON.parse(stdout);
+  assert.equal(plan.agentCommand, "node scripts/atlas-openclaw-agent-command.mjs");
+  assert.equal(plan.repairCommand, "node scripts/custom-repair.mjs");
+});
+
 test("runner stops after bounded repair attempts and records checker blockers", async () => {
   const { root, worktreePath } = await createGitFixture("planner-agent-runner-repair-");
 
@@ -304,6 +370,56 @@ test("runner resumes an existing handoff without recreating the worktree", async
   assert.equal(state.stage, "checker-passed");
   assert.equal(evidence.status, "checker-passed");
   assert.equal(evidence.checks.length, 2);
+});
+
+test("runner resume uses commands saved in runner state", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-resume-state-command-");
+
+  await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-9C",
+      "--branch",
+      "worktree/ap-9c-runner-test",
+      "--run-id",
+      "run-ap-9c",
+      "--worktree-dir",
+      worktreePath
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const statePath = join(root, "loops/project-controller/runs/run-ap-9c/runner-state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  await writeFile(
+    statePath,
+    `${JSON.stringify(
+      {
+        ...state,
+        makerCommand: 'node -e \'require("fs").writeFileSync("maker-output.txt", "state command\\n")\'',
+        checkerCommand: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("state command") || process.exit(4)\'',
+        prCommand: 'node -e \'console.log("state-pr-ready")\''
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [scriptPath, "--resume", "--handoff-dir", "loops/project-controller/runs/run-ap-9c"],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9c/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "pr-created");
+  assert.equal(evidence.events.at(-1).stage, "pr");
+  assert.equal(evidence.pullRequest.status, "created");
 });
 
 test("runner resume preserves the saved repair budget", async () => {

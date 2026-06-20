@@ -225,7 +225,14 @@ test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", a
 
 test("runAtlasLoopRunnerAction resumes only when runner state exists", async () => {
   const root = await makeLoopRoot({ queuedGoals: [] });
-  await writeCurrentRun(root);
+  await writeCurrentRun(root, {
+    runnerCommands: {
+      makerCommand: "make maker",
+      checkerCommand: "make checker",
+      repairCommand: "make repair",
+      prCommand: "gh pr create --fill"
+    }
+  });
 
   const missingState = await runAtlasLoopRunnerAction(root, "resume-current-run", {
     execRunner: async () => {
@@ -255,7 +262,15 @@ test("runAtlasLoopRunnerAction resumes only when runner state exists", async () 
     "scripts/planner-agent-runner.mjs",
     "--resume",
     "--handoff-dir",
-    "loops/project-controller/runs/run-ap-16"
+    "loops/project-controller/runs/run-ap-16",
+    "--maker-command",
+    "make maker",
+    "--checker-command",
+    "make checker",
+    "--repair-command",
+    "make repair",
+    "--pr-command",
+    "gh pr create --fill"
   ]);
 });
 

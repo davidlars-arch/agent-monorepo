@@ -59,6 +59,9 @@ try {
 function parseArgs(rawArgs) {
   const options = {
     agentCommand: process.env.ATLAS_AGENT_COMMAND ?? "",
+    makerCommand: process.env.ATLAS_MAKER_COMMAND ?? "",
+    checkerCommand: process.env.ATLAS_CHECKER_COMMAND ?? "",
+    repairCommand: process.env.ATLAS_REPAIR_COMMAND ?? "",
     prCommand: process.env.ATLAS_PR_COMMAND ?? "",
     base: "HEAD",
     dryRun: false,
@@ -163,8 +166,8 @@ function parseArgs(rawArgs) {
   if (!Number.isInteger(options.maxRepairs) || options.maxRepairs < 0 || options.maxRepairs > 5) {
     throw new Error("--max-repairs must be an integer from 0 to 5");
   }
-  if (options.repairCommand && !options.checkerCommand) {
-    throw new Error("--repair-command requires --checker-command");
+  if (options.repairCommand && !options.checkerCommand && !options.agentCommand) {
+    throw new Error("--repair-command requires --checker-command or --agent-command");
   }
 
   return options;
@@ -252,11 +255,11 @@ function buildResumePlan(options) {
     base: state.base,
     worktreePath,
     handoffDir,
-    agentCommand: options.agentCommand,
-    makerCommand: options.makerCommand,
-    checkerCommand: options.checkerCommand,
-    repairCommand: options.repairCommand,
-    prCommand: options.prCommand,
+    agentCommand: options.agentCommand || state.agentCommand || "",
+    makerCommand: options.makerCommand || state.makerCommand || "",
+    checkerCommand: options.checkerCommand || state.checkerCommand || "",
+    repairCommand: options.repairCommand || state.repairCommand || "",
+    prCommand: options.prCommand || state.prCommand || "",
     maxRepairs: options.maxRepairsProvided ? options.maxRepairs : clampRepairAttempts(state.maxRepairs),
     files: state.files ?? {
       state: relative(process.cwd(), statePath),
@@ -350,6 +353,10 @@ function writeRunFiles(plan) {
         stage: "maker-handoff",
         repairAttempts: 0,
         maxRepairs: plan.maxRepairs,
+        agentCommand: plan.agentCommand,
+        makerCommand: plan.makerCommand,
+        checkerCommand: plan.checkerCommand,
+        repairCommand: plan.repairCommand,
         prCommand: plan.prCommand,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -617,6 +624,7 @@ function runLoopCommand(stage, command, plan, details = {}) {
       ATLAS_PROMPT_PATH: promptPath,
       ATLAS_HANDOFF_DIR: plan.handoffDir,
       ATLAS_EVIDENCE_PATH: join(plan.handoffDir, "evidence.json"),
+      ATLAS_WORKTREE_PATH: plan.worktreePath,
       ATLAS_REPAIR_ATTEMPT: String(details.attempt ?? 0),
       ATLAS_BRANCH: plan.branch,
       ATLAS_BASE: plan.base

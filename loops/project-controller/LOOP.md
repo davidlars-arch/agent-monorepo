@@ -57,6 +57,17 @@ npm run loop:projects -- --all --build
 - Prefer the highest-scoring ticket that fits the current token window; defer larger work instead of half-doing it.
 - Continue looping only while at least one goal layer remains pending and the next ticket fits the current token window.
 
+## Runner Commands
+
+Atlas runner commands are configured through environment variables so external actions stay explicit:
+
+- `ATLAS_AGENT_COMMAND` runs for maker, checker, and repair when stage-specific commands are not set.
+- `ATLAS_MAKER_COMMAND`, `ATLAS_CHECKER_COMMAND`, and `ATLAS_REPAIR_COMMAND` override individual stages.
+- `ATLAS_PR_COMMAND` runs only after checker satisfaction and must never merge.
+- `ATLAS_PR_BASE` can override the GitHub PR base branch; it defaults to `main`.
+- `node scripts/atlas-openclaw-agent-command.mjs` is the local OpenClaw maker/checker/repair wrapper.
+- `node scripts/atlas-gh-pr-command.mjs` is the GitHub PR wrapper; it creates or reports a PR and stops before merge.
+
 ## Stop Condition
 
 Atlas Planner is healthy when:
