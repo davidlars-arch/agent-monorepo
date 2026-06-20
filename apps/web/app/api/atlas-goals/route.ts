@@ -1,39 +1,24 @@
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import {
+  acquireFileLock,
+  getLoopPaths,
+  isGoalLifecycleStatus,
+  readGoalQueue,
+  releaseFileLock,
+  resolveProjectRoot,
+  updateGoalLifecycle,
+  validateQueuedGoalInput,
+  writeJsonAtomically,
+  type QueuedGoal
+} from "@agent/loop-store";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-type QueuedGoal = {
-  id: string;
-  title: string;
-  lifecycleStatus: string;
-  approvedToRun: boolean;
-  status: string;
-  estimate: number;
-  summary: string;
-  tags: string[];
-  description: string;
-  subtasks: Array<{ id: string; title: string; done: boolean }>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type GoalQueue = {
-  version: 1;
-  updatedAt: string;
-  goals: QueuedGoal[];
-};
-
-const allowedLifecycleStatuses = new Set(["draft", "refined", "approved", "running", "blocked", "satisfied", "archived"]);
 const projectRoot = resolveProjectRoot();
-const controllerDir = join(projectRoot, "loops/project-controller");
-const queuePath = join(controllerDir, "goal-queue.json");
-const lockPath = join(controllerDir, "LOCK");
+const { goalQueuePath, lockPath } = getLoopPaths(projectRoot);
 
 export async function GET() {
-  return NextResponse.json(await readGoalQueue());
+  return NextResponse.json(await readGoalQueue(goalQueuePath));
 }
 
 export async function POST(request: Request) {
@@ -43,32 +28,31 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as Partial<QueuedGoal> | null;
-  const validation = validateGoalInput(body);
+  const validation = validateQueuedGoalInput(body);
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
   const goal = validation.goal;
-  const lock = await acquireQueueLock();
+  const lock = await acquireFileLock(lockPath, "atlas-goals-api");
   if (!lock.ok) {
     return NextResponse.json({ error: "The project loop is busy. Try again after the current run finishes." }, { status: 409 });
   }
 
   try {
-    const queue = await readGoalQueue();
+    const queue = await readGoalQueue(goalQueuePath);
     const withoutCurrent = queue.goals.filter((candidate) => candidate.id !== goal.id);
-    const nextQueue: GoalQueue = {
+    const nextQueue = {
       version: 1,
       updatedAt: goal.updatedAt,
       goals: [goal, ...withoutCurrent].slice(0, 50)
     };
 
-    await mkdir(dirname(queuePath), { recursive: true });
-    await writeJsonAtomically(queuePath, nextQueue);
+    await writeJsonAtomically(goalQueuePath, nextQueue);
 
     return NextResponse.json({ ok: true, goal, queueLength: nextQueue.goals.length });
   } finally {
-    await releaseQueueLock(lock.file);
+    await releaseFileLock(lockPath, lock.file);
   }
 }
 
@@ -83,17 +67,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Goal id and lifecycleStatus are required." }, { status: 400 });
   }
 
-  if (!allowedLifecycleStatuses.has(body.lifecycleStatus)) {
+  if (!isGoalLifecycleStatus(body.lifecycleStatus)) {
     return NextResponse.json({ error: "Unsupported lifecycle status." }, { status: 400 });
   }
 
-  const lock = await acquireQueueLock();
+  const lock = await acquireFileLock(lockPath, "atlas-goals-api");
   if (!lock.ok) {
     return NextResponse.json({ error: "The project loop is busy. Try again after the current run finishes." }, { status: 409 });
   }
 
   try {
-    const queue = await readGoalQueue();
+    const queue = await readGoalQueue(goalQueuePath);
     const goalIndex = queue.goals.findIndex((goal) => goal.id === body.id);
     if (goalIndex === -1) {
       return NextResponse.json({ error: "Goal not found." }, { status: 404 });
@@ -101,67 +85,25 @@ export async function PATCH(request: Request) {
 
     const now = new Date().toISOString();
     const previous = queue.goals[goalIndex];
-    const lifecycleStatus = body.lifecycleStatus;
-    const approvedToRun = lifecycleStatus === "approved" || lifecycleStatus === "running" ? body.approvedToRun !== false : false;
-    const updatedGoal: QueuedGoal = {
-      ...previous,
-      lifecycleStatus,
-      approvedToRun,
-      status: getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun),
-      tags: sanitizeTags(previous.tags, approvedToRun, lifecycleStatus),
-      updatedAt: now
-    };
+    const updatedGoal = updateGoalLifecycle(previous, body.lifecycleStatus, body.approvedToRun, { now });
+    if (!updatedGoal) {
+      return NextResponse.json({ error: "Unsupported lifecycle status." }, { status: 400 });
+    }
     const nextGoals = [...queue.goals];
     nextGoals[goalIndex] = updatedGoal;
 
-    const nextQueue: GoalQueue = {
+    const nextQueue = {
       version: 1,
       updatedAt: now,
       goals: nextGoals
     };
 
-    await writeJsonAtomically(queuePath, nextQueue);
+    await writeJsonAtomically(goalQueuePath, nextQueue);
 
     return NextResponse.json({ ok: true, goal: updatedGoal, queueLength: nextQueue.goals.length });
   } finally {
-    await releaseQueueLock(lock.file);
+    await releaseFileLock(lockPath, lock.file);
   }
-}
-
-function validateGoalInput(body: Partial<QueuedGoal> | null): { ok: true; goal: QueuedGoal } | { ok: false; error: string } {
-  if (!body || typeof body !== "object") {
-    return { ok: false, error: "Goal JSON is required." };
-  }
-
-  if (typeof body.id !== "string" || typeof body.title !== "string" || !body.id.trim() || !body.title.trim()) {
-    return { ok: false, error: "Goal id and title are required." };
-  }
-
-  const lifecycleStatus =
-    typeof body.lifecycleStatus === "string" && allowedLifecycleStatuses.has(body.lifecycleStatus)
-      ? body.lifecycleStatus
-      : "draft";
-  const approvedToRun = body.approvedToRun === true && (lifecycleStatus === "approved" || lifecycleStatus === "running");
-  const status = getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun);
-  const now = new Date().toISOString();
-  const estimate = clampInteger(Number(body.estimate ?? 8), 1, 21);
-
-  const goal: QueuedGoal = {
-    id: body.id.trim().slice(0, 80),
-    title: body.title.trim().slice(0, 180),
-    lifecycleStatus,
-    approvedToRun,
-    status,
-    estimate,
-    summary: sanitizeString(body.summary, 1000),
-    tags: sanitizeTags(body.tags, approvedToRun, lifecycleStatus),
-    description: sanitizeString(body.description, 12_000),
-    subtasks: sanitizeSubtasks(body.subtasks),
-    createdAt: sanitizeIsoDate(body.createdAt) ?? now,
-    updatedAt: now
-  };
-
-  return { ok: true, goal };
 }
 
 function validateWriteAccess(request: Request) {
@@ -180,129 +122,4 @@ function validateWriteAccess(request: Request) {
   }
 
   return null;
-}
-
-function sanitizeString(value: unknown, maxLength: number) {
-  return typeof value === "string" ? value.slice(0, maxLength) : "";
-}
-
-function sanitizeTags(value: unknown, approvedToRun: boolean, lifecycleStatus: string) {
-  const baseTags = Array.isArray(value) ? value.filter((tag): tag is string => typeof tag === "string") : [];
-  const tags = baseTags
-    .map((tag) => tag.trim().toLowerCase().slice(0, 40))
-    .filter((tag) => tag && tag !== "approved-to-run" && !tag.startsWith("goal-"));
-  tags.push(`goal-${lifecycleStatus}`);
-  if (approvedToRun) {
-    tags.push("approved-to-run");
-  }
-  return Array.from(new Set(tags)).slice(0, 12);
-}
-
-function getTicketStatusForGoalLifecycle(lifecycleStatus: string, approvedToRun: boolean) {
-  if (lifecycleStatus === "blocked") {
-    return "blocked";
-  }
-  if (lifecycleStatus === "satisfied" || lifecycleStatus === "archived") {
-    return "done";
-  }
-  if (lifecycleStatus === "approved" || lifecycleStatus === "running" || approvedToRun) {
-    return "in-progress";
-  }
-  return "backlog";
-}
-
-function sanitizeSubtasks(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((item): item is { id?: unknown; title?: unknown; done?: unknown } => item && typeof item === "object")
-    .slice(0, 20)
-    .map((item, index) => ({
-      id: typeof item.id === "string" && item.id.trim() ? item.id.trim().slice(0, 80) : `subtask-${index + 1}`,
-      title: typeof item.title === "string" ? item.title.trim().slice(0, 240) : "Untitled subtask",
-      done: item.done === true
-    }));
-}
-
-function sanitizeIsoDate(value: unknown) {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function clampInteger(value: number, min: number, max: number) {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-async function readGoalQueue(): Promise<GoalQueue> {
-  if (!existsSync(queuePath)) {
-    return { version: 1, updatedAt: new Date(0).toISOString(), goals: [] };
-  }
-
-  try {
-    const parsed = JSON.parse(await readFile(queuePath, "utf8")) as GoalQueue;
-    return {
-      version: 1,
-      updatedAt: parsed.updatedAt ?? new Date(0).toISOString(),
-      goals: Array.isArray(parsed.goals) ? parsed.goals : []
-    };
-  } catch {
-    return { version: 1, updatedAt: new Date(0).toISOString(), goals: [] };
-  }
-}
-
-async function acquireQueueLock(): Promise<{ ok: true; file: Awaited<ReturnType<typeof open>> } | { ok: false }> {
-  try {
-    await mkdir(dirname(lockPath), { recursive: true });
-    const file = await open(lockPath, "wx");
-    await file.writeFile(JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), owner: "atlas-goals-api" }, null, 2));
-    return { ok: true, file };
-  } catch {
-    return { ok: false };
-  }
-}
-
-async function releaseQueueLock(file: Awaited<ReturnType<typeof open>>) {
-  await file.close();
-  await rm(lockPath, { force: true });
-}
-
-async function writeJsonAtomically(path: string, value: unknown) {
-  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`);
-  await rename(tempPath, path);
-}
-
-function resolveProjectRoot() {
-  const configuredRoot = process.env.PROJECT_LOOP_ROOT ? resolve(process.env.PROJECT_LOOP_ROOT) : null;
-  const candidates = configuredRoot ? [configuredRoot] : [process.cwd(), resolve(process.cwd(), "../..")];
-  const found = candidates.find(isProjectRoot);
-  if (!found) {
-    throw new Error("Unable to resolve project root for Atlas goal queue writes.");
-  }
-  return found;
-}
-
-function isProjectRoot(candidate: string) {
-  if (
-    !existsSync(join(candidate, "loops/project-controller/projects.json")) ||
-    !existsSync(join(candidate, "apps/web/package.json"))
-  ) {
-    return false;
-  }
-
-  try {
-    const packageJson = JSON.parse(readFileSync(join(candidate, "package.json"), "utf8")) as { name?: string; workspaces?: unknown };
-    const webPackageJson = JSON.parse(readFileSync(join(candidate, "apps/web/package.json"), "utf8")) as { name?: string };
-    return packageJson.name === "project-sphere" && Array.isArray(packageJson.workspaces) && webPackageJson.name === "@agent/web";
-  } catch {
-    return false;
-  }
 }

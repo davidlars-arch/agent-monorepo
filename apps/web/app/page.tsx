@@ -1,173 +1,47 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
+import {
+  getLoopPaths,
+  parseJsonObject,
+  readGoalQueue,
+  readJsonFile,
+  resolveProjectRoot,
+  resolveRepoPath as resolveLoopPath,
+  summarizeMemoryValue,
+  type ControllerMemorySummary,
+  type CurrentLoopRunSummary,
+  type QueuedGoalSummary,
+  type RunnerEvidenceSummary,
+  type RunnerStateSummary
+} from "@agent/loop-store";
 import { EarthGlobe } from "@/components/earth-globe";
 
 export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
-
-type QueuedGoalSummary = {
-  id: string;
-  title: string;
-  lifecycleStatus: string;
-  approvedToRun: boolean;
-  status: string;
-  estimate: number;
-  updatedAt: string;
-};
-
-type CurrentLoopRunSummary = {
-  id: string;
-  goalId: string;
-  goalTitle: string;
-  status: string;
-  stage: string;
-  claimedAt: string;
-  updatedAt: string;
-  baseCommit: string;
-  branchName?: string;
-  worktreePath?: string;
-  handoffDir?: string;
-  runnerCommand?: string;
-  makerPromptPath?: string;
-  checkerPromptPath?: string;
-  evidencePath?: string;
-};
-
-type RunnerTimelineEvent = {
-  stage: string;
-  status: string;
-  at: string | null;
-  detail: string;
-};
-
-type RunnerStateSummary = {
-  status: string;
-  stage: string;
-  repairAttempts: number;
-  maxRepairs: number;
-  updatedAt: string;
-  timeline: RunnerTimelineEvent[];
-};
-
-type RunnerEvidenceCheck = {
-  stage: string;
-  command: string;
-  exitCode: number;
-  startedAt: string;
-  finishedAt: string;
-  repairAttempt: number;
-};
-
-type RunnerEvidenceFinding = {
-  severity: string;
-  stage: string;
-  summary: string;
-  file?: string;
-  line?: number;
-  recommendation?: string;
-  at?: string;
-};
-
-type RunnerEvidenceSummary = {
-  status: string;
-  repairAttempts: number;
-  maxRepairs: number;
-  checks: RunnerEvidenceCheck[];
-  findings: RunnerEvidenceFinding[];
-};
-
-type ControllerMemorySummary = {
-  latestReport?: {
-    path: string;
-    updatedAt: string;
-    excerpt: string;
-  };
-  controllerState?: {
-    path: string;
-    updatedAt: string;
-    summary: string;
-  };
-  decisionLog?: {
-    path: string;
-    updatedAt: string;
-    count: number;
-    lastDecision: string;
-  };
-};
+const projectRoot = resolveProjectRoot();
+const loopPaths = getLoopPaths(projectRoot);
 
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
-  const candidates = [
-    join(process.cwd(), "loops/usage-status/latest-status.json"),
-    resolve(process.cwd(), "../..", "loops/usage-status/latest-status.json")
-  ];
-  const statusPath = candidates.find((candidate) => existsSync(candidate));
-  if (!statusPath) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(await readFile(statusPath, "utf8")) as UsageStatusSnapshot;
-  } catch {
-    return null;
-  }
+  return readJsonFile<UsageStatusSnapshot | null>(loopPaths.usageStatusPath, null);
 }
 
 async function readLoopKanban(): Promise<LoopKanbanProject[]> {
-  const candidates = [
-    join(process.cwd(), "loops/project-controller/projects.json"),
-    resolve(process.cwd(), "../..", "loops/project-controller/projects.json")
-  ];
-  const registryPath = candidates.find((candidate) => existsSync(candidate));
-  if (!registryPath) {
-    return [];
-  }
-
-  try {
-    const registry = JSON.parse(await readFile(registryPath, "utf8")) as { projects?: LoopKanbanProject[] };
-    return registry.projects ?? [];
-  } catch {
-    return [];
-  }
+  const registry = await readJsonFile<{ projects?: LoopKanbanProject[] } | null>(loopPaths.registryPath, null);
+  return registry?.projects ?? [];
 }
 
 async function readQueuedGoals(): Promise<QueuedGoalSummary[]> {
-  const candidates = [
-    join(process.cwd(), "loops/project-controller/goal-queue.json"),
-    resolve(process.cwd(), "../..", "loops/project-controller/goal-queue.json")
-  ];
-  const queuePath = candidates.find((candidate) => existsSync(candidate));
-  if (!queuePath) {
-    return [];
-  }
-
-  try {
-    const queue = JSON.parse(await readFile(queuePath, "utf8")) as { goals?: QueuedGoalSummary[] };
-    return Array.isArray(queue.goals) ? queue.goals : [];
-  } catch {
-    return [];
-  }
+  const queue = await readGoalQueue(loopPaths.goalQueuePath);
+  return queue.goals;
 }
 
 async function readCurrentLoopRun(): Promise<CurrentLoopRunSummary | null> {
-  const candidates = [
-    join(process.cwd(), "loops/project-controller/current-run.json"),
-    resolve(process.cwd(), "../..", "loops/project-controller/current-run.json")
-  ];
-  const runPath = candidates.find((candidate) => existsSync(candidate));
-  if (!runPath) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(await readFile(runPath, "utf8")) as CurrentLoopRunSummary;
-  } catch {
-    return null;
-  }
+  return readJsonFile<CurrentLoopRunSummary | null>(loopPaths.currentRunPath, null);
 }
 
 async function readCurrentRunnerState(currentLoopRun: CurrentLoopRunSummary | null): Promise<RunnerStateSummary | null> {
@@ -221,9 +95,9 @@ async function readCurrentRunnerEvidence(currentLoopRun: CurrentLoopRunSummary |
 }
 
 async function readControllerMemory(): Promise<ControllerMemorySummary | null> {
-  const latestReportPath = resolveRepoPath("loops/project-controller/latest-report.md");
-  const statePath = resolveRepoPath("loops/project-controller/state.json");
-  const decisionsPath = resolveRepoPath("loops/project-controller/decisions.jsonl");
+  const latestReportPath = loopPaths.reportPath;
+  const statePath = loopPaths.statePath;
+  const decisionsPath = loopPaths.decisionsPath;
   const memory: ControllerMemorySummary = {};
 
   if (existsSync(latestReportPath)) {
@@ -278,42 +152,13 @@ async function readControllerMemory(): Promise<ControllerMemorySummary | null> {
 }
 
 function resolveRepoPath(path: string) {
-  if (path.startsWith("/")) {
-    return path;
-  }
-
-  return resolve(process.cwd(), "../..", path);
-}
-
-function parseJsonObject(value: string) {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
-function summarizeMemoryValue(value: unknown) {
-  if (typeof value === "string") {
-    return value.slice(0, 80);
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return `${value.length} items`;
-  }
-  if (value && typeof value === "object") {
-    return `${Object.keys(value).length} keys`;
-  }
-  return "empty";
+  return resolveLoopPath(projectRoot, path);
 }
 
 async function readCurrentCommit() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
-      cwd: resolve(process.cwd(), "../..")
+      cwd: projectRoot
     });
     return stdout.trim();
   } catch {

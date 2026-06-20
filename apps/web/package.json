@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@agent/atlas-planner": "0.1.0",
+    "@agent/loop-store": "0.1.0",
     "@agent/repo-graph": "0.1.0",
     "@agent/ui": "0.1.0",
     "clsx": "^2.1.1",

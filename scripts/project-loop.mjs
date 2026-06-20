@@ -1,21 +1,14 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { getLoopPaths, hasCurrentRunState, isRunnableQueuedGoal, readGoalQueue, writeJsonAtomically } from "@agent/loop-store";
 
 const execFileAsync = promisify(execFile);
 const root = process.env.PROJECT_LOOP_ROOT ? resolve(process.env.PROJECT_LOOP_ROOT) : process.cwd();
-const controllerDir = join(root, "loops", "project-controller");
-const registryPath = join(controllerDir, "projects.json");
-const statePath = join(controllerDir, "state.json");
-const reportPath = join(controllerDir, "latest-report.md");
-const decisionsPath = join(controllerDir, "decisions.jsonl");
-const goalQueuePath = join(controllerDir, "goal-queue.json");
-const currentRunPath = join(controllerDir, "current-run.json");
-const lockPath = join(controllerDir, "LOCK");
-const usageStatusPath = join(root, "loops", "usage-status", "latest-status.json");
+const { registryPath, statePath, reportPath, decisionsPath, goalQueuePath, currentRunPath, lockPath, usageStatusPath } = getLoopPaths(root);
 const args = process.argv.slice(2);
 
 const flags = new Set(args.filter((arg) => arg.startsWith("--")));
@@ -39,7 +32,7 @@ if (listOnly) {
 }
 
 if (dryRun) {
-  goalQueue = await readGoalQueue();
+  goalQueue = await readGoalQueue(goalQueuePath);
   const selected = selectProjects(registry.projects, state, now);
   const results = [];
 
@@ -62,7 +55,7 @@ try {
 }
 
 try {
-  goalQueue = await readGoalQueue();
+  goalQueue = await readGoalQueue(goalQueuePath);
   const selected = selectProjects(registry.projects, state, now);
   const results = [];
 
@@ -113,28 +106,6 @@ async function readUsageStatus() {
     return JSON.parse(await readFile(usageStatusPath, "utf8"));
   } catch {
     return null;
-  }
-}
-
-async function readGoalQueue() {
-  try {
-    const parsed = JSON.parse(await readFile(goalQueuePath, "utf8"));
-    return {
-      version: 1,
-      updatedAt: parsed.updatedAt,
-      goals: Array.isArray(parsed.goals) ? parsed.goals : []
-    };
-  } catch {
-    return { version: 1, updatedAt: null, goals: [] };
-  }
-}
-
-async function hasCurrentRunState() {
-  try {
-    JSON.parse(await readFile(currentRunPath, "utf8"));
-    return true;
-  } catch (error) {
-    return error?.code !== "ENOENT";
   }
 }
 
@@ -232,7 +203,7 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     return null;
   }
 
-  if (await hasCurrentRunState()) {
+  if (await hasCurrentRunState(currentRunPath)) {
     return null;
   }
 
@@ -633,14 +604,6 @@ function queuedGoalTickets(project) {
     }));
 }
 
-function isRunnableQueuedGoal(goal) {
-  return (
-    goal.approvedToRun === true &&
-    ["approved", "running"].includes(goal.lifecycleStatus) &&
-    !["done", "archived", "blocked"].includes(goal.status)
-  );
-}
-
 function sanitizeForBranch(value) {
   const sanitized = String(value)
     .trim()
@@ -655,12 +618,6 @@ function sanitizeForBranch(value) {
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
-}
-
-async function writeJsonAtomically(path, value) {
-  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`);
-  await rename(tempPath, path);
 }
 
 function getPlannerScoreBreakdown(ticket, project, maxEstimate) {

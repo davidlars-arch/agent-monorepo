@@ -1,6 +1,13 @@
 "use client";
 
 import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
+import type {
+  ControllerMemorySummary,
+  CurrentLoopRunSummary,
+  QueuedGoalSummary,
+  RunnerEvidenceSummary,
+  RunnerStateSummary
+} from "@agent/loop-store";
 import { AtlasPlannerOverview } from "./atlas-planner-overview";
 import { repoNodes } from "@agent/repo-graph";
 import {
@@ -43,96 +50,6 @@ type CameraMove = {
   durationMs: number;
   revealProjectId?: string;
   hasRevealedDetail: boolean;
-};
-
-type QueuedGoalSummary = {
-  id: string;
-  title: string;
-  lifecycleStatus: string;
-  approvedToRun: boolean;
-  status: string;
-  estimate: number;
-  updatedAt: string;
-};
-
-type CurrentLoopRunSummary = {
-  id: string;
-  goalId: string;
-  goalTitle: string;
-  status: string;
-  stage: string;
-  claimedAt: string;
-  updatedAt: string;
-  baseCommit: string;
-  branchName?: string;
-  worktreePath?: string;
-  handoffDir?: string;
-  runnerCommand?: string;
-  makerPromptPath?: string;
-  checkerPromptPath?: string;
-  evidencePath?: string;
-};
-
-type RunnerTimelineEvent = {
-  stage: string;
-  status: string;
-  at: string | null;
-  detail: string;
-};
-
-type RunnerStateSummary = {
-  status: string;
-  stage: string;
-  repairAttempts: number;
-  maxRepairs: number;
-  updatedAt: string;
-  timeline: RunnerTimelineEvent[];
-};
-
-type RunnerEvidenceCheck = {
-  stage: string;
-  command: string;
-  exitCode: number;
-  startedAt: string;
-  finishedAt: string;
-  repairAttempt: number;
-};
-
-type RunnerEvidenceFinding = {
-  severity: string;
-  stage: string;
-  summary: string;
-  file?: string;
-  line?: number;
-  recommendation?: string;
-  at?: string;
-};
-
-type RunnerEvidenceSummary = {
-  status: string;
-  repairAttempts: number;
-  maxRepairs: number;
-  checks: RunnerEvidenceCheck[];
-  findings: RunnerEvidenceFinding[];
-};
-
-type ControllerMemorySummary = {
-  latestReport?: {
-    path: string;
-    updatedAt: string;
-    excerpt: string;
-  };
-  controllerState?: {
-    path: string;
-    updatedAt: string;
-    summary: string;
-  };
-  decisionLog?: {
-    path: string;
-    updatedAt: string;
-    count: number;
-    lastDecision: string;
-  };
 };
 
 const projectLocations: Record<string, Pick<GlobeProject, "lat" | "lon" | "color">> = {
