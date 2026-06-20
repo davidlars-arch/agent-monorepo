@@ -231,6 +231,54 @@ test("runner resumes an existing handoff without recreating the worktree", async
   assert.equal(evidence.checks.length, 2);
 });
 
+test("runner resume preserves the saved repair budget", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-resume-repair-");
+
+  await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-9B",
+      "--branch",
+      "worktree/ap-9b-runner-test",
+      "--run-id",
+      "run-ap-9b",
+      "--worktree-dir",
+      worktreePath,
+      "--max-repairs",
+      "1"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--resume",
+      "--handoff-dir",
+      "loops/project-controller/runs/run-ap-9b",
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "resumed\\n")\'',
+      "--checker-command",
+      "node -e 'process.exit(3)'",
+      "--repair-command",
+      'node -e \'require("fs").appendFileSync("repair.log", `${process.env.ATLAS_REPAIR_ATTEMPT}\\n`)\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-9b/runner-state.json"), "utf8"));
+  const repairLog = await readFile(join(worktreePath, "repair.log"), "utf8");
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.repairAttempts, 1);
+  assert.equal(state.repairAttempts, 1);
+  assert.equal(repairLog, "1\n");
+});
+
 test("runner adapter uses stage env vars and records structured checker findings", async () => {
   const { root, worktreePath } = await createGitFixture("planner-agent-runner-agent-");
   const agentCommand = [
@@ -285,7 +333,7 @@ test("runner records structured checker satisfaction layer proof", async () => {
     "node -e '",
     'const fs = require("fs");',
     'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
-    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }], findings: [] })); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }, { layerId: "runner-proof", label: "Runner proof", status: "satisfied", proof: ["Evidence contains layer proof."], missing: [] }], findings: [] })); process.exit(0); }',
     "process.exit(7);",
     "'"
   ].join("");
@@ -317,6 +365,49 @@ test("runner records structured checker satisfaction layer proof", async () => {
   assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
   assert.equal(evidence.satisfactionLayers[0].status, "satisfied");
   assert.deepEqual(evidence.satisfactionLayers[0].proof, ["Queue contains goalContract."]);
+});
+
+test("runner blocks when checker layer proof is missing or blocked", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-layer-block-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "blocked", proof: [], missing: ["Queue evidence missing"] }], findings: [] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-12",
+      "--branch",
+      "worktree/ap-12-runner-test",
+      "--run-id",
+      "run-ap-12",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-12/runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-12/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-blocked");
+  assert.equal(state.status, "blocked");
+  assert.equal(evidence.status, "checker-blocked");
+  assert.equal(evidence.satisfactionLayers[0].status, "blocked");
+  assert.deepEqual(evidence.satisfactionLayers[0].missing, ["Queue evidence missing"]);
 });
 
 async function createGitFixture(prefix) {

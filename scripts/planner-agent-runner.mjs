@@ -64,6 +64,7 @@ function parseArgs(rawArgs) {
     goalContract: null,
     goalTitle: "",
     maxRepairs: 0,
+    maxRepairsProvided: false,
     resume: false
   };
 
@@ -128,6 +129,7 @@ function parseArgs(rawArgs) {
         options.repairCommand = value;
       } else if (arg === "--max-repairs") {
         options.maxRepairs = Number.parseInt(value, 10);
+        options.maxRepairsProvided = true;
       }
 
       index += 1;
@@ -249,7 +251,7 @@ function buildResumePlan(options) {
     makerCommand: options.makerCommand,
     checkerCommand: options.checkerCommand,
     repairCommand: options.repairCommand,
-    maxRepairs: options.maxRepairs,
+    maxRepairs: options.maxRepairsProvided ? options.maxRepairs : clampRepairAttempts(state.maxRepairs),
     files: state.files ?? {
       state: relative(process.cwd(), statePath),
       makerPrompt: relative(process.cwd(), join(handoffDir, "maker-prompt.md")),
@@ -296,6 +298,14 @@ function validateIdValue(value, flag) {
   if (!/^[A-Za-z0-9._-]+$/.test(value)) {
     throw new Error(`${flag} may only contain letters, numbers, dots, underscores, and dashes`);
   }
+}
+
+function clampRepairAttempts(value) {
+  const attempts = Number(value);
+  if (!Number.isInteger(attempts)) {
+    return 0;
+  }
+  return Math.min(5, Math.max(0, attempts));
 }
 
 function sanitizeName(value) {
@@ -488,7 +498,39 @@ function hasBlockerFindings(event) {
   return Boolean(
     event.structuredStatus === "blocked" ||
       event.structuredStatus === "failed" ||
-      event.structuredFindings?.some((finding) => finding.severity === "blocker")
+      event.structuredFindings?.some((finding) => finding.severity === "blocker") ||
+      hasUnsatisfiedLayerProof(event)
+  );
+}
+
+function hasUnsatisfiedLayerProof(event) {
+  if (event.stage !== "checker") {
+    return false;
+  }
+
+  const requiredLayerIds = Array.isArray(event.requiredSatisfactionLayerIds) ? event.requiredSatisfactionLayerIds : [];
+  const layerProof = Array.isArray(event.structuredSatisfactionLayers) ? event.structuredSatisfactionLayers : [];
+  if (requiredLayerIds.length === 0 && layerProof.length === 0) {
+    return false;
+  }
+
+  const byId = new Map(layerProof.map((layer) => [firstString(layer.layerId, layer.label) ?? "", layer]));
+  for (const requiredLayerId of requiredLayerIds) {
+    const layer = byId.get(requiredLayerId);
+    if (!isLayerProofSatisfied(layer)) {
+      return true;
+    }
+  }
+
+  return layerProof.some((layer) => !isLayerProofSatisfied(layer));
+}
+
+function isLayerProofSatisfied(layer) {
+  return Boolean(
+    layer &&
+      layer.status === "satisfied" &&
+      stringList(layer.proof).length > 0 &&
+      stringList(layer.missing).length === 0
   );
 }
 
@@ -533,6 +575,7 @@ function runLoopCommand(stage, command, plan, details = {}) {
     startedAt,
     finishedAt: new Date().toISOString(),
     repairAttempt: details.attempt ?? 0,
+    requiredSatisfactionLayerIds: getRequiredSatisfactionLayerIds(plan.goalContract),
     ...parseStructuredCheckerOutput(stage, result.stdout, result.stderr)
   };
 }
@@ -546,6 +589,16 @@ function getStagePromptPath(stage, plan) {
   }
 
   return "";
+}
+
+function getRequiredSatisfactionLayerIds(goalContract) {
+  if (!goalContract || !Array.isArray(goalContract.satisfactionLayers)) {
+    return [];
+  }
+
+  return goalContract.satisfactionLayers
+    .map((layer) => firstString(layer.id, layer.layerId, layer.label))
+    .filter(Boolean);
 }
 
 function expandCommandTemplate(command, values) {
