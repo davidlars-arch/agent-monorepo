@@ -24,7 +24,10 @@ export type GoalQueue = {
 };
 
 export type CurrentLoopRunSummary = {
+  version?: 1;
   id: string;
+  projectId?: string;
+  projectLabel?: string;
   goalId: string;
   goalTitle: string;
   status: string;
@@ -47,6 +50,7 @@ export type CurrentLoopRunSummary = {
     maxEstimate?: number;
     reason?: string;
   };
+  timeline?: RunnerTimelineEvent[];
 };
 
 export type RunnerTimelineEvent = {
@@ -177,6 +181,72 @@ export function getCurrentRunRecoveryStatus(
   currentRun: Partial<CurrentLoopRunSummary> | null | undefined,
   runnerState: Partial<RunnerStateSummary> | null | undefined
 ): CurrentRunRecoveryStatus;
+export function claimNextAtlasPlannerGoal(
+  root: string,
+  options?: { now?: Date; readCommit?: (root: string) => Promise<string> | string }
+): Promise<
+  | { ok: true; status: "claimed"; currentRun: CurrentLoopRunSummary; goal: QueuedGoal }
+  | { ok: true; status: "idle" | "blocked"; reason: string }
+  | { ok: false; status: "busy"; reason: string }
+>;
+export function runAtlasLoopRunnerAction(
+  root: string,
+  action: "start-current-run" | "resume-current-run",
+  options?: {
+    timeoutMs?: number;
+    execRunner?: (
+      file: string,
+      args: string[],
+      options: { cwd: string; encoding: "utf8"; maxBuffer: number; timeout: number }
+    ) => Promise<{ stdout?: string; stderr?: string }>;
+  }
+): Promise<
+  | {
+      ok: true;
+      status: "completed";
+      action: string;
+      currentRun: CurrentLoopRunSummary;
+      command: string;
+      exitCode: 0;
+      stdout: string;
+      stderr: string;
+      startedAt: string;
+      finishedAt: string;
+    }
+  | {
+      ok: false;
+      status:
+        | "missing-current-run"
+        | "invalid-current-run"
+        | "runner-state-exists"
+        | "missing-runner-state"
+        | "unsupported-action"
+        | "busy"
+        | "changed"
+        | "timed-out"
+        | "failed";
+      reason?: string;
+      action?: string;
+      currentRun?: CurrentLoopRunSummary;
+      command?: string;
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+      startedAt?: string;
+      finishedAt?: string;
+    }
+>;
+export function buildAtlasRunnerCommand(
+  root: string,
+  action: "start-current-run" | "resume-current-run" | string,
+  currentRun: Partial<CurrentLoopRunSummary> | null | undefined
+):
+  | { ok: true; cmd: string; args: string[] }
+  | {
+      ok: false;
+      status: "invalid-current-run" | "runner-state-exists" | "missing-runner-state" | "unsupported-action";
+      reason: string;
+    };
 export function acquireFileLock(lockPath: string, owner?: string): Promise<{ ok: true; file: unknown } | { ok: false }>;
 export function releaseFileLock(lockPath: string, file: unknown): Promise<void>;
 export function writeJsonAtomically(path: string, value: unknown): Promise<void>;
