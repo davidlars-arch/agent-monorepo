@@ -6,13 +6,16 @@ import { promisify } from "node:util";
 import type { LoopKanbanProject, UsageStatusSnapshot } from "@agent/atlas-planner";
 import {
   getLoopPaths,
+  getCurrentRunRecoveryStatus,
   parseJsonObject,
+  readControllerLockSummary,
   readGoalQueue,
   readJsonFile,
   resolveProjectRoot,
   resolveRepoPath as resolveLoopPath,
   summarizeMemoryValue,
   type ControllerMemorySummary,
+  type ControllerLockSummary,
   type CurrentLoopRunSummary,
   type QueuedGoalSummary,
   type RunnerEvidenceSummary,
@@ -28,6 +31,10 @@ const loopPaths = getLoopPaths(projectRoot);
 
 async function readUsageStatus(): Promise<UsageStatusSnapshot | null> {
   return readJsonFile<UsageStatusSnapshot | null>(loopPaths.usageStatusPath, null);
+}
+
+async function readControllerLock(): Promise<ControllerLockSummary> {
+  return readControllerLockSummary(loopPaths.lockPath);
 }
 
 async function readLoopKanban(): Promise<LoopKanbanProject[]> {
@@ -180,6 +187,8 @@ export default async function Home({
   const currentLoopRun = await readCurrentLoopRun();
   const currentRunnerState = await readCurrentRunnerState(currentLoopRun);
   const currentRunnerEvidence = await readCurrentRunnerEvidence(currentLoopRun);
+  const controllerLock = await readControllerLock();
+  const currentRunRecovery = getCurrentRunRecoveryStatus(currentLoopRun, currentRunnerState);
   const controllerMemory = await readControllerMemory();
   const currentCommit = await readCurrentCommit();
   return (
@@ -193,6 +202,8 @@ export default async function Home({
       currentLoopRun={currentLoopRun}
       currentRunnerState={currentRunnerState}
       currentRunnerEvidence={currentRunnerEvidence}
+      controllerLock={controllerLock}
+      currentRunRecovery={currentRunRecovery}
       controllerMemory={controllerMemory}
       currentCommit={currentCommit}
     />
