@@ -33,12 +33,14 @@ const plannerRunnerSyncStorageKey = "atlas-planner:runner-sync:v1";
 
 export function usePlannerTickets({
   loopKanban,
+  selectedProjectId,
   currentCommit,
   usageStatus,
   currentLoopRun,
   currentRunnerState
 }: {
   loopKanban: LoopKanbanProject[];
+  selectedProjectId: string;
   currentCommit: string;
   usageStatus: UsageStatusSnapshot | null;
   currentLoopRun?: CurrentLoopRunSummary | null;
@@ -62,7 +64,8 @@ export function usePlannerTickets({
   const isApiBackedPlannerStateRef = useRef(false);
   const shouldSkipNextPlannerPersistRef = useRef(false);
   const syncedRunnerRunIdsRef = useRef<Set<string>>(new Set());
-  const kanbanColumns = getKanbanColumns(plannerTickets, usageStatus);
+  const visiblePlannerTickets = getVisiblePlannerTickets(plannerTickets, selectedProjectId);
+  const kanbanColumns = getKanbanColumns(visiblePlannerTickets, usageStatus);
 
   const persistPlannerTicketsToApi = useCallback(async (tickets: KanbanTicket[]) => {
     queuedPlannerTicketsRef.current = tickets;
@@ -375,7 +378,7 @@ export function usePlannerTickets({
   }
 
   function openNewTicket() {
-    openTicketEditor(getDefaultPlannerTicket(loopKanban));
+    openTicketEditor(getDefaultPlannerTicket(loopKanban, selectedProjectId === "all" ? undefined : selectedProjectId));
   }
 
   function closeTicketEditor() {
@@ -475,6 +478,7 @@ export function usePlannerTickets({
 
   return {
     plannerTickets,
+    visiblePlannerTickets,
     kanbanColumns,
     editingTicket,
     isTicketEditorClosing,
@@ -503,6 +507,13 @@ export function usePlannerTickets({
     handleTicketDragStart,
     handleTicketDragEnd
   };
+}
+
+function getVisiblePlannerTickets(tickets: KanbanTicket[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return tickets;
+  }
+  return tickets.filter((ticket) => ticket.projectId === selectedProjectId);
 }
 
 async function readPlannerTicketsFromApi() {

@@ -499,6 +499,35 @@ nextjs-portal,
   gap: 8px;
 }
 
+.loop-project-selector {
+  display: grid;
+  flex: 1 1 18rem;
+  max-width: 22rem;
+  min-width: min(18rem, 34vw);
+  gap: 5px;
+}
+
+.loop-project-selector span {
+  color: rgba(226, 232, 240, 0.64);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.loop-project-selector select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: white;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  padding: 8px 11px;
+}
+
 .loop-help-button,
 .loop-close-button {
   display: inline-flex;
@@ -4379,7 +4408,14 @@ nextjs-portal,
   }
 
   .loop-panel__header {
+    flex-wrap: wrap;
     gap: 12px;
+  }
+
+  .loop-project-selector {
+    order: 3;
+    max-width: none;
+    min-width: 100%;
   }
 
   .loop-panel__actions {

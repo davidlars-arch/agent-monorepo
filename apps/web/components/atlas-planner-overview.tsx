@@ -106,8 +106,13 @@ export function AtlasPlannerOverview({
   const [isActivityDashboardOpen, setIsActivityDashboardOpen] = useState(false);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
+  const [selectedProjectId, setSelectedProjectId] = useState(() =>
+    loopKanban.some((project) => project.id === "atlas-planner") ? "atlas-planner" : (loopKanban[0]?.id ?? "all")
+  );
+  const selectedProject = loopKanban.find((project) => project.id === selectedProjectId);
+  const selectedPlannerProjectId = selectedProjectId === "all" ? undefined : selectedProjectId;
   const {
-    plannerTickets,
+    visiblePlannerTickets,
     kanbanColumns,
     editingTicket,
     isTicketEditorClosing,
@@ -137,6 +142,7 @@ export function AtlasPlannerOverview({
     handleTicketDragEnd
   } = usePlannerTickets({
     loopKanban,
+    selectedProjectId,
     currentCommit,
     usageStatus: latestUsageStatus,
     currentLoopRun,
@@ -160,13 +166,17 @@ export function AtlasPlannerOverview({
     updateQueuedGoalLifecycle
   } = useAtlasGoals({
     loopKanban,
+    selectedProjectId,
     queuedGoals,
     initialGoalComposerOpen,
     addPlannerTicket,
     setPlannerStateMessage
   });
-  const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus);
-  const loopGoalSummary = getLoopGoalSummary(loopKanban);
+  const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus, {
+    preferredProjectId: selectedPlannerProjectId ?? null,
+    strictPreferredProject: Boolean(selectedPlannerProjectId)
+  });
+  const loopGoalSummary = getLoopGoalSummary(loopKanban, selectedPlannerProjectId ?? "atlas-planner");
 
   async function refreshUsageStatus() {
     setIsUsageRefreshing(true);
@@ -196,6 +206,17 @@ export function AtlasPlannerOverview({
             <p>Token-aware work board</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
           </div>
+          <label className="loop-project-selector">
+            <span>Board</span>
+            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+              <option value="all">All repos</option>
+              {loopKanban.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="loop-panel__actions">
             <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
               <CircleHelp size={16} />
@@ -294,7 +315,7 @@ export function AtlasPlannerOverview({
 
           {isActivityDashboardOpen ? (
             <ActivityDashboard
-              tickets={plannerTickets}
+              tickets={visiblePlannerTickets}
               dateFilter={activityDateFilter}
               dateRange={activityDateRange}
               onDateFilterChange={setActivityDateFilter}
@@ -305,6 +326,8 @@ export function AtlasPlannerOverview({
 
           <KanbanBoard
             columns={kanbanColumns}
+            selectedProjectLabel={selectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo")}
+            visibleTicketCount={visiblePlannerTickets.length}
             usageStatus={latestUsageStatus}
             stateMessage={plannerStateMessage}
             draggingTicketId={draggingTicketId}

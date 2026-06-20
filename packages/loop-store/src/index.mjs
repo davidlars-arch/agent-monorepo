@@ -82,6 +82,10 @@ export function validateQueuedGoalInput(body, { now = new Date().toISOString() }
   const goal = {
     id: body.id.trim().slice(0, 80),
     title: body.title.trim().slice(0, 180),
+    projectId: sanitizeIdentifier(body.projectId, "atlas-planner"),
+    projectLabel: sanitizeString(body.projectLabel, 180) || "Atlas Planner",
+    epicId: sanitizeIdentifier(body.epicId, "queued-goals"),
+    epicLabel: sanitizeString(body.epicLabel, 180) || "Queued Goals",
     lifecycleStatus,
     approvedToRun,
     status: getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun),
@@ -538,8 +542,8 @@ function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) 
   return {
     version: 1,
     id: runId,
-    projectId: "atlas-planner",
-    projectLabel: "Atlas Planner",
+    projectId: goal.projectId ?? "atlas-planner",
+    projectLabel: goal.projectLabel ?? "Atlas Planner",
     goalId: goal.id,
     goalTitle: goal.title,
     goalContract: goal.goalContract,
@@ -704,6 +708,14 @@ function getGoalLifecycleForRunnerStatus(runnerStatus) {
 
 function sanitizeString(value, maxLength) {
   return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function sanitizeIdentifier(value, fallback) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const sanitized = value.trim().slice(0, 120);
+  return /^[A-Za-z0-9._-]+$/.test(sanitized) ? sanitized : fallback;
 }
 
 function sanitizeGoalTags(value, approvedToRun, lifecycleStatus) {

@@ -190,7 +190,7 @@ async function runProject(project) {
 }
 
 async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
-  if (!claimGoal || project.id !== "atlas-planner" || !plannedTask?.tags?.includes("queued-goal")) {
+  if (!claimGoal || !plannedTask?.tags?.includes("queued-goal")) {
     return null;
   }
 
@@ -618,16 +618,13 @@ function flattenTickets(project) {
     }))
   );
 
-  if (project.id !== "atlas-planner") {
-    return registryTickets;
-  }
-
   return [...queuedGoalTickets(project), ...registryTickets];
 }
 
 function queuedGoalTickets(project) {
   return goalQueue.goals
     .filter(isRunnableQueuedGoal)
+    .filter((goal) => (goal.projectId ?? "atlas-planner") === project.id)
     .map((goal) => ({
       id: goal.id,
       title: goal.title,
@@ -635,10 +632,10 @@ function queuedGoalTickets(project) {
       estimate: goal.estimate,
       summary: goal.summary,
       tags: [...(goal.tags ?? []), "queued-goal"],
-      epicId: "queued-goals",
-      epicLabel: "Queued Goals",
-      projectId: project.id,
-      projectLabel: project.label
+      epicId: goal.epicId ?? "queued-goals",
+      epicLabel: goal.epicLabel ?? "Queued Goals",
+      projectId: goal.projectId ?? project.id,
+      projectLabel: goal.projectLabel ?? project.label
     }));
 }
 

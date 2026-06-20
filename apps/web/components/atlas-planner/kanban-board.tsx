@@ -19,6 +19,8 @@ type KanbanColumn = {
 
 export function KanbanBoard({
   columns,
+  selectedProjectLabel,
+  visibleTicketCount,
   usageStatus,
   stateMessage,
   draggingTicketId,
@@ -39,6 +41,8 @@ export function KanbanBoard({
   onTicketDragEnd
 }: {
   columns: KanbanColumn[];
+  selectedProjectLabel: string;
+  visibleTicketCount: number;
   usageStatus: UsageStatusSnapshot | null;
   stateMessage: string;
   draggingTicketId: string | null;
@@ -63,10 +67,12 @@ export function KanbanBoard({
       <div className="loop-kanban__header">
         <div>
           <p>Atlas Planner</p>
-          <h3>Epics and tickets</h3>
+          <h3>{selectedProjectLabel}</h3>
         </div>
         <div className="loop-kanban__tools">
-          <span>{getWindowDecisionLabel(usageStatus)}</span>
+          <span>
+            {visibleTicketCount} tickets · {getWindowDecisionLabel(usageStatus)}
+          </span>
           <button type="button" onClick={onOpenActivityDashboard}>
             <CalendarDays size={14} />
             Dashboard

@@ -37,6 +37,10 @@ export type GoalContract = {
 export type QueuedGoal = {
   id: string;
   title: string;
+  projectId?: string;
+  projectLabel?: string;
+  epicId?: string;
+  epicLabel?: string;
   lifecycleStatus: GoalLifecycleStatus | string;
   approvedToRun: boolean;
   status: string;
@@ -50,7 +54,10 @@ export type QueuedGoal = {
   updatedAt: string;
 };
 
-export type QueuedGoalSummary = Pick<QueuedGoal, "id" | "title" | "lifecycleStatus" | "approvedToRun" | "status" | "estimate" | "updatedAt">;
+export type QueuedGoalSummary = Pick<
+  QueuedGoal,
+  "id" | "title" | "projectId" | "projectLabel" | "epicId" | "epicLabel" | "lifecycleStatus" | "approvedToRun" | "status" | "estimate" | "updatedAt"
+>;
 
 export type GoalQueue = {
   version: 1;
