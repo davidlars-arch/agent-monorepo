@@ -102,6 +102,17 @@ export type PlannerTicketDraft = Omit<KanbanTicket, "fitLabel"> & {
 
 export type PlannerDateFilter = "created" | "updated" | "completed";
 
+export type PlannerDateRange = {
+  start: string;
+  end: string;
+};
+
+export type ActivityDashboardModel = {
+  completedTicketsInRange: KanbanTicket[];
+  completedTickets: KanbanTicket[];
+  activityTickets: KanbanTicket[];
+};
+
 export type PlannerStateExport = {
   version: 1;
   exportedAt: string;
@@ -453,6 +464,40 @@ export function isTimestampInRange(timestamp: string | undefined, startDate: str
   const time = new Date(timestamp).getTime();
   const range = getRangeBounds(startDate, endDate);
   return Number.isFinite(time) && time >= range.start && time <= range.end;
+}
+
+export function updatePlannerDateRange(dateRange: PlannerDateRange, update: Partial<PlannerDateRange>): PlannerDateRange {
+  return {
+    ...dateRange,
+    ...update
+  };
+}
+
+export function getActivityDashboardModel(
+  tickets: KanbanTicket[],
+  dateFilter: PlannerDateFilter,
+  dateRange: PlannerDateRange
+): ActivityDashboardModel {
+  const completedTicketsInRange = tickets.filter((ticket) =>
+    isTimestampInRange(ticket.completedAt, dateRange.start, dateRange.end)
+  );
+  const completedTickets = [...completedTicketsInRange]
+    .sort((left, right) => new Date(right.completedAt ?? 0).getTime() - new Date(left.completedAt ?? 0).getTime())
+    .slice(0, 5);
+  const activityTickets = tickets
+    .filter((ticket) => isTimestampInRange(getTicketTimestamp(ticket, dateFilter), dateRange.start, dateRange.end))
+    .sort(
+      (left, right) =>
+        new Date(getTicketTimestamp(right, dateFilter) ?? 0).getTime() -
+        new Date(getTicketTimestamp(left, dateFilter) ?? 0).getTime()
+    )
+    .slice(0, 8);
+
+  return {
+    completedTicketsInRange,
+    completedTickets,
+    activityTickets
+  };
 }
 
 export function formatPlannerDateTime(timestamp: string | undefined) {

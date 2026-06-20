@@ -2,18 +2,15 @@
 
 import {
   formatPlannerDateTime,
+  getActivityDashboardModel,
   getTicketTimestamp,
-  isTimestampInRange,
+  updatePlannerDateRange,
   type KanbanTicket,
-  type PlannerDateFilter
+  type PlannerDateFilter,
+  type PlannerDateRange
 } from "@agent/atlas-planner";
 import { CheckCircle2, X } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-
-export type PlannerDateRange = {
-  start: string;
-  end: string;
-};
 
 export function ActivityDashboard({
   tickets,
@@ -30,20 +27,11 @@ export function ActivityDashboard({
   onDateRangeChange: Dispatch<SetStateAction<PlannerDateRange>>;
   onClose: () => void;
 }) {
-  const completedTicketsInRange = tickets.filter((ticket) =>
-    isTimestampInRange(ticket.completedAt, dateRange.start, dateRange.end)
+  const { completedTicketsInRange, completedTickets, activityTickets } = getActivityDashboardModel(
+    tickets,
+    dateFilter,
+    dateRange
   );
-  const completedTickets = [...completedTicketsInRange]
-    .sort((left, right) => new Date(right.completedAt ?? 0).getTime() - new Date(left.completedAt ?? 0).getTime())
-    .slice(0, 5);
-  const activityTickets = tickets
-    .filter((ticket) => isTimestampInRange(getTicketTimestamp(ticket, dateFilter), dateRange.start, dateRange.end))
-    .sort(
-      (left, right) =>
-        new Date(getTicketTimestamp(right, dateFilter) ?? 0).getTime() -
-        new Date(getTicketTimestamp(left, dateFilter) ?? 0).getTime()
-    )
-    .slice(0, 8);
 
   return (
     <section className="loop-activity loop-activity--overlay" aria-label="Atlas Planner activity dashboard">
@@ -66,7 +54,9 @@ export function ActivityDashboard({
             <input
               type="date"
               value={dateRange.start}
-              onChange={(event) => onDateRangeChange((current) => ({ ...current, start: event.target.value }))}
+              onChange={(event) =>
+                onDateRangeChange((current) => updatePlannerDateRange(current, { start: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -74,7 +64,9 @@ export function ActivityDashboard({
             <input
               type="date"
               value={dateRange.end}
-              onChange={(event) => onDateRangeChange((current) => ({ ...current, end: event.target.value }))}
+              onChange={(event) =>
+                onDateRangeChange((current) => updatePlannerDateRange(current, { end: event.target.value }))
+              }
             />
           </label>
           <button
