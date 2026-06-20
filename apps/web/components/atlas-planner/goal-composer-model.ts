@@ -168,15 +168,16 @@ export function getDefaultGoalDraft(): GoalDraft {
 
 export function getTicketStatusForGoalLifecycle(
   lifecycleStatus: GoalLifecycleStatus,
-  approvedToRun: boolean
+  _approvedToRun: boolean
 ): LoopTicketStatus {
+  void _approvedToRun;
   if (lifecycleStatus === "blocked") {
     return "blocked";
   }
   if (lifecycleStatus === "satisfied" || lifecycleStatus === "archived") {
     return "done";
   }
-  if (lifecycleStatus === "approved" || lifecycleStatus === "running" || approvedToRun) {
+  if (lifecycleStatus === "running") {
     return "in-progress";
   }
   return "backlog";

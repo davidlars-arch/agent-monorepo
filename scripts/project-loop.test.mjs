@@ -33,6 +33,7 @@ test("queued goal validation preserves the full goal contract", () => {
   assert.equal(validation.goal.projectLabel, "Repo Health");
   assert.equal(validation.goal.epicId, "repo-safety");
   assert.equal(validation.goal.epicLabel, "Repo Safety");
+  assert.equal(validation.goal.status, "backlog");
   assert.equal(validation.goal.goalContract.statement, "Complete the durable contract handoff.");
   assert.equal(validation.goal.goalContract.stopCondition, "Stop when runner prompts and evidence contain the contract.");
   assert.equal(validation.goal.goalContract.scope, "Loop store, project loop, and runner handoff only.");
@@ -49,7 +50,7 @@ test("approved queued goals are selected before ordinary planner tickets", async
         title: "Queued approved goal",
         lifecycleStatus: "approved",
         approvedToRun: true,
-        status: "in-progress",
+        status: "backlog",
         estimate: 3,
         summary: "A queued goal should win.",
         tags: ["goal", "loop", "approved-to-run"],
@@ -103,7 +104,7 @@ test("--claim-goal writes current-run state and moves the queued goal to running
         title: "Claimable goal",
         lifecycleStatus: "approved",
         approvedToRun: true,
-        status: "in-progress",
+        status: "backlog",
         estimate: 3,
         summary: "A queued goal should be claimed.",
         tags: ["goal", "loop", "approved-to-run"],
@@ -160,7 +161,7 @@ test("--claim-goal claims queued goals for their owning project", async () => {
         epicLabel: "Repo Safety",
         lifecycleStatus: "approved",
         approvedToRun: true,
-        status: "in-progress",
+        status: "backlog",
         estimate: 3,
         summary: "A queued goal should belong to repo health.",
         tags: ["goal", "loop", "approved-to-run"],
@@ -294,7 +295,7 @@ test("--dry-run --claim-goal is read-only and does not write current-run state",
         title: "Dry-run claimable goal",
         lifecycleStatus: "approved",
         approvedToRun: true,
-        status: "in-progress",
+        status: "backlog",
         estimate: 3,
         summary: "A queued goal should be planned but not claimed.",
         tags: ["goal", "loop", "approved-to-run"],
@@ -311,7 +312,7 @@ test("--dry-run --claim-goal is read-only and does not write current-run state",
   const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
 
   assert.equal(queue.goals[0].lifecycleStatus, "approved");
-  assert.equal(queue.goals[0].status, "in-progress");
+  assert.equal(queue.goals[0].status, "backlog");
   assert.match(stdout, /selected `GOAL-DRY`/);
   assert.match(stdout, /Project controller dry run completed; no files written\./);
   assert.doesNotMatch(stdout, /Goal claim: `GOAL-DRY` claimed/);

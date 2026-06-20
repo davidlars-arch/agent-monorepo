@@ -488,7 +488,7 @@ export function getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun) 
   if (lifecycleStatus === "satisfied" || lifecycleStatus === "archived") {
     return "done";
   }
-  if (lifecycleStatus === "approved" || lifecycleStatus === "running" || approvedToRun) {
+  if (lifecycleStatus === "running") {
     return "in-progress";
   }
   return "backlog";
