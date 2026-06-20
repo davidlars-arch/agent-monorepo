@@ -8,6 +8,7 @@ import {
   type PlannerDateFilter
 } from "@agent/atlas-planner";
 import { CheckCircle2, X } from "lucide-react";
+import type { Dispatch, SetStateAction } from "react";
 
 export type PlannerDateRange = {
   start: string;
@@ -26,7 +27,7 @@ export function ActivityDashboard({
   dateFilter: PlannerDateFilter;
   dateRange: PlannerDateRange;
   onDateFilterChange: (dateFilter: PlannerDateFilter) => void;
-  onDateRangeChange: (dateRange: PlannerDateRange) => void;
+  onDateRangeChange: Dispatch<SetStateAction<PlannerDateRange>>;
   onClose: () => void;
 }) {
   const completedTicketsInRange = tickets.filter((ticket) =>
@@ -65,7 +66,7 @@ export function ActivityDashboard({
             <input
               type="date"
               value={dateRange.start}
-              onChange={(event) => onDateRangeChange({ ...dateRange, start: event.target.value })}
+              onChange={(event) => onDateRangeChange((current) => ({ ...current, start: event.target.value }))}
             />
           </label>
           <label>
@@ -73,7 +74,7 @@ export function ActivityDashboard({
             <input
               type="date"
               value={dateRange.end}
-              onChange={(event) => onDateRangeChange({ ...dateRange, end: event.target.value })}
+              onChange={(event) => onDateRangeChange((current) => ({ ...current, end: event.target.value }))}
             />
           </label>
           <button
