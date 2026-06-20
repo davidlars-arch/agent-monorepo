@@ -29,7 +29,7 @@ import {
   X
 } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityDashboard } from "./atlas-planner/activity-dashboard";
 import { GoalComposer } from "./atlas-planner/goal-composer";
 import { KanbanBoard } from "./atlas-planner/kanban-board";
@@ -38,6 +38,8 @@ import { loopFiles, loopSummaries } from "./atlas-planner/overview-data";
 import { TicketEditor } from "./atlas-planner/ticket-editor";
 import { useAtlasGoals } from "./atlas-planner/use-atlas-goals";
 import { usePlannerTickets } from "./atlas-planner/use-planner-tickets";
+
+const selectedBoardStorageKey = "atlas-planner:selected-board:v1";
 
 function formatRelativeUsageTime(timestamp: string | undefined, now: number) {
   if (!timestamp) {
@@ -106,11 +108,14 @@ export function AtlasPlannerOverview({
   const [isActivityDashboardOpen, setIsActivityDashboardOpen] = useState(false);
   const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
-  const [selectedProjectId, setSelectedProjectId] = useState(() =>
-    loopKanban.some((project) => project.id === "atlas-planner") ? "atlas-planner" : (loopKanban[0]?.id ?? "all")
-  );
-  const selectedProject = loopKanban.find((project) => project.id === selectedProjectId);
-  const selectedPlannerProjectId = selectedProjectId === "all" ? undefined : selectedProjectId;
+  const [selectedProjectId, setSelectedProjectId] = useState(() => getDefaultSelectedProjectId(loopKanban));
+  const [hasLoadedStoredBoard, setHasLoadedStoredBoard] = useState(false);
+  const activeSelectedProjectId =
+    selectedProjectId === "all" || loopKanban.some((project) => project.id === selectedProjectId)
+      ? selectedProjectId
+      : getDefaultSelectedProjectId(loopKanban);
+  const selectedProject = loopKanban.find((project) => project.id === activeSelectedProjectId);
+  const selectedPlannerProjectId = activeSelectedProjectId === "all" ? undefined : activeSelectedProjectId;
   const {
     visiblePlannerTickets,
     kanbanColumns,
@@ -142,7 +147,7 @@ export function AtlasPlannerOverview({
     handleTicketDragEnd
   } = usePlannerTickets({
     loopKanban,
-    selectedProjectId,
+    selectedProjectId: activeSelectedProjectId,
     currentCommit,
     usageStatus: latestUsageStatus,
     currentLoopRun,
@@ -166,7 +171,7 @@ export function AtlasPlannerOverview({
     updateQueuedGoalLifecycle
   } = useAtlasGoals({
     loopKanban,
-    selectedProjectId,
+    selectedProjectId: activeSelectedProjectId,
     queuedGoals,
     initialGoalComposerOpen,
     addPlannerTicket,
@@ -177,6 +182,35 @@ export function AtlasPlannerOverview({
     strictPreferredProject: Boolean(selectedPlannerProjectId)
   });
   const loopGoalSummary = getLoopGoalSummary(loopKanban, selectedPlannerProjectId ?? "atlas-planner");
+  const visibleQueuedGoals = getVisibleQueuedGoals(durableQueuedGoals, activeSelectedProjectId);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (hasLoadedStoredBoard) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const storedProjectId = window.localStorage.getItem(selectedBoardStorageKey);
+      if (storedProjectId === "all" || loopKanban.some((project) => project.id === storedProjectId)) {
+        setSelectedProjectId(storedProjectId ?? "all");
+      }
+      setHasLoadedStoredBoard(true);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [hasLoadedStoredBoard, loopKanban]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (!hasLoadedStoredBoard) {
+      return;
+    }
+    window.localStorage.setItem(selectedBoardStorageKey, activeSelectedProjectId);
+  }, [activeSelectedProjectId, hasLoadedStoredBoard]);
 
   async function refreshUsageStatus() {
     setIsUsageRefreshing(true);
@@ -208,7 +242,7 @@ export function AtlasPlannerOverview({
           </div>
           <label className="loop-project-selector">
             <span>Board</span>
-            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+            <select value={activeSelectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
               <option value="all">All repos</option>
               {loopKanban.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -303,7 +337,7 @@ export function AtlasPlannerOverview({
           <LoopReliabilityPanel
             loopPlannerCommand={loopPlannerCommand}
             loopGoalSummary={loopGoalSummary}
-            durableQueuedGoals={durableQueuedGoals}
+            durableQueuedGoals={visibleQueuedGoals}
             currentLoopRun={currentLoopRun}
             currentRunnerState={currentRunnerState}
             currentRunnerEvidence={currentRunnerEvidence}
@@ -326,7 +360,7 @@ export function AtlasPlannerOverview({
 
           <KanbanBoard
             columns={kanbanColumns}
-            selectedProjectLabel={selectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo")}
+            selectedProjectLabel={activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo")}
             visibleTicketCount={visiblePlannerTickets.length}
             usageStatus={latestUsageStatus}
             stateMessage={plannerStateMessage}
@@ -461,4 +495,15 @@ export function AtlasPlannerOverview({
       </section>
     </div>
   );
+}
+
+function getDefaultSelectedProjectId(projects: LoopKanbanProject[]) {
+  return projects.some((project) => project.id === "atlas-planner") ? "atlas-planner" : (projects[0]?.id ?? "all");
+}
+
+function getVisibleQueuedGoals(goals: QueuedGoalSummary[], selectedProjectId: string) {
+  if (selectedProjectId === "all") {
+    return goals;
+  }
+  return goals.filter((goal) => (goal.projectId ?? "atlas-planner") === selectedProjectId);
 }
