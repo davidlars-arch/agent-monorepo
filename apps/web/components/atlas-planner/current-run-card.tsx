@@ -78,9 +78,19 @@ export function CurrentRunCard({
           projectId: action === "claim-next-goal" ? claimableQueuedGoal?.projectId : undefined
         })
       });
-      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        status?: string;
+        command?: string;
+        reason?: string;
+      } | null;
       if (!response.ok) {
         setLoopRunnerMessage(payload?.error ?? "Loop runner action failed.");
+        return;
+      }
+      if (payload?.status === "handoff-required") {
+        setLoopRunnerMessage(payload.command ? `Run in terminal: ${payload.command}` : (payload.reason ?? "Runner handoff is required."));
         return;
       }
 
@@ -251,24 +261,24 @@ function getNextLoopRunnerAction({
   if (currentRunnerState && !terminalRunnerStatuses.has(currentRunnerState.status)) {
     return {
       action: "resume-current-run" as const,
-      label: "Resume runner",
-      busyLabel: "Resuming",
+      label: "Show resume command",
+      busyLabel: "Preparing",
       kicker: "Runner handoff",
       title: currentRunnerState.stage,
-      detail: "Continue from the recorded runner state and handoff evidence for this claimed run.",
+      detail: "Prepare the terminal command for continuing this long-running OpenClaw job.",
       icon: RotateCcw
     };
   }
 
   return {
     action: "start-current-run" as const,
-    label: "Start runner",
-    busyLabel: "Starting",
+    label: "Show start command",
+    busyLabel: "Preparing",
     kicker: "Claimed run",
     title: currentLoopRun.goalTitle,
     detail: currentLoopRun.runnerCommand
-      ? "Launch the runner command recorded for this claimed run."
-      : "Ask the loop runner service to start the current claimed run.",
+      ? "Prepare the recorded runner command for terminal execution. Browser requests do not run long OpenClaw jobs."
+      : "Prepare the terminal command for this claimed run. Browser requests do not run long OpenClaw jobs.",
     icon: Play
   };
 }

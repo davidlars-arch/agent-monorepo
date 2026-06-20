@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { claimNextAtlasPlannerGoal, runAtlasLoopRunnerAction } from "../packages/loop-store/src/index.mjs";
+import {
+  claimNextAtlasPlannerGoal,
+  prepareAtlasLoopRunnerHandoff,
+  runAtlasLoopRunnerAction
+} from "../packages/loop-store/src/index.mjs";
 
 test("claimNextAtlasPlannerGoal claims the first approved queued goal", async () => {
   const root = await makeLoopRoot({
@@ -143,6 +147,30 @@ test("runAtlasLoopRunnerAction starts the current run with local runner args", a
   assert.equal(JSON.parse(calls[0].args[16]).statement, "Run the Atlas loop from the planner.");
   assert.deepEqual(calls[0].args.slice(17), ["--max-repairs", "2"]);
   assert.equal(calls[0].options.cwd, root);
+});
+
+test("prepareAtlasLoopRunnerHandoff returns the runner command without executing it", async () => {
+  const root = await makeLoopRoot({ queuedGoals: [] });
+  await writeCurrentRun(root);
+
+  const result = await prepareAtlasLoopRunnerHandoff(root, "start-current-run");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "handoff-required");
+  assert.equal(result.currentRun.goalId, "AP-16");
+  assert.match(result.command, /scripts\/planner-agent-runner\.mjs/);
+  assert.match(result.command, /'--ticket' 'AP-16'/);
+  assert.match(result.reason, /terminal or background worker/);
+});
+
+test("prepareAtlasLoopRunnerHandoff validates resume state before returning a command", async () => {
+  const root = await makeLoopRoot({ queuedGoals: [] });
+  await writeCurrentRun(root);
+
+  const result = await prepareAtlasLoopRunnerHandoff(root, "resume-current-run");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "missing-runner-state");
 });
 
 test("runAtlasLoopRunnerAction passes configured maker checker and PR commands", async () => {
