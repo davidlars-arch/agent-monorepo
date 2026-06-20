@@ -309,6 +309,22 @@ export const prMergeGates = [
   }
 ];
 
+export function getLoopPlannerDisplayCommand(
+  command: string,
+  options: { hasCurrentRun: boolean; hasClaimableQueuedGoal: boolean }
+) {
+  if (
+    !options.hasCurrentRun &&
+    options.hasClaimableQueuedGoal &&
+    command.startsWith("npm run loop:projects") &&
+    !command.includes("--claim-goal")
+  ) {
+    return `${command} --claim-goal`;
+  }
+
+  return command;
+}
+
 export function getLoopRunTimeline(command: LoopPlannerCommand) {
   return loopRunTimelineSteps.map((step, index) => {
     if (!command.ticket) {

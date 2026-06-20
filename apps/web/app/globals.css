@@ -1286,6 +1286,83 @@ nextjs-portal,
   opacity: 0.62;
 }
 
+.loop-run-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.loop-run-controls article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 8px;
+  background: rgba(6, 78, 59, 0.16);
+  padding: 9px;
+}
+
+.loop-run-controls article > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.loop-run-controls span {
+  color: rgba(94, 234, 212, 0.82);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loop-run-controls strong {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-run-controls p,
+.loop-run-controls__message {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 11px;
+  line-height: 1.38;
+}
+
+.loop-run-controls article p {
+  grid-column: 1 / -1;
+}
+
+.loop-run-controls button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.12);
+  padding: 6px 10px;
+  color: rgba(204, 251, 241, 0.94);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.loop-run-controls button:hover:not(:disabled) {
+  border-color: rgba(45, 212, 191, 0.46);
+  background: rgba(20, 184, 166, 0.18);
+  color: #ffffff;
+}
+
+.loop-run-controls button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .loop-run-artifacts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4359,6 +4436,14 @@ nextjs-portal,
 
   .loop-current-run__header {
     display: grid;
+  }
+
+  .loop-run-controls article {
+    grid-template-columns: 1fr;
+  }
+
+  .loop-run-controls button {
+    width: fit-content;
   }
 
   .loop-current-run dl {

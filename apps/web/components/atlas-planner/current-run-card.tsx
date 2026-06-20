@@ -5,26 +5,42 @@ import type {
   ControllerLockSummary,
   CurrentLoopRunSummary,
   CurrentRunRecoveryStatus,
+  QueuedGoalSummary,
   RunnerEvidenceSummary,
   RunnerStateSummary
 } from "@agent/loop-store";
+import { Play, RotateCcw, StepForward } from "lucide-react";
 import { useState } from "react";
+
+type LoopRunnerAction = "claim-next-goal" | "start-current-run" | "resume-current-run";
+const terminalRunnerStatuses = new Set(["satisfied", "blocked", "failed", "passed", "merged"]);
 
 export function CurrentRunCard({
   currentLoopRun,
   currentRunnerState,
   currentRunnerEvidence,
   controllerLock,
-  currentRunRecovery
+  currentRunRecovery,
+  claimableQueuedGoal
 }: {
   currentLoopRun?: CurrentLoopRunSummary | null;
   currentRunnerState?: RunnerStateSummary | null;
   currentRunnerEvidence?: RunnerEvidenceSummary | null;
   controllerLock?: ControllerLockSummary | null;
   currentRunRecovery?: CurrentRunRecoveryStatus | null;
+  claimableQueuedGoal?: QueuedGoalSummary | null;
 }) {
   const [runRecoveryMessage, setRunRecoveryMessage] = useState("");
   const [isRunRecoveryBusy, setIsRunRecoveryBusy] = useState(false);
+  const [loopRunnerMessage, setLoopRunnerMessage] = useState("");
+  const [busyLoopRunnerAction, setBusyLoopRunnerAction] = useState<LoopRunnerAction | null>(null);
+
+  const runnerAction = getNextLoopRunnerAction({
+    currentLoopRun,
+    currentRunnerState,
+    claimableQueuedGoal
+  });
+  const RunnerActionIcon = runnerAction?.icon;
 
   async function runRecoveryAction(action: "clear-stale-lock" | "clear-terminal-current-run") {
     setIsRunRecoveryBusy(true);
@@ -46,6 +62,29 @@ export function CurrentRunCard({
       setRunRecoveryMessage("Run recovery API is unavailable.");
     } finally {
       setIsRunRecoveryBusy(false);
+    }
+  }
+
+  async function runLoopRunnerAction(action: LoopRunnerAction) {
+    setBusyLoopRunnerAction(action);
+    setLoopRunnerMessage("");
+    try {
+      const response = await fetch("/api/atlas-loop-runner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+      if (!response.ok) {
+        setLoopRunnerMessage(payload?.error ?? "Loop runner action failed.");
+        return;
+      }
+
+      window.location.reload();
+    } catch {
+      setLoopRunnerMessage("Loop runner API is unavailable.");
+    } finally {
+      setBusyLoopRunnerAction(null);
     }
   }
 
@@ -95,6 +134,26 @@ export function CurrentRunCard({
           {runRecoveryMessage ? <p className="loop-run-recovery__message">{runRecoveryMessage}</p> : null}
         </div>
       ) : null}
+      {runnerAction ? (
+        <div className="loop-run-controls">
+          <article>
+            <div>
+              <span>{runnerAction.kicker}</span>
+              <strong>{runnerAction.title}</strong>
+            </div>
+            <p>{runnerAction.detail}</p>
+            <button
+              type="button"
+              disabled={Boolean(busyLoopRunnerAction)}
+              onClick={() => runLoopRunnerAction(runnerAction.action)}
+            >
+              {RunnerActionIcon ? <RunnerActionIcon size={14} /> : null}
+              {busyLoopRunnerAction === runnerAction.action ? runnerAction.busyLabel : runnerAction.label}
+            </button>
+          </article>
+          {loopRunnerMessage ? <p className="loop-run-controls__message">{loopRunnerMessage}</p> : null}
+        </div>
+      ) : null}
       {currentLoopRun ? (
         <dl>
           <div>
@@ -139,7 +198,11 @@ export function CurrentRunCard({
           ) : null}
         </dl>
       ) : (
-        <p>Claiming an approved queued goal writes `loops/project-controller/current-run.json`.</p>
+        <p>
+          {claimableQueuedGoal
+            ? "Claim the approved queued goal to write `loops/project-controller/current-run.json`."
+            : "Approve a queued goal before claiming the next loop run."}
+        </p>
       )}
       {currentLoopRun && (currentRunnerState || currentRunnerEvidence) ? (
         <div className="loop-run-artifacts">
@@ -149,6 +212,56 @@ export function CurrentRunCard({
       ) : null}
     </section>
   );
+}
+
+function getNextLoopRunnerAction({
+  currentLoopRun,
+  currentRunnerState,
+  claimableQueuedGoal
+}: {
+  currentLoopRun?: CurrentLoopRunSummary | null;
+  currentRunnerState?: RunnerStateSummary | null;
+  claimableQueuedGoal?: QueuedGoalSummary | null;
+}) {
+  if (!currentLoopRun) {
+    if (!claimableQueuedGoal) {
+      return null;
+    }
+
+    return {
+      action: "claim-next-goal" as const,
+      label: "Claim approved goal",
+      busyLabel: "Claiming",
+      kicker: "Next action",
+      title: claimableQueuedGoal.title,
+      detail: "Start the next loop by claiming the approved queued goal and writing current-run state.",
+      icon: StepForward
+    };
+  }
+
+  if (currentRunnerState && !terminalRunnerStatuses.has(currentRunnerState.status)) {
+    return {
+      action: "resume-current-run" as const,
+      label: "Resume runner",
+      busyLabel: "Resuming",
+      kicker: "Runner handoff",
+      title: currentRunnerState.stage,
+      detail: "Continue from the recorded runner state and handoff evidence for this claimed run.",
+      icon: RotateCcw
+    };
+  }
+
+  return {
+    action: "start-current-run" as const,
+    label: "Start runner",
+    busyLabel: "Starting",
+    kicker: "Claimed run",
+    title: currentLoopRun.goalTitle,
+    detail: currentLoopRun.runnerCommand
+      ? "Launch the runner command recorded for this claimed run."
+      : "Ask the loop runner service to start the current claimed run.",
+    icon: Play
+  };
 }
 
 function RunnerStateCard({ currentRunnerState }: { currentRunnerState: RunnerStateSummary }) {
