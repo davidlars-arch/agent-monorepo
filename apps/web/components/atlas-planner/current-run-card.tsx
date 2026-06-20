@@ -72,7 +72,11 @@ export function CurrentRunCard({
       const response = await fetch("/api/atlas-loop-runner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({
+          action,
+          goalId: action === "claim-next-goal" ? claimableQueuedGoal?.id : undefined,
+          projectId: action === "claim-next-goal" ? claimableQueuedGoal?.projectId : undefined
+        })
       });
       const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
       if (!response.ok) {

@@ -253,7 +253,7 @@ export function getCurrentRunRecoveryStatus(
 ): CurrentRunRecoveryStatus;
 export function claimNextAtlasPlannerGoal(
   root: string,
-  options?: { now?: Date; readCommit?: (root: string) => Promise<string> | string }
+  options?: { now?: Date; readCommit?: (root: string) => Promise<string> | string; goalId?: string; projectId?: string }
 ): Promise<
   | { ok: true; status: "claimed"; currentRun: CurrentLoopRunSummary; goal: QueuedGoal }
   | { ok: true; status: "idle" | "blocked"; reason: string }

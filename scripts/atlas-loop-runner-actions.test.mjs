@@ -49,6 +49,63 @@ test("claimNextAtlasPlannerGoal claims the first approved queued goal", async ()
   assert.match(currentRun.id, /^run-ap-16-/);
 });
 
+test("claimNextAtlasPlannerGoal can claim a specific repo goal", async () => {
+  const root = await makeLoopRoot({
+    queuedGoals: [
+      {
+        id: "GOAL-ATLAS",
+        title: "Atlas goal",
+        projectId: "atlas-planner",
+        projectLabel: "Atlas Planner",
+        lifecycleStatus: "approved",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 5,
+        summary: "Do not claim me for the repo board.",
+        tags: ["goal", "approved-to-run"],
+        description: "Atlas goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-20T10:00:00.000Z",
+        updatedAt: "2026-06-20T10:00:00.000Z"
+      },
+      {
+        id: "GOAL-REPO",
+        title: "Repo goal",
+        projectId: "repo-health",
+        projectLabel: "Repo Health",
+        lifecycleStatus: "approved",
+        approvedToRun: true,
+        status: "in-progress",
+        estimate: 3,
+        summary: "Claim me for the repo board.",
+        tags: ["goal", "approved-to-run"],
+        description: "Repo goal.",
+        goalContract: makeGoalContract(),
+        subtasks: [],
+        createdAt: "2026-06-20T10:00:00.000Z",
+        updatedAt: "2026-06-20T10:00:00.000Z"
+      }
+    ]
+  });
+
+  const result = await claimNextAtlasPlannerGoal(root, {
+    now: new Date("2026-06-20T12:00:00.000Z"),
+    readCommit: async () => "abc1234",
+    goalId: "GOAL-REPO",
+    projectId: "repo-health"
+  });
+
+  const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "claimed");
+  assert.equal(result.currentRun.goalId, "GOAL-REPO");
+  assert.equal(result.currentRun.projectId, "repo-health");
+  assert.equal(currentRun.goalId, "GOAL-REPO");
+  assert.equal(currentRun.projectId, "repo-health");
+});
+
 test("runAtlasLoopRunnerAction starts the current run with local runner args", async () => {
   const root = await makeLoopRoot({ queuedGoals: [] });
   await writeCurrentRun(root);

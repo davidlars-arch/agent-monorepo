@@ -25,14 +25,17 @@ export async function POST(request: Request) {
     return accessError;
   }
 
-  const body = (await request.json().catch(() => null)) as { action?: unknown; timeoutMs?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { action?: unknown; timeoutMs?: unknown; goalId?: unknown; projectId?: unknown } | null;
   const action = normalizeAction(body?.action);
   if (!action) {
     return NextResponse.json({ error: "Unsupported Atlas loop runner action." }, { status: 400 });
   }
 
   if (action === "claim-next-goal") {
-    const result = await claimNextAtlasPlannerGoal(projectRoot);
+    const result = await claimNextAtlasPlannerGoal(projectRoot, {
+      goalId: normalizeId(body?.goalId),
+      projectId: normalizeId(body?.projectId)
+    });
     if (!result.ok) {
       return NextResponse.json({ error: result.reason, result }, { status: 409 });
     }
@@ -66,6 +69,13 @@ function normalizeTimeoutMs(timeoutMs: unknown) {
   }
 
   return Math.max(1_000, Math.min(60_000, Math.trunc(timeoutMs)));
+}
+
+function normalizeId(value: unknown) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9._-]+$/.test(value)) {
+    return "";
+  }
+  return value;
 }
 
 function validateWriteAccess(request: Request) {

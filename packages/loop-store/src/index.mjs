@@ -210,7 +210,7 @@ export function getCurrentRunRecoveryStatus(currentRun, runnerState) {
   };
 }
 
-export async function claimNextAtlasPlannerGoal(root, { now = new Date(), readCommit = readCurrentCommit } = {}) {
+export async function claimNextAtlasPlannerGoal(root, { now = new Date(), readCommit = readCurrentCommit, goalId = "", projectId = "" } = {}) {
   const loopPaths = getLoopPaths(root);
   const lock = await acquireFileLock(loopPaths.lockPath, "atlas-loop-runner-api");
   if (!lock.ok) {
@@ -219,7 +219,18 @@ export async function claimNextAtlasPlannerGoal(root, { now = new Date(), readCo
 
   try {
     const queue = await readGoalQueue(loopPaths.goalQueuePath);
-    const queuedGoal = queue.goals.find(isRunnableQueuedGoal);
+    const queuedGoal = queue.goals.find((goal) => {
+      if (!isRunnableQueuedGoal(goal)) {
+        return false;
+      }
+      if (goalId && goal.id !== goalId) {
+        return false;
+      }
+      if (projectId && (goal.projectId ?? "atlas-planner") !== projectId) {
+        return false;
+      }
+      return true;
+    });
     if (!queuedGoal) {
       return { ok: true, status: "idle", reason: "No approved Atlas Planner queued goal is ready to run." };
     }
