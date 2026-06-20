@@ -19,6 +19,7 @@ test("claimNextAtlasPlannerGoal claims the first approved queued goal", async ()
         summary: "Backend action route.",
         tags: ["goal", "approved-to-run"],
         description: "Claim me.",
+        goalContract: makeGoalContract(),
         subtasks: [],
         createdAt: "2026-06-20T10:00:00.000Z",
         updatedAt: "2026-06-20T10:00:00.000Z"
@@ -36,7 +37,10 @@ test("claimNextAtlasPlannerGoal claims the first approved queued goal", async ()
   assert.equal(result.currentRun.goalId, "AP-16");
   assert.equal(result.currentRun.branchName, "worktree/ap-16");
   assert.equal(result.currentRun.worktreePath, "../agent-monorepo-ap-16");
+  assert.equal(result.currentRun.goalContract.statement, "Run the Atlas loop from the planner.");
   assert.match(result.currentRun.runnerCommand, /planner-agent-runner\.mjs/);
+  assert.match(result.currentRun.runnerCommand, /--goal-contract-json/);
+  assert.match(result.currentRun.runnerCommand, /--max-repairs '2'/);
 
   const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
   const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
@@ -61,7 +65,7 @@ test("runAtlasLoopRunnerAction starts the current run with local runner args", a
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].file, process.execPath);
-  assert.deepEqual(calls[0].args, [
+  assert.deepEqual(calls[0].args.slice(0, 15), [
     "scripts/planner-agent-runner.mjs",
     "--ticket",
     "AP-16",
@@ -78,6 +82,9 @@ test("runAtlasLoopRunnerAction starts the current run with local runner args", a
     "--handoff-dir",
     "loops/project-controller/runs/run-ap-16"
   ]);
+  assert.equal(calls[0].args[15], "--goal-contract-json");
+  assert.equal(JSON.parse(calls[0].args[16]).statement, "Run the Atlas loop from the planner.");
+  assert.deepEqual(calls[0].args.slice(17), ["--max-repairs", "2"]);
   assert.equal(calls[0].options.cwd, root);
 });
 
@@ -155,6 +162,7 @@ async function writeCurrentRun(root) {
         id: "run-ap-16",
         goalId: "AP-16",
         goalTitle: "Add start and resume loop controls",
+        goalContract: makeGoalContract(),
         status: "running",
         stage: "claimed",
         claimedAt: "2026-06-20T12:00:00.000Z",
@@ -168,4 +176,38 @@ async function writeCurrentRun(root) {
       2
     )}\n`
   );
+}
+
+function makeGoalContract() {
+  return {
+    statement: "Run the Atlas loop from the planner.",
+    stopCondition: "Stop when the runner records checker-approved evidence.",
+    scope: "Atlas Planner loop controls.",
+    maxEstimate: 8,
+    satisfactionLayers: [
+      {
+        id: "runner-start",
+        label: "Runner start",
+        criteria: "The runner can start from current-run state.",
+        status: "pending",
+        humanGated: false
+      }
+    ],
+    verificationCommands: [
+      {
+        id: "runner-actions-test",
+        label: "Runner actions tests",
+        command: "node --test scripts/atlas-loop-runner-actions.test.mjs",
+        required: true
+      }
+    ],
+    safety: {
+      maxIterations: 3,
+      maxRepairAttempts: 2,
+      tokenBudget: "Stay within current window.",
+      timeBudget: "One bounded run.",
+      allowedPaths: "apps/web/**, packages/loop-store/**, scripts/**",
+      externalActionPolicy: "human-gated"
+    }
+  };
 }

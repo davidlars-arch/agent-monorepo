@@ -330,26 +330,35 @@ export function buildAtlasRunnerCommand(root, action, currentRun) {
       return { ok: false, status: "runner-state-exists", reason: "Runner state already exists; use resume-current-run." };
     }
 
+    const args = [
+      "scripts/planner-agent-runner.mjs",
+      "--ticket",
+      currentRun.goalId,
+      "--branch",
+      currentRun.branchName,
+      "--base",
+      currentRun.baseCommit,
+      "--run-id",
+      currentRun.id,
+      "--goal-title",
+      currentRun.goalTitle,
+      "--worktree-dir",
+      currentRun.worktreePath,
+      "--handoff-dir",
+      currentRun.handoffDir
+    ];
+    if (currentRun.goalContract) {
+      args.push("--goal-contract-json", JSON.stringify(currentRun.goalContract));
+    }
+    const maxRepairAttempts = Number(currentRun.goalContract?.safety?.maxRepairAttempts);
+    if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
+      args.push("--max-repairs", String(Math.min(5, maxRepairAttempts)));
+    }
+
     return {
       ok: true,
       cmd: process.execPath,
-      args: [
-        "scripts/planner-agent-runner.mjs",
-        "--ticket",
-        currentRun.goalId,
-        "--branch",
-        currentRun.branchName,
-        "--base",
-        currentRun.baseCommit,
-        "--run-id",
-        currentRun.id,
-        "--goal-title",
-        currentRun.goalTitle,
-        "--worktree-dir",
-        currentRun.worktreePath,
-        "--handoff-dir",
-        currentRun.handoffDir
-      ]
+      args
     };
   }
 
@@ -431,7 +440,7 @@ function buildAtlasAgentRunPlan({ runId, goal, baseCommit }) {
   const branchName = `worktree/${ticketSlug}`;
   const worktreePath = `../agent-monorepo-${ticketSlug}`;
   const handoffDir = join("loops", "project-controller", "runs", runId);
-  const command = [
+  const commandParts = [
     shellQuote("node"),
     shellQuote("scripts/planner-agent-runner.mjs"),
     "--ticket",
@@ -448,7 +457,15 @@ function buildAtlasAgentRunPlan({ runId, goal, baseCommit }) {
     shellQuote(worktreePath),
     "--handoff-dir",
     shellQuote(handoffDir)
-  ].join(" ");
+  ];
+  if (goal.goalContract) {
+    commandParts.push("--goal-contract-json", shellQuote(JSON.stringify(goal.goalContract)));
+  }
+  const maxRepairAttempts = Number(goal.goalContract?.safety?.maxRepairAttempts);
+  if (Number.isInteger(maxRepairAttempts) && maxRepairAttempts >= 0) {
+    commandParts.push("--max-repairs", shellQuote(String(Math.min(5, maxRepairAttempts))));
+  }
+  const command = commandParts.join(" ");
 
   return {
     branchName,
@@ -469,6 +486,7 @@ function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) 
     projectLabel: "Atlas Planner",
     goalId: goal.id,
     goalTitle: goal.title,
+    goalContract: goal.goalContract,
     status: "running",
     stage: "claimed",
     claimedAt,
