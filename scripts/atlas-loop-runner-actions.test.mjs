@@ -293,6 +293,8 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
 
   const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
   const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const review = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-16/review.json"), "utf8"));
+  const runHistory = await readFile(join(root, "loops/project-controller/run-history.jsonl"), "utf8");
 
   assert.equal(result.ok, true);
   assert.equal(result.sync.status, "synced");
@@ -322,6 +324,14 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
   assert.equal(currentRun.humanGate.status, "pending-review");
   assert.equal(currentRun.humanGate.recommendedNextAction, "human-review");
   assert.equal(currentRun.humanGate.externalActions, "ready");
+  assert.equal(currentRun.humanReview.status, "pending");
+  assert.equal(currentRun.humanReview.reviewedBy, null);
+  assert.equal(currentRun.humanReview.externalActions.prCreation, "disabled");
+  assert.equal(review.schemaVersion, "atlas-human-review.v1");
+  assert.equal(review.status, "pending");
+  assert.equal(review.decision, null);
+  assert.match(runHistory, /"runId":"run-ap-16"/);
+  assert.match(runHistory, /"humanReviewStatus":"pending"/);
 });
 
 test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", async () => {

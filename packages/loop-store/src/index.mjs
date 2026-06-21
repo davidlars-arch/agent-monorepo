@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -22,6 +22,7 @@ export function getLoopPaths(root) {
     statePath: join(controllerDir, "state.json"),
     reportPath: join(controllerDir, "latest-report.md"),
     decisionsPath: join(controllerDir, "decisions.jsonl"),
+    runHistoryPath: join(controllerDir, "run-history.jsonl"),
     goalQueuePath: join(controllerDir, "goal-queue.json"),
     currentRunPath: join(controllerDir, "current-run.json"),
     lockPath: join(controllerDir, "LOCK"),
@@ -396,7 +397,8 @@ export async function syncTerminalAtlasRun(root, currentRun) {
     maxRepairs: Number.isInteger(runnerState.maxRepairs) ? runnerState.maxRepairs : currentRun.maxRepairs,
     repairAttempts: Number.isInteger(runnerState.repairAttempts) ? runnerState.repairAttempts : currentRun.repairAttempts,
     timeline: buildSyncedCurrentRunTimeline(currentRun.timeline, runnerState, runnerStatus, updatedAt),
-    humanGate: getHumanGateForRunnerStatus(runnerStatus, evidence)
+    humanGate: getHumanGateForRunnerStatus(runnerStatus, evidence),
+    humanReview: buildPendingHumanReview(currentRun, runnerState, runnerStatus, evidence, updatedAt)
   };
 
   if (syncedGoal) {
@@ -407,6 +409,8 @@ export async function syncTerminalAtlasRun(root, currentRun) {
     });
   }
   await writeJsonAtomically(loopPaths.currentRunPath, nextCurrentRun);
+  await writePendingReviewRecord(root, currentRun, nextCurrentRun.humanReview);
+  await appendRunHistory(loopPaths.runHistoryPath, nextCurrentRun, syncedGoal, evidence);
 
   return { ok: true, status: "synced", runnerStatus, lifecycleStatus, goal: syncedGoal, currentRun: nextCurrentRun };
 }
@@ -576,6 +580,60 @@ function getHumanGateForRunnerStatus(runnerStatus, evidence) {
     recommendedNextAction: satisfied ? "human-review" : "inspect-blocker",
     externalActions: evidence?.pullRequest?.status ?? "human-gated"
   };
+}
+
+function buildPendingHumanReview(currentRun, runnerState, runnerStatus, evidence, updatedAt) {
+  return {
+    schemaVersion: "atlas-human-review.v1",
+    runId: currentRun.id,
+    goalId: currentRun.goalId,
+    required: true,
+    status: "pending",
+    reviewedBy: null,
+    reviewedAt: null,
+    decision: null,
+    recommendedNextAction: ["satisfied", "passed", "merged"].includes(runnerStatus) ? "human-review" : "inspect-blocker",
+    runnerStatus,
+    runnerStage: typeof runnerState.stage === "string" ? runnerState.stage : currentRun.stage,
+    evidencePath: currentRun.evidencePath ?? (currentRun.handoffDir ? join(currentRun.handoffDir, "evidence.json") : ""),
+    checkerVerdictPath: currentRun.handoffDir ? join(currentRun.handoffDir, "checker-verdict.json") : "",
+    externalActions: {
+      prCreation: evidence?.pullRequest?.status === "created" ? "created" : "disabled",
+      merge: "disabled",
+      push: "disabled"
+    },
+    createdAt: updatedAt
+  };
+}
+
+async function writePendingReviewRecord(root, currentRun, humanReview) {
+  if (!currentRun?.handoffDir || !humanReview) {
+    return;
+  }
+
+  const reviewPath = resolveRepoPath(root, join(currentRun.handoffDir, "review.json"));
+  await writeJsonAtomically(reviewPath, humanReview);
+}
+
+async function appendRunHistory(runHistoryPath, currentRun, goal, evidence) {
+  await mkdir(dirname(runHistoryPath), { recursive: true });
+  await appendFile(
+    runHistoryPath,
+    `${JSON.stringify({
+      schemaVersion: "atlas-run-history.v1",
+      runId: currentRun.id,
+      goalId: currentRun.goalId,
+      goalTitle: currentRun.goalTitle,
+      status: currentRun.status,
+      stage: currentRun.stage,
+      runnerStatus: currentRun.runnerStatus,
+      goalLifecycleStatus: goal?.lifecycleStatus ?? null,
+      evidencePath: currentRun.evidencePath ?? null,
+      humanReviewStatus: currentRun.humanReview?.status ?? null,
+      findings: Array.isArray(evidence?.findings) ? evidence.findings.length : 0,
+      syncedAt: currentRun.updatedAt
+    })}\n`
+  );
 }
 
 export function buildAtlasRunnerCommand(root, action, currentRun) {

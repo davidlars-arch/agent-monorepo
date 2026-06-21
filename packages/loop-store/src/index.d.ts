@@ -94,6 +94,27 @@ export type CurrentLoopRunSummary = {
     recommendedNextAction: string;
     externalActions?: string;
   };
+  humanReview?: {
+    schemaVersion: "atlas-human-review.v1" | string;
+    runId: string;
+    goalId: string;
+    required: boolean;
+    status: string;
+    reviewedBy: string | null;
+    reviewedAt: string | null;
+    decision: string | null;
+    recommendedNextAction: string;
+    runnerStatus: string;
+    runnerStage: string;
+    evidencePath: string;
+    checkerVerdictPath: string;
+    externalActions: {
+      prCreation: string;
+      merge: string;
+      push: string;
+    };
+    createdAt: string;
+  };
   selectedTask?: {
     id: string;
     title: string;
@@ -222,6 +243,7 @@ export type LoopPaths = {
   statePath: string;
   reportPath: string;
   decisionsPath: string;
+  runHistoryPath: string;
   goalQueuePath: string;
   currentRunPath: string;
   lockPath: string;
