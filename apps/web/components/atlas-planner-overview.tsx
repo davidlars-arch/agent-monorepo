@@ -22,6 +22,8 @@ import {
   CircleHelp,
   GitCommitHorizontal,
   ListChecks,
+  Maximize2,
+  Minimize2,
   PlayCircle,
   RefreshCw,
   ShieldCheck,
@@ -116,6 +118,7 @@ export function AtlasPlannerOverview({
   const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
   const [selectedProjectId, setSelectedProjectId] = useState(() => getDefaultSelectedProjectId(loopKanban));
   const [hasLoadedStoredBoard, setHasLoadedStoredBoard] = useState(false);
+  const [isPanelFullscreen, setIsPanelFullscreen] = useState(false);
   const activeSelectedProjectId =
     selectedProjectId === "all" || loopKanban.some((project) => project.id === selectedProjectId)
       ? selectedProjectId
@@ -253,11 +256,25 @@ export function AtlasPlannerOverview({
 
 
   return (
-    <div className="loop-overlay" role="dialog" aria-modal="true" aria-labelledby="loop-overview-title">
+    <div
+      className={`loop-overlay ${isPanelFullscreen ? "loop-overlay--fullscreen" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="loop-overview-title"
+    >
       <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
-      <section className="loop-panel">
+      <section className={`loop-panel ${isPanelFullscreen ? "loop-panel--fullscreen" : ""}`}>
         <header className="loop-panel__header">
-          <div>
+          <button
+            type="button"
+            className="loop-maximize-button"
+            aria-label={isPanelFullscreen ? "Restore Atlas Planner size" : "Maximize Atlas Planner"}
+            title={isPanelFullscreen ? "Restore" : "Maximize"}
+            onClick={() => setIsPanelFullscreen((current) => !current)}
+          >
+            {isPanelFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
+          <div className="loop-panel__title">
             <p>Agentic workflow orchestration</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
             <span>

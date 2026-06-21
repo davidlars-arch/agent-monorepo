@@ -463,6 +463,18 @@ nextjs-portal,
   color: white;
 }
 
+.loop-overlay--fullscreen {
+  padding: 0;
+}
+
+.loop-panel--fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  border-width: 0;
+  border-radius: 0;
+}
+
 .loop-panel__header {
   display: flex;
   align-items: flex-start;
@@ -470,6 +482,10 @@ nextjs-portal,
   gap: 18px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.14);
   padding: 16px;
+}
+
+.loop-panel__title {
+  min-width: 0;
 }
 
 .loop-panel__header p {
@@ -492,7 +508,7 @@ nextjs-portal,
   line-height: 0.98;
 }
 
-.loop-panel__header > div > span {
+.loop-panel__title > span {
   display: block;
   max-width: 640px;
   margin-top: 8px;
@@ -538,6 +554,7 @@ nextjs-portal,
 }
 
 .loop-help-button,
+.loop-maximize-button,
 .loop-close-button {
   display: inline-flex;
   min-height: 38px;
@@ -559,12 +576,19 @@ nextjs-portal,
   padding: 8px 11px;
 }
 
+.loop-maximize-button {
+  flex: 0 0 auto;
+  width: 38px;
+  padding: 0;
+}
+
 .loop-close-button {
   width: 38px;
   padding: 0;
 }
 
 .loop-help-button:hover,
+.loop-maximize-button:hover,
 .loop-close-button:hover {
   border-color: rgba(45, 212, 191, 0.74);
   background: rgba(20, 40, 48, 0.86);
@@ -4136,6 +4160,14 @@ nextjs-portal,
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
+  .loop-panel--fullscreen {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border-width: 0;
+    border-radius: 0;
+  }
+
   .loop-panel__header {
     min-height: 118px;
     align-items: flex-start;
@@ -4164,6 +4196,7 @@ nextjs-portal,
   }
 
   .loop-help-button,
+  .loop-maximize-button,
   .loop-close-button {
     background: rgba(8, 13, 30, 0.68);
     border-color: rgba(196, 181, 253, 0.22);
@@ -5478,8 +5511,19 @@ nextjs-portal,
     padding: 10px;
   }
 
+  .loop-overlay--fullscreen {
+    padding: 0;
+  }
+
   .loop-panel {
     max-height: calc(100vh - 20px);
+  }
+
+  .loop-panel--fullscreen {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
   }
 
   .loop-panel__header {
@@ -5503,6 +5547,12 @@ nextjs-portal,
     min-height: 36px;
     padding: 7px 9px;
     font-size: 12px;
+  }
+
+  .loop-maximize-button {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
   }
 
   .loop-close-button {
