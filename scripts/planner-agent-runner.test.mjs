@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const scriptPath = resolve("scripts/planner-agent-runner.mjs");
 const smokeMakerPath = resolve("scripts/atlas-smoke-maker.mjs");
 const smokeCheckerPath = resolve("scripts/atlas-smoke-checker.mjs");
+const openclawWrapperPath = resolve("scripts/atlas-openclaw-agent-command.mjs");
 
 test("dry run prints the worktree and handoff plan without writing files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-dry-"));
@@ -215,6 +216,79 @@ test("runner completes deterministic smoke maker checker proof with verdict arti
   assert.match(checkerLog, /deterministic Atlas first-loop proof completed/i);
   assert.match(events, /maker\.started/);
   assert.match(events, /checker\.finished/);
+});
+
+test("runner completes deterministic maker with OpenClaw checker wrapper verdict", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-openclaw-checker-");
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeExecutable(
+    join(bin, "openclaw"),
+    `#!/bin/sh
+cat <<'JSON'
+{"payloads":[{"text":"ATLAS_CHECKER_JSON_START\\n{\\"schemaVersion\\":\\"atlas-checker-verdict.v1\\",\\"runId\\":\\"run-ap-openclaw-checker\\",\\"ticketId\\":\\"AP-OPENCLAW-CHECKER\\",\\"pass\\":true,\\"status\\":\\"passed\\",\\"blockingIssues\\":[],\\"nonBlockingIssues\\":[],\\"evidenceReviewed\\":[\\"handoff.json\\",\\"goal-contract.json\\",\\"events.jsonl\\",\\"evidence.json\\",\\"maker-result.json\\",\\"maker.log\\"],\\"recommendedNextAction\\":\\"human-review\\",\\"satisfactionLayers\\":[{\\"layerId\\":\\"queue-preservation\\",\\"label\\":\\"Queue preservation\\",\\"status\\":\\"satisfied\\",\\"proof\\":[\\"OpenClaw reviewed the deterministic maker output.\\"],\\"missing\\":[]},{\\"layerId\\":\\"runner-proof\\",\\"label\\":\\"Runner proof\\",\\"status\\":\\"satisfied\\",\\"proof\\":[\\"OpenClaw returned atlas-checker-verdict.v1 JSON.\\"],\\"missing\\":[]}],\\"summary\\":\\"OpenClaw checker accepted deterministic maker output.\\"}\\nATLAS_CHECKER_JSON_END"}]}
+JSON
+exit 0
+`
+  );
+
+  const runId = "run-ap-openclaw-checker";
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-OPENCLAW-CHECKER",
+      "--branch",
+      "worktree/ap-openclaw-checker-runner-test",
+      "--run-id",
+      runId,
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--maker-command",
+      `node ${smokeMakerPath}`,
+      "--checker-command",
+      `node ${openclawWrapperPath}`,
+      "--max-repairs",
+      "0"
+    ],
+    {
+      cwd: root,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        PATH: `${bin}${delimiter}${process.env.PATH}`,
+        ATLAS_OPENCLAW_TIMEOUT_SECONDS: "1"
+      }
+    }
+  );
+
+  const handoffDir = join(root, "loops/project-controller/runs", runId);
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(handoffDir, "evidence.json"), "utf8"));
+  const verdict = JSON.parse(await readFile(join(handoffDir, "checker-verdict.json"), "utf8"));
+  const checkerLog = await readFile(join(handoffDir, "checker.log"), "utf8");
+  const events = await readFile(join(handoffDir, "events.jsonl"), "utf8");
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "checker-passed");
+  assert.equal(verdict.schemaVersion, "atlas-checker-verdict.v1");
+  assert.equal(verdict.pass, true);
+  assert.equal(verdict.recommendedNextAction, "human-review");
+  assert.equal(evidence.status, "checker-passed");
+  assert.equal(evidence.repairAttempts, 0);
+  assert.equal(evidence.hashes.goalContract.length, 64);
+  assert.equal(evidence.hashes.makerPrompt.length, 64);
+  assert.equal(evidence.hashes.checkerPrompt.length, 64);
+  assert.equal(evidence.hashes.makerResult.length, 64);
+  assert.equal(evidence.hashes.checkerVerdict.length, 64);
+  assert.equal(evidence.findings.length, 0);
+  assert.equal(evidence.satisfactionLayers.every((layer) => layer.status === "satisfied"), true);
+  assert.match(checkerLog, /OpenClaw checker accepted deterministic maker output/);
+  assert.match(events, /checker\.finished/);
+  assert.doesNotMatch(events, /checker\.mutation-blocked/);
 });
 
 test("runner blocks maker changes outside allowed paths", async () => {
@@ -896,6 +970,11 @@ async function createGitFixture(prefix) {
   await execFileAsync("git", ["commit", "-m", "initial"], { cwd: root });
 
   return { root, worktreePath };
+}
+
+async function writeExecutable(path, content) {
+  await writeFile(path, content);
+  await chmod(path, 0o755);
 }
 
 function makeGoalContract(overrides = {}) {
