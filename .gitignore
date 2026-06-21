@@ -23,6 +23,9 @@ loops/**/latest-status.json
 loops/**/LOCK
 loops/**/runs/
 
+# Atlas Planner local runtime state
+planner/tickets.json
+
 # Unity generated local state
 Library/
 Temp/
