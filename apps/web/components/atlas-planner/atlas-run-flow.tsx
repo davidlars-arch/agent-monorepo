@@ -122,6 +122,34 @@ const contractArtifacts = [
   }
 ] as const;
 
+const proofStats = [
+  {
+    label: "Planner status",
+    value: "complete",
+    detail: "No pending tasks remained after the final audit."
+  },
+  {
+    label: "Tasks closed",
+    value: "7",
+    detail: "Each task carried criteria, checks, evidence, and completion state."
+  },
+  {
+    label: "Review gate",
+    value: "passed",
+    detail: "Failed review rounds looped back before the clean final review."
+  },
+  {
+    label: "Scheduler",
+    value: "removed",
+    detail: "The recurring cron job was cleaned up when the planner finished."
+  },
+  {
+    label: "Evidence",
+    value: "indexed",
+    detail: "Reports captured command status, metrics, output paths, and proof."
+  }
+] as const;
+
 const runContractSteps = [
   {
     label: "Wake",
@@ -130,7 +158,7 @@ const runContractSteps = [
   },
   {
     label: "Select",
-    title: "`status` then `next`",
+    title: "status then next",
     detail: "State validation must pass before the next pending task and its acceptance criteria are used."
   },
   {
@@ -141,7 +169,7 @@ const runContractSteps = [
   {
     label: "Verify",
     title: "Commands must pass",
-    detail: "`py_compile`, engine runs, report generation, unittest, and JSON validation gate completion."
+    detail: "Python compile, engine runs, report generation, unittest, and JSON validation gate completion."
   },
   {
     label: "Review",
@@ -151,7 +179,7 @@ const runContractSteps = [
   {
     label: "Commit",
     title: "Clean review only",
-    detail: "`BAD_FEEDBACK: none` permits a scoped commit and evidence update. Blockers prevent commit."
+    detail: "A clean no-bad-feedback review permits a scoped commit and evidence update. Blockers prevent commit."
   },
   {
     label: "Stop",
@@ -191,6 +219,10 @@ export function AtlasRunFlow() {
           <div>
             <p>Conceptual overview</p>
             <h3>From idea to verified commit, with reviewer loops before trust.</h3>
+            <span>
+              Atlas Planner turns approved goals into bounded autonomous repo runs with state, verification,
+              reviewer feedback, evidence, and explicit stop conditions.
+            </span>
           </div>
           <dl>
             <div>
@@ -290,21 +322,37 @@ export function AtlasRunFlow() {
           <li>Controller claims one run.</li>
           <li>Runner edits one bounded task.</li>
           <li>Verification writes evidence.</li>
-          <li>Subreviewers send bad feedback back to work.</li>
+          <li>Reviewer agents send bad feedback back to work.</li>
           <li>Clean review allows scoped commit and stop.</li>
         </ol>
       </section>
 
-      <section className="atlas-poc-contract" aria-label="Atlas crypto trader POC run contract">
+      <section className="atlas-poc-contract" aria-label="Atlas crypto trader POC evidence contract">
         <div className="atlas-poc-contract__header">
           <div>
-            <p>POC run contract</p>
-            <h3>The exact files, commands, gates, and cleanup path behind the demo.</h3>
+            <p>Historical POC evidence</p>
+            <h3>Crypto Trader POC: the proven run contract behind the demo.</h3>
+            <span>
+              This layer shows the concrete run that proved the planner loop: docs define scope, JSON state selects
+              work, runner commands update progress, reviewers gate commits, and evidence records the outcome.
+            </span>
           </div>
           <aside>
             <AlertTriangle size={16} />
-            <span>Specific to `atlas-crypto-trader-test`; the monorepo controller is the productized next layer.</span>
+            <span>
+              Specific to <code>atlas-crypto-trader-test</code>; the monorepo controller is the productized next layer.
+            </span>
           </aside>
+        </div>
+
+        <div className="atlas-poc-contract__proof" aria-label="POC proof of run">
+          {proofStats.map((stat) => (
+            <article key={stat.label}>
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+              <p>{stat.detail}</p>
+            </article>
+          ))}
         </div>
 
         <div className="atlas-poc-contract__artifacts" aria-label="POC component inventory">

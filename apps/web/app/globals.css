@@ -4463,6 +4463,15 @@ nextjs-portal,
   line-height: 1.25;
 }
 
+.atlas-run-flow__heading > div > span,
+.atlas-poc-contract__header > div > span {
+  display: block;
+  max-width: 760px;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .atlas-run-flow__heading dl {
   display: grid;
   grid-template-columns: repeat(3, minmax(112px, 1fr));
@@ -4747,8 +4756,52 @@ nextjs-portal,
   padding: 10px;
 }
 
+.atlas-poc-contract__header aside code {
+  color: rgba(254, 240, 138, 0.95);
+  font-size: 12px;
+}
+
 .atlas-poc-contract__header aside svg {
   margin-top: 1px;
+}
+
+.atlas-poc-contract__proof {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.atlas-poc-contract__proof article {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 8px;
+  background: rgba(20, 184, 166, 0.09);
+  padding: 10px;
+}
+
+.atlas-poc-contract__proof span {
+  color: rgba(153, 246, 228, 0.82);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.atlas-poc-contract__proof strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 18px;
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.atlas-poc-contract__proof p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .atlas-poc-contract__artifacts {
@@ -4769,7 +4822,7 @@ nextjs-portal,
   display: grid;
   align-content: start;
   gap: 9px;
-  min-height: 170px;
+  min-height: 150px;
   padding: 11px;
 }
 
@@ -5457,6 +5510,7 @@ nextjs-portal,
   }
 
   .atlas-poc-contract__artifacts,
+  .atlas-poc-contract__proof,
   .atlas-poc-contract__grid {
     grid-template-columns: 1fr;
   }
