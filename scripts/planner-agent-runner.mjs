@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
@@ -191,10 +192,14 @@ function buildPlan(options) {
   );
   const commandArgs = ["worktree", "add", "-b", options.branch, worktreePath, options.base];
   const files = {
+    manifest: relative(process.cwd(), join(handoffDir, "handoff.json")),
+    goalContract: relative(process.cwd(), join(handoffDir, "goal-contract.json")),
     state: relative(process.cwd(), join(handoffDir, "runner-state.json")),
     makerPrompt: relative(process.cwd(), join(handoffDir, "maker-prompt.md")),
     checkerPrompt: relative(process.cwd(), join(handoffDir, "checker-prompt.md")),
-    evidence: relative(process.cwd(), join(handoffDir, "evidence.json"))
+    evidence: relative(process.cwd(), join(handoffDir, "evidence.json")),
+    events: relative(process.cwd(), join(handoffDir, "events.jsonl")),
+    diffPatch: relative(process.cwd(), join(handoffDir, "diff.patch"))
   };
 
   return {
@@ -337,6 +342,13 @@ function printJson(value) {
 
 function writeRunFiles(plan) {
   mkdirSync(plan.handoffDir, { recursive: true });
+  writeJson(join(plan.handoffDir, "goal-contract.json"), {
+    schemaVersion: "atlas-goal-contract.v1",
+    runId: plan.runId,
+    ticketId: plan.ticketId,
+    goalTitle: plan.goalTitle,
+    contract: plan.goalContract
+  });
   writeFileSync(
     join(plan.handoffDir, "runner-state.json"),
     `${JSON.stringify(
@@ -398,6 +410,45 @@ function writeRunFiles(plan) {
       2
     )}\n`
   );
+  writeJson(join(plan.handoffDir, "handoff.json"), createHandoffManifest(plan));
+  appendRunEvent(plan, "run.prepared", {
+    worktreePath: plan.worktreePath,
+    branch: plan.branch,
+    files: plan.files
+  });
+}
+
+function createHandoffManifest(plan) {
+  return {
+    schemaVersion: "atlas-handoff.v1",
+    runId: plan.runId,
+    ticketId: plan.ticketId,
+    goalTitle: plan.goalTitle,
+    branch: plan.branch,
+    base: plan.base,
+    worktreePath: plan.worktreePath,
+    handoffDir: plan.handoffDir,
+    files: plan.files,
+    commands: {
+      agent: plan.agentCommand,
+      maker: plan.makerCommand,
+      checker: plan.checkerCommand,
+      repair: plan.repairCommand,
+      pr: plan.prCommand
+    },
+    limits: {
+      maxRepairs: plan.maxRepairs,
+      allowedPaths: getAllowedPathPatterns(plan.goalContract),
+      checkerMode: "verdict-only"
+    },
+    hashes: {
+      goalContract: hashFile(join(plan.handoffDir, "goal-contract.json")),
+      makerPrompt: hashFile(join(plan.handoffDir, "maker-prompt.md")),
+      checkerPrompt: hashFile(join(plan.handoffDir, "checker-prompt.md")),
+      initialEvidence: hashFile(join(plan.handoffDir, "evidence.json"))
+    },
+    createdAt: new Date().toISOString()
+  };
 }
 
 function maybeRunAgentLoop(plan) {
@@ -424,6 +475,23 @@ function maybeRunAgentLoop(plan) {
     return { status: "blocked", stage: "maker-failed", repairAttempts: 0 };
   }
 
+  const makerScope = validateAllowedPathChanges(plan, "maker");
+  if (!makerScope.ok) {
+    recordGuardBlocker(plan, {
+      stage: "maker",
+      summary: "Maker modified files outside the goal contract allowed paths.",
+      files: makerScope.violations
+    });
+    updateEvidenceStatus(plan, "maker-scope-blocked", 0);
+    updateRunnerState(plan, {
+      status: "blocked",
+      stage: "maker-scope-blocked",
+      repairAttempts: 0,
+      timelineEvent: { stage: "maker", status: "blocked", at: maker.finishedAt, detail: "Maker changed files outside allowed paths." }
+    });
+    return { status: "blocked", stage: "maker-scope-blocked", repairAttempts: 0 };
+  }
+
   updateRunnerState(plan, {
     status: "running",
     stage: "checker",
@@ -431,8 +499,25 @@ function maybeRunAgentLoop(plan) {
     timelineEvent: { stage: "maker", status: "done", at: maker.finishedAt, detail: maker.command }
   });
 
+  const beforeCheckerFiles = getChangedFiles(plan.worktreePath);
   let checker = runLoopCommand("checker", checkerCommand, plan);
   appendEvidenceEvent(plan, checker);
+  const checkerMutation = detectUnexpectedCheckerMutation(plan, beforeCheckerFiles);
+  if (!checkerMutation.ok) {
+    recordGuardBlocker(plan, {
+      stage: "checker",
+      summary: "Checker mutated the worktree in verdict-only mode.",
+      files: checkerMutation.changedFiles
+    });
+    updateEvidenceStatus(plan, "checker-mutated-worktree", 0);
+    updateRunnerState(plan, {
+      status: "blocked",
+      stage: "checker-mutated-worktree",
+      repairAttempts: 0,
+      timelineEvent: { stage: "checker", status: "blocked", at: checker.finishedAt, detail: "Checker changed files unexpectedly." }
+    });
+    return { status: "blocked", stage: "checker-mutated-worktree", repairAttempts: 0 };
+  }
   if (isCommandPassed(checker)) {
     return completeSatisfiedRun(plan, 0, { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command });
   }
@@ -465,8 +550,25 @@ function maybeRunAgentLoop(plan) {
       return { status: "blocked", stage: "repair-failed", repairAttempts: attempt };
     }
 
+    const beforeRepairCheckerFiles = getChangedFiles(plan.worktreePath);
     checker = runLoopCommand("checker", checkerCommand, plan, { attempt });
     appendEvidenceEvent(plan, checker);
+    const repairCheckerMutation = detectUnexpectedCheckerMutation(plan, beforeRepairCheckerFiles);
+    if (!repairCheckerMutation.ok) {
+      recordGuardBlocker(plan, {
+        stage: "checker",
+        summary: "Checker mutated the worktree in verdict-only mode.",
+        files: repairCheckerMutation.changedFiles
+      });
+      updateEvidenceStatus(plan, "checker-mutated-worktree", attempt);
+      updateRunnerState(plan, {
+        status: "blocked",
+        stage: "checker-mutated-worktree",
+        repairAttempts: attempt,
+        timelineEvent: { stage: "checker", status: "blocked", at: checker.finishedAt, detail: "Checker changed files unexpectedly." }
+      });
+      return { status: "blocked", stage: "checker-mutated-worktree", repairAttempts: attempt };
+    }
     if (isCommandPassed(checker)) {
       return completeSatisfiedRun(plan, attempt, { stage: "checker", status: "done", at: checker.finishedAt, detail: checker.command });
     }
@@ -596,6 +698,10 @@ function isLayerProofSatisfied(layer) {
 
 function runLoopCommand(stage, command, plan, details = {}) {
   const startedAt = new Date().toISOString();
+  appendRunEvent(plan, `${stage}.started`, {
+    command,
+    repairAttempt: details.attempt ?? 0
+  });
   const promptPath = getStagePromptPath(stage, plan);
   const prompt = promptPath && existsSync(promptPath) ? readFileSync(promptPath, "utf8") : "";
   const expandedCommand = expandCommandTemplate(command, {
@@ -630,6 +736,12 @@ function runLoopCommand(stage, command, plan, details = {}) {
       ATLAS_BASE: plan.base
     }
   });
+  const finishedAt = new Date().toISOString();
+  appendRunEvent(plan, `${stage}.finished`, {
+    command: expandedCommand,
+    exitCode: result.status ?? 1,
+    repairAttempt: details.attempt ?? 0
+  });
 
   return {
     stage,
@@ -638,7 +750,7 @@ function runLoopCommand(stage, command, plan, details = {}) {
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
     startedAt,
-    finishedAt: new Date().toISOString(),
+    finishedAt,
     repairAttempt: details.attempt ?? 0,
     requiredSatisfactionLayerIds: getRequiredSatisfactionLayerIds(plan.goalContract),
     ...parseStructuredCheckerOutput(stage, result.stdout, result.stderr)
@@ -861,6 +973,135 @@ function appendEvidenceEvent(plan, event) {
   }
 
   writeJson(evidencePath, next);
+  updateEvidenceHashes(plan);
+}
+
+function appendRunEvent(plan, event, details = {}) {
+  const eventsPath = join(plan.handoffDir, "events.jsonl");
+  const payload = {
+    ts: new Date().toISOString(),
+    event,
+    runId: plan.runId,
+    ticketId: plan.ticketId,
+    ...details
+  };
+  writeFileSync(eventsPath, `${JSON.stringify(payload)}\n`, { flag: "a" });
+}
+
+function updateEvidenceHashes(plan) {
+  const evidencePath = join(plan.handoffDir, "evidence.json");
+  const evidence = readJson(evidencePath);
+  writeJson(evidencePath, {
+    ...evidence,
+    hashes: {
+      ...(evidence.hashes ?? {}),
+      goalContract: hashFile(join(plan.handoffDir, "goal-contract.json")),
+      makerPrompt: hashFile(join(plan.handoffDir, "maker-prompt.md")),
+      checkerPrompt: hashFile(join(plan.handoffDir, "checker-prompt.md")),
+      makerResult: optionalHashFile(join(plan.handoffDir, "maker-result.json")),
+      checkerVerdict: optionalHashFile(join(plan.handoffDir, "checker-verdict.json")),
+      diff: optionalHashFile(join(plan.handoffDir, "diff.patch"))
+    }
+  });
+}
+
+function validateAllowedPathChanges(plan, stage) {
+  const allowedPaths = getAllowedPathPatterns(plan.goalContract);
+  if (allowedPaths.length === 0) {
+    return { ok: true, changedFiles: getChangedFiles(plan.worktreePath), violations: [] };
+  }
+
+  const changedFiles = getChangedFiles(plan.worktreePath);
+  const violations = changedFiles.filter((file) => !isAllowedPath(file, allowedPaths));
+  if (violations.length > 0) {
+    appendRunEvent(plan, `${stage}.scope-blocked`, { violations });
+  }
+  return { ok: violations.length === 0, changedFiles, violations };
+}
+
+function detectUnexpectedCheckerMutation(plan, beforeFiles) {
+  const afterFiles = getChangedFiles(plan.worktreePath);
+  const before = new Set(beforeFiles);
+  const changedFiles = afterFiles.filter((file) => !before.has(file));
+  if (changedFiles.length > 0) {
+    appendRunEvent(plan, "checker.mutation-blocked", { changedFiles });
+  }
+  return { ok: changedFiles.length === 0, changedFiles };
+}
+
+function recordGuardBlocker(plan, { stage, summary, files }) {
+  const evidencePath = join(plan.handoffDir, "evidence.json");
+  const evidence = readJson(evidencePath);
+  writeJson(evidencePath, {
+    ...evidence,
+    findings: [
+      ...(evidence.findings ?? []),
+      {
+        severity: "blocker",
+        stage,
+        summary,
+        recommendation: "Review the run contract and rerun with a narrower scope or explicit approval.",
+        files,
+        at: new Date().toISOString()
+      }
+    ]
+  });
+}
+
+function getChangedFiles(worktreePath) {
+  const status = spawnSync("git", ["status", "--porcelain"], {
+    cwd: worktreePath,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (status.status !== 0) {
+    return [];
+  }
+
+  return status.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => line.slice(3))
+    .map((file) => (file.includes(" -> ") ? file.split(" -> ").at(-1) : file))
+    .filter(Boolean)
+    .sort();
+}
+
+function getAllowedPathPatterns(goalContract) {
+  const allowedPaths = goalContract?.safety?.allowedPaths;
+  if (typeof allowedPaths !== "string") {
+    return [];
+  }
+
+  return allowedPaths
+    .split(/[,;\n]/)
+    .map((pattern) => pattern.trim())
+    .filter(Boolean);
+}
+
+function isAllowedPath(file, patterns) {
+  return patterns.some((pattern) => {
+    if (pattern === "**" || pattern === "*") {
+      return true;
+    }
+    if (pattern.endsWith("/**")) {
+      return file.startsWith(pattern.slice(0, -3));
+    }
+    if (pattern.endsWith("/*")) {
+      const prefix = pattern.slice(0, -1);
+      return file.startsWith(prefix) && !file.slice(prefix.length).includes("/");
+    }
+    return file === pattern || file.startsWith(`${pattern.replace(/\/$/, "")}/`);
+  });
+}
+
+function hashFile(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function optionalHashFile(path) {
+  return existsSync(path) ? hashFile(path) : undefined;
 }
 
 function mergeLayerEvidence(existing, incoming, event) {
