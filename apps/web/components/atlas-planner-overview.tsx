@@ -284,6 +284,23 @@ export function AtlasPlannerOverview({
         </header>
 
         <div className="loop-panel__body">
+          {showExplainer ? (
+            <section className="loop-explainer loop-explainer--top" aria-label="Loop architecture overview">
+              <AtlasRunFlow />
+              <div className="loop-file-map">
+                <h3>Files that make the run inspectable</h3>
+                <div>
+                  {loopFiles.map((file) => (
+                    <article key={file.path}>
+                      <code>{file.path}</code>
+                      <p>{file.role}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="atlas-planner-purpose" aria-label="Atlas Planner purpose">
             <div>
               <p>What this is</p>
@@ -528,22 +545,6 @@ export function AtlasPlannerOverview({
             ))}
           </section>
 
-          {showExplainer ? (
-            <section className="loop-explainer" aria-label="Loop architecture overview">
-              <AtlasRunFlow />
-              <div className="loop-file-map">
-                <h3>Files that make the run inspectable</h3>
-                <div>
-                  {loopFiles.map((file) => (
-                    <article key={file.path}>
-                      <code>{file.path}</code>
-                      <p>{file.role}</p>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
         </div>
       </section>
     </div>

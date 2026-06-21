@@ -4413,6 +4413,12 @@ nextjs-portal,
   padding-top: 16px;
 }
 
+.loop-explainer--top {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
 .atlas-run-flow-stack {
   display: grid;
   gap: 14px;
