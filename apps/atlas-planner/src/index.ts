@@ -852,6 +852,9 @@ function getTokenBurnFitPenalty(expectedTokenBurn: LoopTicketTokenBurn, maxEstim
   if (expectedTokenBurn === "large" && maxEstimate <= 13) {
     return -8;
   }
+  if (expectedTokenBurn === "large") {
+    return -4;
+  }
   return 0;
 }
 

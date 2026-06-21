@@ -7,7 +7,8 @@ import test from "node:test";
 import {
   claimNextAtlasPlannerGoal,
   prepareAtlasLoopRunnerHandoff,
-  runAtlasLoopRunnerAction
+  runAtlasLoopRunnerAction,
+  syncTerminalAtlasRun
 } from "../packages/loop-store/src/index.mjs";
 
 test("claimNextAtlasPlannerGoal claims the first approved queued goal", async () => {
@@ -332,6 +333,29 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
   assert.equal(review.decision, null);
   assert.match(runHistory, /"runId":"run-ap-16"/);
   assert.match(runHistory, /"humanReviewStatus":"pending"/);
+  assert.equal(runHistory.trim().split(/\r?\n/).length, 1);
+
+  const approvedReview = {
+    ...review,
+    status: "approved",
+    reviewedBy: "David",
+    reviewedAt: "2026-06-20T12:30:00.000Z",
+    decision: "approve-pr-creation"
+  };
+  await writeFile(join(root, "loops/project-controller/runs/run-ap-16/review.json"), `${JSON.stringify(approvedReview, null, 2)}\n`);
+
+  const resync = await syncTerminalAtlasRun(root, currentRun);
+  const resyncedCurrentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const resyncedReview = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-16/review.json"), "utf8"));
+  const resyncedRunHistory = await readFile(join(root, "loops/project-controller/run-history.jsonl"), "utf8");
+
+  assert.equal(resync.status, "synced");
+  assert.equal(resyncedCurrentRun.humanReview.status, "approved");
+  assert.equal(resyncedCurrentRun.humanReview.reviewedBy, "David");
+  assert.equal(resyncedCurrentRun.humanReview.decision, "approve-pr-creation");
+  assert.equal(resyncedReview.status, "approved");
+  assert.equal(resyncedReview.reviewedBy, "David");
+  assert.equal(resyncedRunHistory.trim().split(/\r?\n/).length, 1);
 });
 
 test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", async () => {
@@ -373,12 +397,21 @@ test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", a
 
   const queue = JSON.parse(await readFile(join(root, "loops/project-controller/goal-queue.json"), "utf8"));
   const currentRun = JSON.parse(await readFile(join(root, "loops/project-controller/current-run.json"), "utf8"));
+  const review = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-16/review.json"), "utf8"));
+  const runHistory = await readFile(join(root, "loops/project-controller/run-history.jsonl"), "utf8");
 
   assert.equal(result.ok, false);
   assert.equal(queue.goals[0].lifecycleStatus, "blocked");
   assert.equal(queue.goals[0].status, "blocked");
   assert.equal(currentRun.status, "failed");
   assert.equal(currentRun.stage, "maker-failed");
+  assert.equal(currentRun.humanGate.status, "needs-review");
+  assert.equal(currentRun.humanReview.status, "pending");
+  assert.equal(currentRun.humanReview.recommendedNextAction, "inspect-blocker");
+  assert.equal(review.status, "pending");
+  assert.equal(review.recommendedNextAction, "inspect-blocker");
+  assert.match(runHistory, /"runId":"run-ap-16"/);
+  assert.match(runHistory, /"status":"failed"/);
 });
 
 test("runAtlasLoopRunnerAction resumes only when runner state exists", async () => {

@@ -254,6 +254,72 @@ test("runner blocks maker changes outside allowed paths", async () => {
   assert.match(events, /maker\.scope-blocked/);
 });
 
+test("runner allowed path guard rejects sibling-prefix paths", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-sibling-scope-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-SIBLING-SCOPE",
+      "--branch",
+      "worktree/ap-sibling-scope-runner-test",
+      "--run-id",
+      "run-ap-sibling-scope",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract({ allowedPaths: "scripts/**, maker-output.txt" })),
+      "--maker-command",
+      'node -e \'const fs = require("fs"); fs.mkdirSync("scripts-backdoor", { recursive: true }); fs.writeFileSync("scripts-backdoor/file.txt", "bad\\n"); fs.mkdirSync("maker-output.txt", { recursive: true }); fs.writeFileSync("maker-output.txt/nested.txt", "bad\\n")\'',
+      "--checker-command",
+      "node -e 'process.exit(0)'"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-sibling-scope/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "maker-scope-blocked");
+  assert.deepEqual(evidence.findings[0].files, ["maker-output.txt/nested.txt", "scripts-backdoor/file.txt"]);
+});
+
+test("runner allowed path guard checks both rename source and destination", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-rename-scope-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-RENAME-SCOPE",
+      "--branch",
+      "worktree/ap-rename-scope-runner-test",
+      "--run-id",
+      "run-ap-rename-scope",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract({ allowedPaths: "scripts/**" })),
+      "--maker-command",
+      'node -e \'const fs = require("fs"); fs.mkdirSync("scripts", { recursive: true }); fs.renameSync("README.md", "scripts/README.md")\'',
+      "--checker-command",
+      "node -e 'process.exit(0)'"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-rename-scope/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "maker-scope-blocked");
+  assert.deepEqual(evidence.findings[0].files, ["README.md"]);
+});
+
 test("runner blocks checker worktree mutation in verdict-only mode", async () => {
   const { root, worktreePath } = await createGitFixture("planner-agent-runner-checker-mutation-");
 
@@ -287,6 +353,76 @@ test("runner blocks checker worktree mutation in verdict-only mode", async () =>
   assert.equal(evidence.findings[0].summary, "Checker mutated the worktree in verdict-only mode.");
   assert.deepEqual(evidence.findings[0].files, ["checker-edit.txt"]);
   assert.match(events, /checker\.mutation-blocked/);
+});
+
+test("runner blocks checker mutation of existing maker diff", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-checker-existing-mutation-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-CHECKER-EXISTING-MUTATION",
+      "--branch",
+      "worktree/ap-checker-existing-mutation-runner-test",
+      "--run-id",
+      "run-ap-checker-existing-mutation",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "maker\\n")\'',
+      "--checker-command",
+      'node -e \'require("fs").writeFileSync("maker-output.txt", "checker\\n")\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-checker-existing-mutation/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-mutated-worktree");
+  assert.equal(evidence.findings[0].summary, "Checker mutated the worktree in verdict-only mode.");
+  assert.deepEqual(evidence.findings[0].files, ["maker-output.txt"]);
+});
+
+test("runner blocks repair changes outside allowed paths", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-repair-scope-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-REPAIR-SCOPE",
+      "--branch",
+      "worktree/ap-repair-scope-runner-test",
+      "--run-id",
+      "run-ap-repair-scope",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract({ allowedPaths: "allowed/**" })),
+      "--maker-command",
+      "node -e 'process.exit(0)'",
+      "--checker-command",
+      "node -e 'process.exit(3)'",
+      "--repair-command",
+      'node -e \'require("fs").writeFileSync("outside-repair.txt", "bad\\n")\'',
+      "--max-repairs",
+      "1"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-repair-scope/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "repair-scope-blocked");
+  assert.equal(evidence.findings.at(-1).summary, "Repair modified files outside the goal contract allowed paths.");
+  assert.deepEqual(evidence.findings.at(-1).files, ["outside-repair.txt"]);
 });
 
 test("runner reads stage-specific command configuration from env", async () => {

@@ -252,6 +252,133 @@ test("getLoopPlannerDecision penalizes high burn and high risk tickets inside ti
   assert.ok((decision.candidates[0]?.breakdown.risk ?? 0) > (decision.candidates[1]?.breakdown.risk ?? 0));
 });
 
+test("getLoopPlannerDecision scores explicit risk independently", () => {
+  const decision = getLoopPlannerDecision(
+    [
+      makeProject({
+        epics: [
+          {
+            id: "planner-product",
+            label: "Planner Product",
+            tickets: [
+              {
+                id: "AP-LOW-RISK",
+                title: "Low risk runner polish",
+                status: "backlog",
+                estimate: 5,
+                risk: "low",
+                uncertainty: "medium",
+                expectedTokenBurn: "medium",
+                summary: "Same task shape, lower risk."
+              },
+              {
+                id: "AP-HIGH-RISK",
+                title: "High risk runner polish",
+                status: "backlog",
+                estimate: 5,
+                risk: "high",
+                uncertainty: "medium",
+                expectedTokenBurn: "medium",
+                summary: "Same task shape, higher risk."
+              }
+            ]
+          }
+        ]
+      })
+    ],
+    usageStatus,
+    { preferredProjectId: "atlas-planner" }
+  );
+
+  assert.equal(decision.selected?.ticket.id, "AP-LOW-RISK");
+});
+
+test("getLoopPlannerDecision scores uncertainty independently", () => {
+  const decision = getLoopPlannerDecision(
+    [
+      makeProject({
+        epics: [
+          {
+            id: "planner-product",
+            label: "Planner Product",
+            tickets: [
+              {
+                id: "AP-LOW-UNCERTAINTY",
+                title: "Known runner polish",
+                status: "backlog",
+                estimate: 5,
+                risk: "medium",
+                uncertainty: "low",
+                expectedTokenBurn: "medium",
+                summary: "Same task shape, clearer implementation."
+              },
+              {
+                id: "AP-HIGH-UNCERTAINTY",
+                title: "Unknown runner polish",
+                status: "backlog",
+                estimate: 5,
+                risk: "medium",
+                uncertainty: "high",
+                expectedTokenBurn: "medium",
+                summary: "Same task shape, less certain implementation."
+              }
+            ]
+          }
+        ]
+      })
+    ],
+    usageStatus,
+    { preferredProjectId: "atlas-planner" }
+  );
+
+  assert.equal(decision.selected?.ticket.id, "AP-LOW-UNCERTAINTY");
+});
+
+test("getLoopPlannerDecision still penalizes large token burn in roomy windows", () => {
+  const decision = getLoopPlannerDecision(
+    [
+      makeProject({
+        epics: [
+          {
+            id: "planner-product",
+            label: "Planner Product",
+            tickets: [
+              {
+                id: "AP-MEDIUM-BURN",
+                title: "Medium burn runner polish",
+                status: "backlog",
+                estimate: 8,
+                risk: "medium",
+                uncertainty: "medium",
+                expectedTokenBurn: "medium",
+                summary: "Same estimate, medium expected burn."
+              },
+              {
+                id: "AP-LARGE-BURN",
+                title: "Large burn runner polish",
+                status: "backlog",
+                estimate: 8,
+                risk: "medium",
+                uncertainty: "medium",
+                expectedTokenBurn: "large",
+                summary: "Same estimate, larger expected burn."
+              }
+            ]
+          }
+        ]
+      })
+    ],
+    {
+      ...usageStatus,
+      shortWindow: "90% left"
+    },
+    { preferredProjectId: "atlas-planner" }
+  );
+
+  assert.equal(decision.maxEstimate, 21);
+  assert.equal(decision.selected?.ticket.id, "AP-MEDIUM-BURN");
+});
+
 test("getLoopGoalSummary counts layered satisfaction status", () => {
   const summary = getLoopGoalSummary([
     makeProject({

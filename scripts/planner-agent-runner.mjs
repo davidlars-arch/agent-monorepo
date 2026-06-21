@@ -499,10 +499,10 @@ function maybeRunAgentLoop(plan) {
     timelineEvent: { stage: "maker", status: "done", at: maker.finishedAt, detail: maker.command }
   });
 
-  const beforeCheckerFiles = getChangedFiles(plan.worktreePath);
+  const beforeCheckerSnapshot = getWorktreeSnapshot(plan.worktreePath);
   let checker = runLoopCommand("checker", checkerCommand, plan);
   appendEvidenceEvent(plan, checker);
-  const checkerMutation = detectUnexpectedCheckerMutation(plan, beforeCheckerFiles);
+  const checkerMutation = detectUnexpectedCheckerMutation(plan, beforeCheckerSnapshot);
   if (!checkerMutation.ok) {
     recordGuardBlocker(plan, {
       stage: "checker",
@@ -550,10 +550,27 @@ function maybeRunAgentLoop(plan) {
       return { status: "blocked", stage: "repair-failed", repairAttempts: attempt };
     }
 
-    const beforeRepairCheckerFiles = getChangedFiles(plan.worktreePath);
+    const repairScope = validateAllowedPathChanges(plan, "repair");
+    if (!repairScope.ok) {
+      recordGuardBlocker(plan, {
+        stage: "repair",
+        summary: "Repair modified files outside the goal contract allowed paths.",
+        files: repairScope.violations
+      });
+      updateEvidenceStatus(plan, "repair-scope-blocked", attempt);
+      updateRunnerState(plan, {
+        status: "blocked",
+        stage: "repair-scope-blocked",
+        repairAttempts: attempt,
+        timelineEvent: { stage: "repair", status: "blocked", at: repair.finishedAt, detail: "Repair changed files outside allowed paths." }
+      });
+      return { status: "blocked", stage: "repair-scope-blocked", repairAttempts: attempt };
+    }
+
+    const beforeRepairCheckerSnapshot = getWorktreeSnapshot(plan.worktreePath);
     checker = runLoopCommand("checker", checkerCommand, plan, { attempt });
     appendEvidenceEvent(plan, checker);
-    const repairCheckerMutation = detectUnexpectedCheckerMutation(plan, beforeRepairCheckerFiles);
+    const repairCheckerMutation = detectUnexpectedCheckerMutation(plan, beforeRepairCheckerSnapshot);
     if (!repairCheckerMutation.ok) {
       recordGuardBlocker(plan, {
         stage: "checker",
@@ -1012,21 +1029,23 @@ function validateAllowedPathChanges(plan, stage) {
   }
 
   const changedFiles = getChangedFiles(plan.worktreePath);
-  const violations = changedFiles.filter((file) => !isAllowedPath(file, allowedPaths));
+  const violations = changedFiles.filter((file) => !isAllowedChange(file, allowedPaths));
   if (violations.length > 0) {
     appendRunEvent(plan, `${stage}.scope-blocked`, { violations });
   }
   return { ok: violations.length === 0, changedFiles, violations };
 }
 
-function detectUnexpectedCheckerMutation(plan, beforeFiles) {
-  const afterFiles = getChangedFiles(plan.worktreePath);
-  const before = new Set(beforeFiles);
-  const changedFiles = afterFiles.filter((file) => !before.has(file));
-  if (changedFiles.length > 0) {
-    appendRunEvent(plan, "checker.mutation-blocked", { changedFiles });
+function detectUnexpectedCheckerMutation(plan, beforeSnapshot) {
+  const afterSnapshot = getWorktreeSnapshot(plan.worktreePath);
+  const mutated =
+    beforeSnapshot.status !== afterSnapshot.status ||
+    beforeSnapshot.diffHash !== afterSnapshot.diffHash ||
+    JSON.stringify(beforeSnapshot.fileHashes) !== JSON.stringify(afterSnapshot.fileHashes);
+  if (mutated) {
+    appendRunEvent(plan, "checker.mutation-blocked", { changedFiles: afterSnapshot.changedFiles });
   }
-  return { ok: changedFiles.length === 0, changedFiles };
+  return { ok: !mutated, changedFiles: afterSnapshot.changedFiles };
 }
 
 function recordGuardBlocker(plan, { stage, summary, files }) {
@@ -1049,7 +1068,7 @@ function recordGuardBlocker(plan, { stage, summary, files }) {
 }
 
 function getChangedFiles(worktreePath) {
-  const status = spawnSync("git", ["status", "--porcelain"], {
+  const status = spawnSync("git", ["status", "--porcelain", "-uall"], {
     cwd: worktreePath,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
@@ -1062,10 +1081,43 @@ function getChangedFiles(worktreePath) {
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter(Boolean)
-    .map((line) => line.slice(3))
-    .map((file) => (file.includes(" -> ") ? file.split(" -> ").at(-1) : file))
+    .flatMap((line) => parsePorcelainPaths(line))
     .filter(Boolean)
     .sort();
+}
+
+function parsePorcelainPaths(line) {
+  const payload = line.slice(3);
+  if (!payload) {
+    return [];
+  }
+
+  if (payload.includes(" -> ")) {
+    return payload.split(" -> ").map((path) => path.trim()).filter(Boolean);
+  }
+
+  return [payload.trim()].filter(Boolean);
+}
+
+function getWorktreeSnapshot(worktreePath) {
+  const status = getGitOutput(worktreePath, ["status", "--porcelain"]);
+  const diff = getGitOutput(worktreePath, ["diff", "--binary", "HEAD", "--"]);
+  const changedFiles = getChangedFiles(worktreePath);
+  return {
+    status,
+    diffHash: hashString(diff),
+    changedFiles,
+    fileHashes: Object.fromEntries(changedFiles.map((file) => [file, optionalHashFile(join(worktreePath, file)) ?? "missing"]))
+  };
+}
+
+function getGitOutput(worktreePath, args) {
+  const result = spawnSync("git", args, {
+    cwd: worktreePath,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return result.status === 0 ? result.stdout : "";
 }
 
 function getAllowedPathPatterns(goalContract) {
@@ -1080,19 +1132,23 @@ function getAllowedPathPatterns(goalContract) {
     .filter(Boolean);
 }
 
-function isAllowedPath(file, patterns) {
+function isAllowedChange(file, patterns) {
   return patterns.some((pattern) => {
     if (pattern === "**" || pattern === "*") {
       return true;
     }
     if (pattern.endsWith("/**")) {
-      return file.startsWith(pattern.slice(0, -3));
+      const base = pattern.slice(0, -3).replace(/\/$/, "");
+      return file === base || file.startsWith(`${base}/`);
     }
     if (pattern.endsWith("/*")) {
-      const prefix = pattern.slice(0, -1);
-      return file.startsWith(prefix) && !file.slice(prefix.length).includes("/");
+      const base = pattern.slice(0, -2).replace(/\/$/, "");
+      if (!file.startsWith(`${base}/`)) {
+        return false;
+      }
+      return !file.slice(base.length + 1).includes("/");
     }
-    return file === pattern || file.startsWith(`${pattern.replace(/\/$/, "")}/`);
+    return file === pattern.replace(/\/$/, "");
   });
 }
 
@@ -1102,6 +1158,10 @@ function hashFile(path) {
 
 function optionalHashFile(path) {
   return existsSync(path) ? hashFile(path) : undefined;
+}
+
+function hashString(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function mergeLayerEvidence(existing, incoming, event) {
