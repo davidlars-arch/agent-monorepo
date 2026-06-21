@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const scriptPath = resolve("scripts/planner-agent-runner.mjs");
+const smokeMakerPath = resolve("scripts/atlas-smoke-maker.mjs");
+const smokeCheckerPath = resolve("scripts/atlas-smoke-checker.mjs");
 
 test("dry run prints the worktree and handoff plan without writing files", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-agent-runner-dry-"));
@@ -141,6 +143,66 @@ test("runner executes maker and checker commands and records passing evidence", 
     evidence.checks.map((check) => check.stage),
     ["maker", "checker"]
   );
+});
+
+test("runner completes deterministic smoke maker checker proof with verdict artifacts", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-smoke-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "GOAL-ATLAS-FIRST-LOOP",
+      "--branch",
+      "worktree/goal-atlas-first-loop-smoke-test",
+      "--run-id",
+      "run-goal-atlas-first-loop-smoke",
+      "--goal-title",
+      "Verify Atlas Planner first-loop readiness",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract()),
+      "--maker-command",
+      `node ${JSON.stringify(smokeMakerPath)}`,
+      "--checker-command",
+      `node ${JSON.stringify(smokeCheckerPath)}`,
+      "--max-repairs",
+      "0"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const handoffDir = join(root, "loops/project-controller/runs/run-goal-atlas-first-loop-smoke");
+  const state = JSON.parse(await readFile(join(handoffDir, "runner-state.json"), "utf8"));
+  const evidence = JSON.parse(await readFile(join(handoffDir, "evidence.json"), "utf8"));
+  const makerResult = JSON.parse(await readFile(join(handoffDir, "maker-result.json"), "utf8"));
+  const checkerVerdict = JSON.parse(await readFile(join(handoffDir, "checker-verdict.json"), "utf8"));
+  const makerLog = await readFile(join(handoffDir, "maker.log"), "utf8");
+  const checkerLog = await readFile(join(handoffDir, "checker.log"), "utf8");
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.stage, "checker-passed");
+  assert.equal(result.repairAttempts, 0);
+  assert.equal(state.status, "satisfied");
+  assert.equal(state.maxRepairs, 0);
+  assert.equal(evidence.status, "checker-passed");
+  assert.equal(evidence.repairAttempts, 0);
+  assert.deepEqual(
+    evidence.checks.map((check) => check.stage),
+    ["maker", "checker"]
+  );
+  assert.equal(evidence.checks.some((check) => check.stage === "repair"), false);
+  assert.equal(evidence.events[1].structuredStatus, "passed");
+  assert.equal(evidence.satisfactionLayers.every((layer) => layer.status === "satisfied"), true);
+  assert.equal(makerResult.schemaVersion, "atlas-smoke-maker-result.v1");
+  assert.equal(makerResult.status, "passed");
+  assert.equal(checkerVerdict.schemaVersion, "atlas-checker-verdict.v1");
+  assert.equal(checkerVerdict.pass, true);
+  assert.match(makerLog, /Smoke maker passed/);
+  assert.match(checkerLog, /deterministic Atlas first-loop proof completed/i);
 });
 
 test("runner reads stage-specific command configuration from env", async () => {

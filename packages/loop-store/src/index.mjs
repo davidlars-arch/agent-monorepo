@@ -365,6 +365,8 @@ export async function syncTerminalAtlasRun(root, currentRun) {
     return { ok: true, status: "non-terminal", runnerStatus };
   }
 
+  const evidencePath = resolveRepoPath(root, currentRun.evidencePath ?? join(currentRun.handoffDir, "evidence.json"));
+  const evidence = await readJsonFile(evidencePath, null);
   const updatedAt = typeof runnerState.updatedAt === "string" ? runnerState.updatedAt : new Date().toISOString();
   const lifecycleStatus = getGoalLifecycleForRunnerStatus(runnerStatus);
   const queue = await readGoalQueue(loopPaths.goalQueuePath);
@@ -373,7 +375,13 @@ export async function syncTerminalAtlasRun(root, currentRun) {
     if (goal.id !== currentRun.goalId) {
       return goal;
     }
-    syncedGoal = updateGoalLifecycle(goal, lifecycleStatus, lifecycleStatus === "satisfied", { now: updatedAt });
+    syncedGoal = syncGoalForTerminalRunner(goal, {
+      lifecycleStatus,
+      runnerStatus,
+      runnerState,
+      evidence,
+      now: updatedAt
+    });
     return syncedGoal;
   });
 
@@ -383,7 +391,12 @@ export async function syncTerminalAtlasRun(root, currentRun) {
     stage: typeof runnerState.stage === "string" ? runnerState.stage : currentRun.stage,
     updatedAt,
     runnerStatus,
-    runnerUpdatedAt: updatedAt
+    runnerUpdatedAt: updatedAt,
+    runnerCommands: getRunnerCommandsFromState(runnerState, currentRun.runnerCommands),
+    maxRepairs: Number.isInteger(runnerState.maxRepairs) ? runnerState.maxRepairs : currentRun.maxRepairs,
+    repairAttempts: Number.isInteger(runnerState.repairAttempts) ? runnerState.repairAttempts : currentRun.repairAttempts,
+    timeline: buildSyncedCurrentRunTimeline(currentRun.timeline, runnerState, runnerStatus, updatedAt),
+    humanGate: getHumanGateForRunnerStatus(runnerStatus, evidence)
   };
 
   if (syncedGoal) {
@@ -396,6 +409,173 @@ export async function syncTerminalAtlasRun(root, currentRun) {
   await writeJsonAtomically(loopPaths.currentRunPath, nextCurrentRun);
 
   return { ok: true, status: "synced", runnerStatus, lifecycleStatus, goal: syncedGoal, currentRun: nextCurrentRun };
+}
+
+function syncGoalForTerminalRunner(goal, { lifecycleStatus, runnerStatus, runnerState, evidence, now }) {
+  const synced = updateGoalLifecycle(goal, lifecycleStatus, lifecycleStatus === "satisfied", { now });
+  if (!synced) {
+    return goal;
+  }
+
+  const nextGoal = {
+    ...synced,
+    goalContract: syncGoalContractLayers(synced.goalContract, evidence),
+    subtasks: syncGoalSubtasks(synced.subtasks, { runnerStatus, runnerState, evidence })
+  };
+
+  return {
+    ...nextGoal,
+    description: renderSyncedGoalDescription(nextGoal)
+  };
+}
+
+function syncGoalContractLayers(goalContract, evidence) {
+  if (!goalContract || !Array.isArray(goalContract.satisfactionLayers)) {
+    return goalContract;
+  }
+
+  const evidenceLayers = Array.isArray(evidence?.satisfactionLayers) ? evidence.satisfactionLayers : [];
+  const byId = new Map(
+    evidenceLayers
+      .map((layer) => [firstString(layer.layerId, layer.id, layer.label), layer])
+      .filter(([key]) => Boolean(key))
+  );
+
+  return {
+    ...goalContract,
+    satisfactionLayers: goalContract.satisfactionLayers.map((layer) => {
+      const key = firstString(layer.id, layer.layerId, layer.label);
+      const proof = key ? byId.get(key) : null;
+      if (!proof?.status) {
+        return layer;
+      }
+
+      return {
+        ...layer,
+        status: proof.status
+      };
+    })
+  };
+}
+
+function syncGoalSubtasks(subtasks, { runnerStatus, runnerState, evidence }) {
+  if (!Array.isArray(subtasks) || subtasks.length === 0) {
+    return subtasks ?? [];
+  }
+
+  const terminal = terminalRunnerStatuses.includes(runnerStatus);
+  const checks = Array.isArray(evidence?.checks) ? evidence.checks : [];
+  const hasEvidence = Boolean(evidence?.status);
+  const hasChecker = checks.some((check) => check?.stage === "checker") || String(runnerState?.stage ?? "").includes("checker");
+
+  return subtasks.map((subtask) => {
+    const id = typeof subtask?.id === "string" ? subtask.id : "";
+    if (id === "goal-claim") {
+      return { ...subtask, done: true };
+    }
+    if (id === "goal-start") {
+      return { ...subtask, done: terminal || hasEvidence };
+    }
+    if (id === "goal-evidence") {
+      return { ...subtask, done: hasEvidence };
+    }
+    if (id === "goal-review") {
+      return { ...subtask, done: hasChecker };
+    }
+    return subtask;
+  });
+}
+
+function renderSyncedGoalDescription(goal) {
+  const contract = goal.goalContract;
+  if (!contract) {
+    return sanitizeString(goal.description, 12_000);
+  }
+
+  const lines = [
+    contract.statement || goal.summary || goal.title,
+    "",
+    `Stop condition: ${contract.stopCondition || "Not specified."}`,
+    `Scope: ${contract.scope || "Not specified."}`,
+    `Lifecycle: ${goal.lifecycleStatus}`,
+    `Max estimate: ${contract.maxEstimate ?? goal.estimate}`,
+    `Approved to run: ${goal.approvedToRun ? "yes" : "no"}`,
+    "",
+    "Refined satisfaction layers:"
+  ];
+
+  for (const layer of Array.isArray(contract.satisfactionLayers) ? contract.satisfactionLayers : []) {
+    const status = layer.status || "pending";
+    const gate = layer.humanGated === true ? ", human-gated" : "";
+    lines.push(`- [${status}${gate}] ${layer.label || layer.id}: ${layer.criteria || "No criteria supplied."}`);
+  }
+
+  lines.push("", "Verification:");
+  for (const command of Array.isArray(contract.verificationCommands) ? contract.verificationCommands : []) {
+    const required = command.required === true ? "required" : "optional";
+    lines.push(`- [${required}] ${command.label || command.id}: ${command.command}`);
+  }
+
+  if (contract.safety) {
+    lines.push("", "Safety:");
+    lines.push(`- Max first slice: ${contract.maxEstimate ?? goal.estimate} points`);
+    lines.push(`- Max iterations: ${contract.safety.maxIterations}`);
+    lines.push(`- Max repair attempts: ${contract.safety.maxRepairAttempts}`);
+    lines.push(`- Token budget: ${contract.safety.tokenBudget}`);
+    lines.push(`- Time budget: ${contract.safety.timeBudget}`);
+    lines.push(`- Allowed paths: ${contract.safety.allowedPaths}`);
+    lines.push(`- External actions: ${contract.safety.externalActionPolicy}`);
+  }
+
+  return sanitizeString(lines.join("\n"), 12_000);
+}
+
+function getRunnerCommandsFromState(runnerState, fallback = {}) {
+  return {
+    agentCommand: stringEnv(runnerState?.agentCommand) || stringEnv(fallback.agentCommand),
+    makerCommand: stringEnv(runnerState?.makerCommand) || stringEnv(fallback.makerCommand),
+    checkerCommand: stringEnv(runnerState?.checkerCommand) || stringEnv(fallback.checkerCommand),
+    repairCommand: stringEnv(runnerState?.repairCommand) || stringEnv(fallback.repairCommand),
+    prCommand: stringEnv(runnerState?.prCommand) || stringEnv(fallback.prCommand)
+  };
+}
+
+function buildSyncedCurrentRunTimeline(currentTimeline, runnerState, runnerStatus, updatedAt) {
+  const retained = Array.isArray(currentTimeline)
+    ? currentTimeline.filter((event) => ["queued", "claimed"].includes(event?.stage))
+    : [];
+  const runnerTimeline = Array.isArray(runnerState?.timeline)
+    ? runnerState.timeline.filter((event) => event && typeof event.stage === "string")
+    : [];
+  const next = [...retained, ...runnerTimeline];
+
+  if (["satisfied", "passed", "merged"].includes(runnerStatus)) {
+    next.push({
+      stage: "human-review",
+      status: "next",
+      at: null,
+      detail: "Checker passed with evidence. Human review is required before external actions or merge."
+    });
+  } else {
+    next.push({
+      stage: "human-review",
+      status: "blocked",
+      at: updatedAt,
+      detail: "Terminal runner state needs human inspection before another run is claimed."
+    });
+  }
+
+  return next;
+}
+
+function getHumanGateForRunnerStatus(runnerStatus, evidence) {
+  const satisfied = ["satisfied", "passed", "merged"].includes(runnerStatus);
+  return {
+    required: true,
+    status: satisfied ? "pending-review" : "needs-review",
+    recommendedNextAction: satisfied ? "human-review" : "inspect-blocker",
+    externalActions: evidence?.pullRequest?.status ?? "human-gated"
+  };
 }
 
 export function buildAtlasRunnerCommand(root, action, currentRun) {
@@ -580,7 +760,7 @@ function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) 
     goalId: goal.id,
     goalTitle: goal.title,
     goalContract: goal.goalContract,
-    status: "running",
+    status: "claimed",
     stage: "claimed",
     claimedAt,
     updatedAt: claimedAt,
@@ -741,6 +921,10 @@ function getGoalLifecycleForRunnerStatus(runnerStatus) {
 
 function sanitizeString(value, maxLength) {
   return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim())?.trim();
 }
 
 function sanitizeIdentifier(value, fallback) {
