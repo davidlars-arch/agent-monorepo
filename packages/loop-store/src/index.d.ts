@@ -83,9 +83,17 @@ export type CurrentLoopRunSummary = {
   handoffDir?: string;
   runnerCommand?: string;
   runnerCommands?: RunnerCommandConfig;
+  maxRepairs?: number;
+  repairAttempts?: number;
   makerPromptPath?: string;
   checkerPromptPath?: string;
   evidencePath?: string;
+  humanGate?: {
+    required: boolean;
+    status: string;
+    recommendedNextAction: string;
+    externalActions?: string;
+  };
   selectedTask?: {
     id: string;
     title: string;

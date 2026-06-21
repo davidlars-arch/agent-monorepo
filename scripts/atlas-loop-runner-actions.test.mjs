@@ -217,9 +217,14 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
         estimate: 5,
         summary: "Backend action route.",
         tags: ["goal", "approved-to-run"],
-        description: "Claimed goal.",
+        description: "Claimed goal.\nLifecycle: approved\nApproved to run: yes",
         goalContract: makeGoalContract(),
-        subtasks: [],
+        subtasks: [
+          { id: "goal-claim", title: "Claim approved goal into current-run.json", done: false },
+          { id: "goal-start", title: "Start or hand off runner without external actions", done: false },
+          { id: "goal-evidence", title: "Record runner state and evidence artifacts", done: false },
+          { id: "goal-review", title: "Run independent review and handle findings", done: false }
+        ],
         createdAt: "2026-06-20T10:00:00.000Z",
         updatedAt: "2026-06-20T12:00:00.000Z"
       }
@@ -239,7 +244,44 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
             worktreePath: root,
             status: "satisfied",
             stage: "checker-passed",
+            maxRepairs: 0,
+            repairAttempts: 0,
+            makerCommand: "node scripts/atlas-smoke-maker.mjs",
+            checkerCommand: "node scripts/atlas-smoke-checker.mjs",
+            repairCommand: "",
+            prCommand: "",
+            timeline: [
+              { stage: "prepare", status: "done", at: "2026-06-20T12:01:00.000Z", detail: "Worktree and handoff files were created." },
+              { stage: "maker", status: "done", at: "2026-06-20T12:02:00.000Z", detail: "Maker command passed." },
+              { stage: "checker", status: "done", at: "2026-06-20T13:00:00.000Z", detail: "Checker command passed." }
+            ],
             updatedAt: "2026-06-20T13:00:00.000Z"
+          },
+          null,
+          2
+        )}\n`
+      );
+      await writeFile(
+        join(root, "loops/project-controller/runs/run-ap-16/evidence.json"),
+        `${JSON.stringify(
+          {
+            version: 1,
+            runId: "run-ap-16",
+            status: "checker-passed",
+            repairAttempts: 0,
+            maxRepairs: 0,
+            checks: [
+              { stage: "maker", command: "node scripts/atlas-smoke-maker.mjs", exitCode: 0, startedAt: "2026-06-20T12:01:30.000Z", finishedAt: "2026-06-20T12:02:00.000Z", repairAttempt: 0 },
+              { stage: "checker", command: "node scripts/atlas-smoke-checker.mjs", exitCode: 0, startedAt: "2026-06-20T12:59:00.000Z", finishedAt: "2026-06-20T13:00:00.000Z", repairAttempt: 0 }
+            ],
+            findings: [],
+            satisfactionLayers: [
+              { layerId: "runner-start", label: "Runner start", status: "satisfied", proof: ["Runner reached checker-passed."], missing: [] }
+            ],
+            pullRequest: {
+              status: "ready",
+              detail: "Local evidence passed; PR remains human gated."
+            }
           },
           null,
           2
@@ -257,8 +299,29 @@ test("runAtlasLoopRunnerAction syncs terminal runner state back to the queued go
   assert.equal(result.goal.lifecycleStatus, "satisfied");
   assert.equal(queue.goals[0].lifecycleStatus, "satisfied");
   assert.equal(queue.goals[0].status, "done");
+  assert.equal(queue.goals[0].approvedToRun, false);
+  assert.equal(queue.goals[0].goalContract.satisfactionLayers[0].status, "satisfied");
+  assert.equal(queue.goals[0].subtasks.every((subtask) => subtask.done), true);
+  assert.match(queue.goals[0].description, /Lifecycle: satisfied/);
+  assert.match(queue.goals[0].description, /Approved to run: no/);
+  assert.doesNotMatch(queue.goals[0].description, /Lifecycle: approved/);
+  assert.doesNotMatch(queue.goals[0].description, /Approved to run: yes/);
   assert.equal(currentRun.status, "satisfied");
   assert.equal(currentRun.stage, "checker-passed");
+  assert.equal(currentRun.maxRepairs, 0);
+  assert.equal(currentRun.repairAttempts, 0);
+  assert.equal(currentRun.runnerCommands.makerCommand, "node scripts/atlas-smoke-maker.mjs");
+  assert.equal(currentRun.runnerCommands.checkerCommand, "node scripts/atlas-smoke-checker.mjs");
+  assert.equal(currentRun.timeline.some((event) => event.stage === "prepare" && event.status === "next"), false);
+  assert.equal(currentRun.timeline.some((event) => event.stage === "maker" && event.status === "locked"), false);
+  assert.equal(currentRun.timeline.some((event) => event.stage === "checker" && event.status === "locked"), false);
+  assert.deepEqual(
+    currentRun.timeline.slice(-4).map((event) => `${event.stage}:${event.status}`),
+    ["prepare:done", "maker:done", "checker:done", "human-review:next"]
+  );
+  assert.equal(currentRun.humanGate.status, "pending-review");
+  assert.equal(currentRun.humanGate.recommendedNextAction, "human-review");
+  assert.equal(currentRun.humanGate.externalActions, "ready");
 });
 
 test("runAtlasLoopRunnerAction syncs failed terminal runner state as blocked", async () => {
