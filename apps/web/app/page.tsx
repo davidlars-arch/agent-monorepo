@@ -178,11 +178,13 @@ async function readCurrentCommit() {
 export default async function Home({
   searchParams
 }: {
-  searchParams: Promise<{ open?: string; goal?: string }>;
+  searchParams: Promise<{ open?: string; goal?: string; view?: string }>;
 }) {
   const params = await searchParams;
   const requestedOpen = Array.isArray(params.open) ? params.open[0] : params.open;
+  const requestedView = Array.isArray(params.view) ? params.view[0] : params.view;
   const requestedGoal = Array.isArray(params.goal) ? params.goal[0] : params.goal;
+  const shouldOpenLoops = requestedOpen?.replace(/\?+$/, "") === "loops";
   const usageStatus = await readUsageStatus();
   const loopKanban = await readLoopKanban();
   const queuedGoals = await readQueuedGoals();
@@ -196,7 +198,8 @@ export default async function Home({
   return (
     <EarthGlobe
       initialOpenProjectId={requestedOpen}
-      initialLoopOpen={requestedOpen === "loops"}
+      initialLoopOpen={shouldOpenLoops}
+      initialLoopExplainerOpen={shouldOpenLoops && requestedView === "how-it-works"}
       initialGoalComposerOpen={requestedGoal === "create"}
       usageStatus={usageStatus}
       loopKanban={loopKanban}

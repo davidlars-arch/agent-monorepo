@@ -83,6 +83,24 @@ const flowNodes = [
   }
 ] as const;
 
+const proofCards = [
+  {
+    label: "Input",
+    value: "Approved goal",
+    detail: "A scoped contract with allowed paths, checks, review policy, and stop rules."
+  },
+  {
+    label: "Controller",
+    value: "One claimed run",
+    detail: "Atlas selects a single approved goal and creates durable current-run state."
+  },
+  {
+    label: "Output",
+    value: "Verified change",
+    detail: "A bounded repo change with passing checks, review feedback, evidence, and a clean stop."
+  }
+] as const;
+
 const orchestrationPrinciples = [
   {
     label: "Bounded scope",
@@ -237,20 +255,60 @@ export function AtlasRunFlow() {
               runs with state, verification, reviewer feedback, evidence, and explicit stop conditions.
             </span>
           </div>
-          <dl>
+          <aside>
+            <strong>Goal to commit pipeline</strong>
+            <span>Stateful, review-gated, resumable.</span>
+          </aside>
+        </div>
+
+        <div className="atlas-run-flow__proof-cards" aria-label="Atlas Planner contract summary">
+          {proofCards.map((card) => (
+            <article key={card.label}>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <p>{card.detail}</p>
+            </article>
+          ))}
+        </div>
+
+        <ol className="atlas-run-flow__pipeline" aria-label="Run sequence">
+          {flowNodes.slice(0, 6).map((node, index) => {
+            const Icon = node.icon;
+            return (
+              <li key={node.id}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <Icon size={18} />
+                  <h4>{node.label}</h4>
+                </div>
+                <strong>{node.title}</strong>
+                <p>{node.detail}</p>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="atlas-run-flow__operations">
+          <section aria-label="Review loop">
             <div>
-              <dt>Source of truth</dt>
-              <dd>Planner state</dd>
+              <Bot size={18} />
+              <strong>Review loop</strong>
             </div>
+            <p>
+              Subagents inspect the change for bugs, missing checks, unsafe scope, and unclear behavior. Blocking
+              feedback sends the run back to work before commit.
+            </p>
+          </section>
+          <section aria-label="Durable proof">
             <div>
-              <dt>Gate</dt>
-              <dd>Subagent review</dd>
+              <Database size={18} />
+              <strong>Durable proof</strong>
             </div>
-            <div>
-              <dt>Exit</dt>
-              <dd>Evidence + stop</dd>
-            </div>
-          </dl>
+            <p>
+              <code>atlas_planner_state.json</code> records run state. <code>reports/evidence_index.json</code> records
+              commands, metrics, output paths, and proof of work.
+            </p>
+          </section>
         </div>
 
         <div className="atlas-run-flow__principles" aria-label="Orchestration contract">
@@ -261,106 +319,6 @@ export function AtlasRunFlow() {
             </article>
           ))}
         </div>
-
-        <div className="atlas-run-flow__canvas">
-          <svg className="atlas-run-flow__arrows" viewBox="0 0 980 500" aria-hidden="true">
-            <defs>
-              <marker id="atlas-flow-arrow" markerHeight="10" markerWidth="10" orient="auto" refX="8" refY="5">
-                <path d="M 0 0 L 10 5 L 0 10 z" />
-              </marker>
-            </defs>
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--main"
-              d="M 158 132 C 178 132 192 132 214 132"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--main"
-              d="M 348 132 C 368 132 382 132 404 132"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--main"
-              d="M 538 132 C 558 132 572 132 594 132"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--main"
-              d="M 662 186 C 662 210 656 224 650 238"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--review"
-              d="M 626 318 C 574 330 520 346 498 364"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--review"
-              d="M 508 392 C 574 426 626 404 642 374"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--review"
-              d="M 736 318 C 754 338 772 350 790 364"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--review"
-              d="M 786 400 C 746 432 690 426 682 384"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--main"
-              d="M 860 316 C 886 258 878 218 860 186"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--state"
-              d="M 430 204 C 408 266 406 340 426 410"
-            />
-            <path
-              className="atlas-run-flow__line atlas-run-flow__line--state"
-              d="M 638 204 C 632 276 630 352 646 410"
-            />
-          </svg>
-
-          {flowNodes.map((node) => {
-            const Icon = node.icon;
-            return (
-              <article key={node.id} className={`atlas-run-flow__node ${node.className}`}>
-                <span>{node.label}</span>
-                <div>
-                  <Icon size={18} />
-                  <strong>{node.title}</strong>
-                </div>
-                <p>{node.detail}</p>
-              </article>
-            );
-          })}
-
-          <article className="atlas-run-flow__store atlas-run-flow__store--state">
-            <strong>atlas_planner_state.json</strong>
-            <span>task status, review rounds, blockers, completion</span>
-          </article>
-          <article className="atlas-run-flow__store atlas-run-flow__store--evidence">
-            <strong>reports/evidence_index.json</strong>
-            <span>commands, metrics, output paths, proof of work</span>
-          </article>
-        </div>
-
-        <ol className="atlas-run-flow__legend" aria-label="Run sequence">
-          <li>Goal is approved and queued.</li>
-          <li>Controller claims one run.</li>
-          <li>Runner edits one bounded task.</li>
-          <li>Verification writes evidence.</li>
-          <li>Reviewer agents send blocking feedback back to work.</li>
-          <li>Clean review allows scoped commit and stop.</li>
-        </ol>
-
-        <ol className="atlas-run-flow__mobile-steps" aria-label="Compact run sequence">
-          <li>Goal contract</li>
-          <li>Approved queue</li>
-          <li>Controller claims one run</li>
-          <li>Runner edits and verifies</li>
-          <li>Review gate loops feedback</li>
-          <li>Commit, evidence, or safe stop</li>
-        </ol>
-
-        <p className="atlas-run-flow__mobile-evidence">
-          <strong>Durable proof:</strong> planner state plus evidence index make each run resumable, reviewable, and
-          auditable.
-        </p>
       </section>
 
       <section className="atlas-poc-contract" aria-label="Atlas crypto trader POC evidence contract">
