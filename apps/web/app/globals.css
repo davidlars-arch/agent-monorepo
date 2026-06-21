@@ -4413,6 +4413,11 @@ nextjs-portal,
   padding-top: 16px;
 }
 
+.atlas-run-flow-stack {
+  display: grid;
+  gap: 14px;
+}
+
 .atlas-run-flow {
   display: grid;
   gap: 14px;
@@ -4683,6 +4688,215 @@ nextjs-portal,
   .atlas-run-flow__line {
     animation: none;
   }
+}
+
+.atlas-poc-contract {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.92)),
+    rgba(2, 6, 23, 0.92);
+  padding: 14px;
+}
+
+.atlas-poc-contract__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.atlas-poc-contract__header > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.atlas-poc-contract__header p {
+  margin: 0;
+  color: rgba(45, 212, 191, 0.86);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.atlas-poc-contract__header h3 {
+  max-width: 720px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 18px;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.atlas-poc-contract__header aside {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  max-width: 360px;
+  min-width: 260px;
+  border: 1px solid rgba(250, 204, 21, 0.18);
+  border-radius: 8px;
+  background: rgba(113, 63, 18, 0.18);
+  color: rgba(254, 240, 138, 0.88);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+}
+
+.atlas-poc-contract__header aside svg {
+  margin-top: 1px;
+}
+
+.atlas-poc-contract__artifacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.atlas-poc-contract__artifacts article,
+.atlas-poc-contract__timeline,
+.atlas-poc-contract__commands {
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.48);
+}
+
+.atlas-poc-contract__artifacts article {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-height: 170px;
+  padding: 11px;
+}
+
+.atlas-poc-contract__artifacts article > div,
+.atlas-poc-contract__section-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.atlas-poc-contract__artifacts svg,
+.atlas-poc-contract__section-heading svg {
+  color: #2dd4bf;
+}
+
+.atlas-poc-contract__artifacts strong,
+.atlas-poc-contract__section-heading h4,
+.atlas-poc-contract__timeline strong {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.atlas-poc-contract__artifacts ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-poc-contract__artifacts li {
+  min-width: 0;
+}
+
+.atlas-poc-contract code {
+  color: #67e8f9;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.atlas-poc-contract__artifacts code {
+  display: block;
+  border: 1px solid rgba(103, 232, 249, 0.12);
+  border-radius: 6px;
+  background: rgba(8, 47, 73, 0.28);
+  padding: 4px 6px;
+}
+
+.atlas-poc-contract__artifacts p,
+.atlas-poc-contract__timeline p,
+.atlas-poc-contract__commands p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.7);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.atlas-poc-contract__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+  gap: 10px;
+}
+
+.atlas-poc-contract__timeline,
+.atlas-poc-contract__commands {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  padding: 12px;
+}
+
+.atlas-poc-contract__timeline ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-poc-contract__timeline li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+}
+
+.atlas-poc-contract__timeline li > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 8px;
+  background: rgba(20, 184, 166, 0.1);
+  color: rgba(153, 246, 228, 0.95);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.atlas-poc-contract__timeline li > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-left: 1px dashed rgba(45, 212, 191, 0.32);
+  padding-left: 10px;
+}
+
+.atlas-poc-contract__commands > div {
+  display: grid;
+  gap: 8px;
+}
+
+.atlas-poc-contract__commands article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.54);
+  padding: 9px;
 }
 
 .loop-explainer__intro {
@@ -5231,6 +5445,28 @@ nextjs-portal,
 
   .atlas-run-flow__canvas {
     width: 1160px;
+  }
+
+  .atlas-poc-contract__header {
+    display: grid;
+  }
+
+  .atlas-poc-contract__header aside {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .atlas-poc-contract__artifacts,
+  .atlas-poc-contract__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atlas-poc-contract__artifacts article {
+    min-height: 0;
+  }
+
+  .atlas-poc-contract__timeline li {
+    grid-template-columns: 62px minmax(0, 1fr);
   }
 
   .loop-kanban__columns {
