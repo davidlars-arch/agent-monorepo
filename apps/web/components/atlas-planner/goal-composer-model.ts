@@ -111,7 +111,7 @@ export const goalTimeline = [
     id: "branch",
     label: "Branch",
     icon: GitBranch,
-    detail: "The loop creates an isolated branch or worktree so agent work cannot trample main."
+    detail: "The workflow creates an isolated branch or worktree so autonomous changes cannot trample main."
   },
   {
     id: "maker",

@@ -258,7 +258,7 @@ export function AtlasPlannerOverview({
       <section className="loop-panel">
         <header className="loop-panel__header">
           <div>
-            <p>Agent work control surface</p>
+            <p>Agentic workflow orchestration</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
           </div>
           <label className="loop-project-selector">
@@ -287,10 +287,10 @@ export function AtlasPlannerOverview({
           <section className="atlas-planner-purpose" aria-label="Atlas Planner purpose">
             <div>
               <p>What this is</p>
-              <strong>Plan agent work, approve what may run, and inspect evidence before anything merges.</strong>
+              <strong>Orchestrate approved goals into scoped, verified, review-gated repo changes.</strong>
               <span>
-                Tickets are planning items on the board. Goals are execution contracts the controller can claim. Current
-                run is the single claimed execution with branch, worktree, runner state, and evidence.
+                Tickets shape the work backlog. Goals are execution contracts the orchestrator can claim. Current run is
+                the single active workflow with branch, worktree, runner state, checks, evidence, and review.
               </span>
             </div>
             <ol aria-label="Planner workflow">

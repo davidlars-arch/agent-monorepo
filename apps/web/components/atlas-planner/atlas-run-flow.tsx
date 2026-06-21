@@ -220,8 +220,8 @@ export function AtlasRunFlow() {
             <p>Conceptual overview</p>
             <h3>From idea to verified commit, with reviewer loops before trust.</h3>
             <span>
-              Atlas Planner turns approved goals into bounded autonomous repo runs with state, verification,
-              reviewer feedback, evidence, and explicit stop conditions.
+              Atlas Planner is an agentic workflow orchestrator that turns approved goals into bounded autonomous repo
+              runs with state, verification, reviewer feedback, evidence, and explicit stop conditions.
             </span>
           </div>
           <dl>
