@@ -580,7 +580,7 @@ function buildCurrentAtlasRun({ runId, goal, claimedAt, baseCommit, agentRun }) 
     goalId: goal.id,
     goalTitle: goal.title,
     goalContract: goal.goalContract,
-    status: "running",
+    status: "claimed",
     stage: "claimed",
     claimedAt,
     updatedAt: claimedAt,

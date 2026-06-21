@@ -234,7 +234,7 @@ async function maybeClaimQueuedGoal(project, plannedTask, startedAt) {
     goalId: claimedGoal.id,
     goalTitle: claimedGoal.title,
     goalContract,
-    status: "running",
+    status: "claimed",
     stage: "claimed",
     claimedAt,
     updatedAt: claimedAt,
