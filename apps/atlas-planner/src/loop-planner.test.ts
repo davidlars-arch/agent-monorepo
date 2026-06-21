@@ -206,6 +206,52 @@ test("getLoopPlannerDecision maximizes useful ticket size inside the window", ()
   assert.equal(decision.skipped[0]?.ticket.id, "AP-TOO-BIG");
 });
 
+test("getLoopPlannerDecision penalizes high burn and high risk tickets inside tight windows", () => {
+  const decision = getLoopPlannerDecision(
+    [
+      makeProject({
+        epics: [
+          {
+            id: "planner-product",
+            label: "Planner Product",
+            tickets: [
+              {
+                id: "AP-SAFE",
+                title: "Safe bounded proof",
+                status: "backlog",
+                estimate: 5,
+                risk: "low",
+                uncertainty: "low",
+                expectedTokenBurn: "small",
+                summary: "Small work with clear boundaries."
+              },
+              {
+                id: "AP-BURN",
+                title: "Same size but expensive context",
+                status: "backlog",
+                estimate: 5,
+                risk: "high",
+                uncertainty: "high",
+                expectedTokenBurn: "large",
+                summary: "Small estimate but large likely token burn."
+              }
+            ]
+          }
+        ]
+      })
+    ],
+    {
+      ...usageStatus,
+      shortWindow: "20% left"
+    },
+    { preferredProjectId: "atlas-planner" }
+  );
+
+  assert.equal(decision.maxEstimate, 5);
+  assert.equal(decision.selected?.ticket.id, "AP-SAFE");
+  assert.ok((decision.candidates[0]?.breakdown.risk ?? 0) > (decision.candidates[1]?.breakdown.risk ?? 0));
+});
+
 test("getLoopGoalSummary counts layered satisfaction status", () => {
   const summary = getLoopGoalSummary([
     makeProject({
