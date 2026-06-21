@@ -217,6 +217,7 @@ const getDefaultCameraPosition = () => {
 export function EarthGlobe({
   initialOpenProjectId,
   initialLoopOpen = false,
+  initialLoopExplainerOpen = false,
   initialGoalComposerOpen = false,
   usageStatus,
   loopKanban,
@@ -231,6 +232,7 @@ export function EarthGlobe({
 }: {
   initialOpenProjectId?: string;
   initialLoopOpen?: boolean;
+  initialLoopExplainerOpen?: boolean;
   initialGoalComposerOpen?: boolean;
   usageStatus?: UsageStatusSnapshot | null;
   loopKanban?: LoopKanbanProject[];
@@ -258,7 +260,7 @@ export function EarthGlobe({
   const [detailProjectId, setDetailProjectId] = useState<string | null>(hasInitialProject ? initialProjectId : null);
   const [isRpgOpen, setIsRpgOpen] = useState(false);
   const [isLoopPanelOpen, setIsLoopPanelOpen] = useState(initialLoopOpen || initialOpenProjectId === "loops");
-  const [isLoopExplainerOpen, setIsLoopExplainerOpen] = useState(false);
+  const [isLoopExplainerOpen, setIsLoopExplainerOpen] = useState(initialLoopExplainerOpen);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   const projects = useMemo(
