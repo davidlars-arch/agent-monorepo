@@ -1,4 +1,7 @@
 export type LoopTicketStatus = "backlog" | "in-progress" | "review" | "done" | "blocked";
+export type LoopTicketRisk = "low" | "medium" | "high";
+export type LoopTicketUncertainty = "low" | "medium" | "high";
+export type LoopTicketTokenBurn = "small" | "medium" | "large";
 
 export * from "./reporting.ts";
 export * from "./runs.ts";
@@ -8,6 +11,9 @@ export type LoopKanbanTicket = {
   title: string;
   status: LoopTicketStatus;
   estimate: number;
+  risk?: LoopTicketRisk;
+  uncertainty?: LoopTicketUncertainty;
+  expectedTokenBurn?: LoopTicketTokenBurn;
   summary: string;
   tags?: string[];
 };
@@ -382,6 +388,9 @@ export function getDefaultPlannerTicket(projects: LoopKanbanProject[], preferred
     title: "New ticket",
     status: "backlog",
     estimate: 3,
+    risk: "medium",
+    uncertainty: "medium",
+    expectedTokenBurn: "medium",
     summary: "",
     description: "",
     projectId: project.id,
@@ -409,6 +418,9 @@ export function normalizePlannerTicket(ticket: PlannerTicketDraft): KanbanTicket
     title: ticket.title.trim() || "Untitled ticket",
     summary: ticket.description.trim() || ticket.summary.trim() || "No description yet.",
     description: ticket.description.trim() || ticket.summary.trim(),
+    risk: normalizeRisk(ticket.risk),
+    uncertainty: normalizeUncertainty(ticket.uncertainty),
+    expectedTokenBurn: normalizeTokenBurn(ticket.expectedTokenBurn),
     fitLabel: ticket.fitLabel ?? "",
     tags: uniqueTags,
     createdAt: ticket.createdAt,
@@ -429,6 +441,9 @@ export function hydratePlannerTickets(tickets: KanbanTicket[]): KanbanTicket[] {
   return tickets.map((ticket) => ({
     ...ticket,
     description: ticket.description ?? ticket.summary ?? "",
+    risk: normalizeRisk(ticket.risk),
+    uncertainty: normalizeUncertainty(ticket.uncertainty),
+    expectedTokenBurn: normalizeTokenBurn(ticket.expectedTokenBurn),
     fitLabel: ticket.fitLabel ?? "",
     subtasks: ticket.subtasks ?? [],
     tags: ticket.tags ?? [],
@@ -677,6 +692,9 @@ function coerceImportedTicket(ticket: unknown): KanbanTicket {
     title: coerceString(source.title, "Untitled ticket"),
     status,
     estimate: fibonacciEstimates.includes(Number(source.estimate)) ? Number(source.estimate) : 3,
+    risk: normalizeRisk(source.risk),
+    uncertainty: normalizeUncertainty(source.uncertainty),
+    expectedTokenBurn: normalizeTokenBurn(source.expectedTokenBurn),
     summary,
     tags: Array.isArray(source.tags) ? source.tags.map((tag) => normalizeTicketTag(String(tag))).filter(Boolean) : [],
     projectId: coerceString(source.projectId, "atlas-planner"),
@@ -717,6 +735,18 @@ function coerceDateString(value: unknown, fallback: string) {
 
 function coerceOptionalString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeRisk(value: unknown): LoopTicketRisk {
+  return value === "low" || value === "medium" || value === "high" ? value : "medium";
+}
+
+function normalizeUncertainty(value: unknown): LoopTicketUncertainty {
+  return value === "low" || value === "medium" || value === "high" ? value : "medium";
+}
+
+function normalizeTokenBurn(value: unknown): LoopTicketTokenBurn {
+  return value === "small" || value === "medium" || value === "large" ? value : "medium";
 }
 
 function isTicketStatus(value: unknown): value is LoopTicketStatus {
@@ -794,12 +824,38 @@ function getPlannerScoreBreakdown(
     (tags.length > 0 ? 3 : 0);
   const freshness = ticket.status === "in-progress" ? 20 : ticket.status === "review" ? 14 : 4;
   const riskyText = `${project?.permission ?? ""} ${tags.join(" ")} ${ticket.title}`.toLowerCase();
+  const tokenBurnRisk = getTokenBurnFitPenalty(ticket.expectedTokenBurn ?? "medium", maxEstimate);
+  const explicitRisk = getLevelPenalty(ticket.risk ?? "medium", { low: 6, medium: 0, high: -22 });
+  const uncertaintyRisk = getLevelPenalty(ticket.uncertainty ?? "medium", { low: 4, medium: 0, high: -12 });
   const risk =
     (riskyText.includes("live trading") || riskyText.includes("migration") || riskyText.includes("auth") ? -24 : 0) +
-    (ticket.estimate > maxEstimate ? -12 : 0);
+    (ticket.estimate > maxEstimate ? -12 : 0) +
+    explicitRisk +
+    uncertaintyRisk +
+    tokenBurnRisk;
   const total = fit + value + readiness + freshness + risk;
 
   return { fit, value, readiness, freshness, risk, total };
+}
+
+function getLevelPenalty<T extends string>(value: T, scores: Record<T, number>) {
+  return scores[value] ?? 0;
+}
+
+function getTokenBurnFitPenalty(expectedTokenBurn: LoopTicketTokenBurn, maxEstimate: number) {
+  if (expectedTokenBurn === "small") {
+    return 4;
+  }
+  if (expectedTokenBurn === "large" && maxEstimate <= 8) {
+    return -20;
+  }
+  if (expectedTokenBurn === "large" && maxEstimate <= 13) {
+    return -8;
+  }
+  if (expectedTokenBurn === "large") {
+    return -4;
+  }
+  return 0;
 }
 
 function getPlannerScoreReason(ticket: KanbanTicket, breakdown: LoopPlannerScoreBreakdown, maxEstimate: number) {

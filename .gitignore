@@ -19,6 +19,7 @@ loops/**/state.json
 loops/**/decisions.jsonl
 loops/**/goal-queue.json
 loops/**/current-run.json
+loops/**/run-history.jsonl
 loops/**/latest-status.json
 loops/**/LOCK
 loops/**/runs/
