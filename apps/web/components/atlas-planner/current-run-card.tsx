@@ -78,9 +78,19 @@ export function CurrentRunCard({
           projectId: action === "claim-next-goal" ? claimableQueuedGoal?.projectId : undefined
         })
       });
-      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        status?: string;
+        command?: string;
+        reason?: string;
+      } | null;
       if (!response.ok) {
         setLoopRunnerMessage(payload?.error ?? "Loop runner action failed.");
+        return;
+      }
+      if (payload?.status === "handoff-required") {
+        setLoopRunnerMessage(payload.command ? `Run in terminal: ${payload.command}` : (payload.reason ?? "Runner handoff is required."));
         return;
       }
 
@@ -93,11 +103,16 @@ export function CurrentRunCard({
   }
 
   return (
-    <section className="loop-current-run" aria-label="Current loop run">
+    <section className="loop-current-run" aria-label="Current claimed execution">
       <div className="loop-current-run__header">
         <div>
           <span>Current run</span>
           <strong>{currentLoopRun ? currentLoopRun.goalTitle : "No claimed goal"}</strong>
+          <small>
+            {currentLoopRun
+              ? "The controller has claimed this one execution. Review branch, worktree, runner state, and evidence here."
+              : "No execution is claimed. The runner cannot act until an approved goal is claimed."}
+          </small>
         </div>
         <p>{currentLoopRun ? currentLoopRun.stage : "idle"}</p>
       </div>
@@ -204,8 +219,8 @@ export function CurrentRunCard({
       ) : (
         <p>
           {claimableQueuedGoal
-            ? "Claim the approved queued goal to write `loops/project-controller/current-run.json`."
-            : "Approve a queued goal before claiming the next loop run."}
+            ? "Claim the approved queued goal to create the single current-run record."
+            : "Approve a goal in the queue before claiming the next loop run."}
         </p>
       )}
       {currentLoopRun && (currentRunnerState || currentRunnerEvidence) ? (
@@ -246,24 +261,24 @@ function getNextLoopRunnerAction({
   if (currentRunnerState && !terminalRunnerStatuses.has(currentRunnerState.status)) {
     return {
       action: "resume-current-run" as const,
-      label: "Resume runner",
-      busyLabel: "Resuming",
+      label: "Show resume command",
+      busyLabel: "Preparing",
       kicker: "Runner handoff",
       title: currentRunnerState.stage,
-      detail: "Continue from the recorded runner state and handoff evidence for this claimed run.",
+      detail: "Prepare the terminal command for continuing this long-running OpenClaw job.",
       icon: RotateCcw
     };
   }
 
   return {
     action: "start-current-run" as const,
-    label: "Start runner",
-    busyLabel: "Starting",
+    label: "Show start command",
+    busyLabel: "Preparing",
     kicker: "Claimed run",
     title: currentLoopRun.goalTitle,
     detail: currentLoopRun.runnerCommand
-      ? "Launch the runner command recorded for this claimed run."
-      : "Ask the loop runner service to start the current claimed run.",
+      ? "Prepare the recorded runner command for terminal execution. Browser requests do not run long OpenClaw jobs."
+      : "Prepare the terminal command for this claimed run. Browser requests do not run long OpenClaw jobs.",
     icon: Play
   };
 }

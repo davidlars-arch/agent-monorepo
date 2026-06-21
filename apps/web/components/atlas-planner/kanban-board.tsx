@@ -66,8 +66,9 @@ export function KanbanBoard({
     <section className="loop-kanban" aria-label="Atlas Planner Kanban">
       <div className="loop-kanban__header">
         <div>
-          <p>Atlas Planner</p>
+          <p>Repo board</p>
           <h3>{selectedProjectLabel}</h3>
+          <span>Plan work as tickets. Moving a ticket does not start an agent run.</span>
         </div>
         <div className="loop-kanban__tools">
           <span>
@@ -91,6 +92,7 @@ export function KanbanBoard({
               Manage
             </summary>
             <div>
+              <p>These actions change ticket state for the selected board only. They do not approve goals, run agents, or merge code.</p>
               <button type="button" onClick={onExportPlannerState}>
                 <Download size={14} />
                 Export
@@ -118,6 +120,13 @@ export function KanbanBoard({
         </div>
       </div>
       {stateMessage ? <p className="loop-kanban__state-message">{stateMessage}</p> : null}
+      <div className="loop-kanban__legend" aria-label="Ticket status legend">
+        <span>Backlog: planned</span>
+        <span>In progress: being shaped or worked</span>
+        <span>Review: inspect before closing</span>
+        <span>Blocked: cannot move</span>
+        <span>Done: completed with evidence when available</span>
+      </div>
       <div className="loop-kanban__columns">
         {columns.map((column) => (
           <article
@@ -174,7 +183,11 @@ export function KanbanBoard({
                   ) : null}
                 </section>
               ))}
-              {column.tickets.length === 0 ? <p className="loop-kanban__empty">No tickets here.</p> : null}
+              {column.tickets.length === 0 ? (
+                <p className="loop-kanban__empty">
+                  No {column.label.toLowerCase()} tickets for this board yet.
+                </p>
+              ) : null}
             </div>
           </article>
         ))}

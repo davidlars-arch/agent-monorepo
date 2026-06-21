@@ -46,8 +46,12 @@ export function GoalComposer({
       <section className="goal-composer__panel">
         <header className="goal-composer__header">
           <div>
-            <p>Strict loop goal</p>
+            <p>Execution contract</p>
             <h3 id="goal-composer-title">Create goal</h3>
+            <span>
+              Goals are what the runner can claim. A good goal names the outcome, stop condition, allowed scope, checks,
+              and safety limits.
+            </span>
           </div>
           <button type="button" className="loop-close-button" aria-label="Close goal composer" onClick={onClose}>
             <X size={18} />
@@ -89,7 +93,7 @@ export function GoalComposer({
               Stop condition
               <textarea
                 value={draft.stopCondition}
-                placeholder="Describe how the loop knows it must stop."
+                placeholder="Describe exactly when the loop must stop, even if the whole idea is not finished."
                 onChange={(event) => onChange({ stopCondition: event.target.value })}
               />
             </label>
@@ -97,7 +101,7 @@ export function GoalComposer({
               Scope and limits
               <textarea
                 value={draft.scope}
-                placeholder="Allowed areas, risk boundaries, and what should not be touched."
+                placeholder="Allowed paths, risk boundaries, and what should not be touched."
                 onChange={(event) => onChange({ scope: event.target.value })}
               />
             </label>
@@ -139,7 +143,7 @@ export function GoalComposer({
 
             <section className="goal-contract-preview" aria-label="Refined loop contract preview">
               <div className="goal-contract-preview__header">
-                <span>Refined loop contract</span>
+                <span>Runner contract preview</span>
                 <strong>{contract.title}</strong>
                 <p>{contract.outcome}</p>
               </div>
@@ -189,7 +193,7 @@ export function GoalComposer({
               <div className="goal-layer-editor__header">
                 <div>
                   <span>Satisfaction layers</span>
-                  <strong>Define what done means</strong>
+                  <strong>Define what must be true</strong>
                 </div>
                 <button type="button" onClick={onAddLayer}>
                   <Plus size={13} />
@@ -251,7 +255,7 @@ export function GoalComposer({
               <div className="goal-verification-builder__header">
                 <div>
                   <span>Verification commands</span>
-                  <strong>Make the stop condition executable</strong>
+                  <strong>Prove the result before satisfaction</strong>
                 </div>
                 <button type="button" onClick={onAddVerificationCommand}>
                   <Plus size={13} />
@@ -306,7 +310,7 @@ export function GoalComposer({
             <section className="goal-safety-settings" aria-label="Loop safety settings">
               <div className="goal-safety-settings__header">
                 <span>Safety settings</span>
-                <strong>Bound the loop before it runs</strong>
+                <strong>Bound paths, time, tokens, and external actions</strong>
               </div>
               <div className="goal-safety-settings__grid">
                 <label>
@@ -411,17 +415,17 @@ export function GoalComposer({
                 </div>
               </dl>
               <p>
-                Saving without approval creates a backlog goal. Approving moves it into the active lane, but external
-                actions still follow the selected safety policy.
+                Saving without approval keeps this as a backlog goal. Approval lets the controller claim it, but external
+                actions still follow the selected safety policy and merge gates.
               </p>
             </section>
 
             <div className="goal-timeline__intro">
               <span>How the goal loop works</span>
-              <strong>From rough idea to merged branch</strong>
+              <strong>From rough intent to reviewable evidence</strong>
               <p>
-                The goal starts as human intent, then becomes a strict contract the loop can score, implement,
-                verify, repair, and eventually merge behind gates.
+                The goal starts as human intent, then becomes a strict contract the loop can score, claim, implement,
+                verify, repair, and present for review.
               </p>
             </div>
             <div className="goal-timeline__rail">
@@ -452,7 +456,7 @@ export function GoalComposer({
             Cancel
           </button>
           <button type="button" onClick={onSave}>
-            Save goal ticket
+            Save goal
           </button>
         </footer>
       </section>

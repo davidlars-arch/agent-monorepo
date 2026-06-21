@@ -39,7 +39,8 @@ export const repoNodes: RepoNode[] = [
     x: 46,
     y: 43,
     status: "poc",
-    summary: "Token-aware agent work planner: Kanban, ticket lifecycle, runway, completion commits, and activity dashboard.",
+    summary:
+      "Agentic workflow orchestrator: Kanban goals, run contracts, usage runway, review gates, evidence, and commits.",
     featured: true
   },
   {

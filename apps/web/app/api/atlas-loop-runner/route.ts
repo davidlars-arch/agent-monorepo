@@ -1,4 +1,4 @@
-import { claimNextAtlasPlannerGoal, resolveProjectRoot, runAtlasLoopRunnerAction } from "@agent/loop-store";
+import { claimNextAtlasPlannerGoal, prepareAtlasLoopRunnerHandoff, resolveProjectRoot, runAtlasLoopRunnerAction } from "@agent/loop-store";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,13 @@ export async function POST(request: Request) {
     return accessError;
   }
 
-  const body = (await request.json().catch(() => null)) as { action?: unknown; timeoutMs?: unknown; goalId?: unknown; projectId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    action?: unknown;
+    timeoutMs?: unknown;
+    goalId?: unknown;
+    projectId?: unknown;
+    runMode?: unknown;
+  } | null;
   const action = normalizeAction(body?.action);
   if (!action) {
     return NextResponse.json({ error: "Unsupported Atlas loop runner action." }, { status: 400 });
@@ -44,6 +50,15 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, action, status: result.status, currentRun: result.currentRun, goal: result.goal });
+  }
+
+  if (body?.runMode !== "sync") {
+    const handoff = await prepareAtlasLoopRunnerHandoff(projectRoot, action);
+    if (!handoff.ok) {
+      return NextResponse.json({ error: handoff.reason, result: handoff }, { status: 409 });
+    }
+
+    return NextResponse.json(handoff, { status: 202 });
   }
 
   const result = await runAtlasLoopRunnerAction(projectRoot, action, { timeoutMs: normalizeTimeoutMs(body?.timeoutMs) });

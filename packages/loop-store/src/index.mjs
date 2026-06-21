@@ -330,6 +330,28 @@ export async function runAtlasLoopRunnerAction(root, action, { timeoutMs = 25_00
   }
 }
 
+export async function prepareAtlasLoopRunnerHandoff(root, action) {
+  const loopPaths = getLoopPaths(root);
+  const currentRun = await readJsonFile(loopPaths.currentRunPath, null);
+  if (!currentRun?.id) {
+    return { ok: false, status: "missing-current-run", reason: "No current run exists. Claim an approved goal first." };
+  }
+
+  const command = buildAtlasRunnerCommand(root, action, currentRun);
+  if (!command.ok) {
+    return command;
+  }
+
+  return {
+    ok: true,
+    status: "handoff-required",
+    action,
+    currentRun,
+    command: renderCommand(command),
+    reason: "Run this command in a terminal or background worker; browser requests do not execute long OpenClaw runner jobs."
+  };
+}
+
 export async function syncTerminalAtlasRun(root, currentRun) {
   if (!currentRun?.handoffDir || !currentRun?.goalId) {
     return { ok: true, status: "skipped", reason: "Current run is missing handoff or goal id." };
@@ -488,7 +510,7 @@ export function getTicketStatusForGoalLifecycle(lifecycleStatus, approvedToRun) 
   if (lifecycleStatus === "satisfied" || lifecycleStatus === "archived") {
     return "done";
   }
-  if (lifecycleStatus === "approved" || lifecycleStatus === "running" || approvedToRun) {
+  if (lifecycleStatus === "running") {
     return "in-progress";
   }
   return "backlog";

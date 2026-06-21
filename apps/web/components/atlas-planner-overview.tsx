@@ -20,21 +20,27 @@ import type {
 } from "@agent/loop-store";
 import {
   CircleHelp,
-  FileText,
   GitCommitHorizontal,
   ListChecks,
-  Network,
+  PlayCircle,
   RefreshCw,
-  Workflow,
+  ShieldCheck,
+  Target,
   X
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { ActivityDashboard } from "./atlas-planner/activity-dashboard";
+import { AtlasRunFlow } from "./atlas-planner/atlas-run-flow";
 import { GoalComposer } from "./atlas-planner/goal-composer";
 import { KanbanBoard } from "./atlas-planner/kanban-board";
 import { LoopReliabilityPanel } from "./atlas-planner/loop-reliability-panel";
-import { loopFiles, loopSummaries } from "./atlas-planner/overview-data";
+import { loopSummaries } from "./atlas-planner/overview-data";
+import {
+  getFirstLoopReadiness,
+  getPlannerNextActionState,
+  type PlannerNextActionKind
+} from "./atlas-planner/planner-next-action";
 import { TicketEditor } from "./atlas-planner/ticket-editor";
 import { useAtlasGoals } from "./atlas-planner/use-atlas-goals";
 import { usePlannerTickets } from "./atlas-planner/use-planner-tickets";
@@ -183,6 +189,21 @@ export function AtlasPlannerOverview({
   });
   const loopGoalSummary = getLoopGoalSummary(loopKanban, selectedPlannerProjectId ?? "atlas-planner");
   const visibleQueuedGoals = getVisibleQueuedGoals(durableQueuedGoals, activeSelectedProjectId);
+  const boardLabel = activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo");
+  const approvedGoalCount = visibleQueuedGoals.filter(isClaimableQueuedGoal).length;
+  const nextAction = getPlannerNextActionState({
+    approvedGoalCount,
+    currentLoopRun,
+    currentRunnerState,
+    visibleTicketCount: visiblePlannerTickets.length
+  });
+  const firstLoopReadiness = getFirstLoopReadiness({
+    approvedGoalCount,
+    currentLoopRun,
+    currentRunnerState,
+    hasUsageStatus: Boolean(latestUsageStatus),
+    visibleTicketCount: visiblePlannerTickets.length
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -237,8 +258,11 @@ export function AtlasPlannerOverview({
       <section className="loop-panel">
         <header className="loop-panel__header">
           <div>
-            <p>Token-aware work board</p>
+            <p>Agentic workflow orchestration</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
+            <span>
+              Turns approved goals into scoped, verified, review-gated repo changes with durable state and evidence.
+            </span>
           </div>
           <label className="loop-project-selector">
             <span>Board</span>
@@ -254,7 +278,7 @@ export function AtlasPlannerOverview({
           <div className="loop-panel__actions">
             <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
               <CircleHelp size={16} />
-              {showExplainer ? "Loop list" : "How it works"}
+              {showExplainer ? "Planner board" : "How it works"}
             </button>
             <button type="button" className="loop-close-button" aria-label="Close loop overview" onClick={onClose}>
               <X size={18} />
@@ -263,6 +287,78 @@ export function AtlasPlannerOverview({
         </header>
 
         <div className="loop-panel__body">
+          {showExplainer ? (
+            <section className="loop-explainer loop-explainer--top" aria-label="Loop architecture overview">
+              <AtlasRunFlow />
+            </section>
+          ) : (
+            <>
+
+              <section className="atlas-planner-purpose" aria-label="Atlas Planner purpose">
+            <div>
+              <p>What this is</p>
+              <strong>Orchestrate approved goals into scoped, verified, review-gated repo changes.</strong>
+              <span>
+                Tickets shape the work backlog. Goals are execution contracts the orchestrator can claim. Current run is
+                the single active workflow with branch, worktree, runner state, checks, evidence, and review.
+              </span>
+            </div>
+            <ol aria-label="Planner workflow">
+              <li>Ticket</li>
+              <li>Goal</li>
+              <li>Queue</li>
+              <li>Current run</li>
+              <li>Evidence</li>
+              <li>Review</li>
+            </ol>
+          </section>
+
+          <section className="atlas-next-action" aria-label="Planner next action">
+            <div className="atlas-next-action__summary">
+              <PlannerNextActionIcon kind={nextAction.kind} />
+              <div>
+                <p>Next safe action</p>
+                <strong>{nextAction.label}</strong>
+                <span>{nextAction.detail}</span>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Board</dt>
+                <dd>{boardLabel}</dd>
+              </div>
+              <div>
+                <dt>Tickets</dt>
+                <dd>{visiblePlannerTickets.length} visible</dd>
+              </div>
+              <div>
+                <dt>Approved goals</dt>
+                <dd>{approvedGoalCount}</dd>
+              </div>
+              <div>
+                <dt>Run</dt>
+                <dd>{currentLoopRun ? currentLoopRun.stage : "idle"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="atlas-loop-readiness" aria-label="First loop setup readiness">
+            <div>
+              <p>First loop setup</p>
+              <strong>{firstLoopReadiness.percent}% ready</strong>
+              <span>{firstLoopReadiness.summary}</span>
+            </div>
+            <ol>
+              {firstLoopReadiness.steps.map((step) => (
+                <li key={step.label} className={step.done ? "is-done" : ""}>
+                  <span>{step.done ? "Ready" : "Needed"}</span>
+                  <strong>{step.label}</strong>
+                  <small>{step.detail}</small>
+                </li>
+              ))}
+            </ol>
+          </section>
+
           <section className="loop-usage" aria-label="Latest usage status">
             <div className="loop-usage__heading">
               <div>
@@ -360,7 +456,7 @@ export function AtlasPlannerOverview({
 
           <KanbanBoard
             columns={kanbanColumns}
-            selectedProjectLabel={activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo")}
+            selectedProjectLabel={boardLabel}
             visibleTicketCount={visiblePlannerTickets.length}
             usageStatus={latestUsageStatus}
             stateMessage={plannerStateMessage}
@@ -441,56 +537,9 @@ export function AtlasPlannerOverview({
               </article>
             ))}
           </section>
+            </>
+          )}
 
-          {showExplainer ? (
-            <section className="loop-explainer" aria-label="Loop architecture overview">
-              <div className="loop-explainer__intro">
-                <p>
-                  The controller is the only part that decides what is due. Child loops stay small: they run checks,
-                  write a report, and hand back one next action. The point is repeatable movement without turning the
-                  repo into scheduled chaos.
-                </p>
-              </div>
-
-              <div className="loop-graph" aria-label="Architecture graph">
-                <div className="loop-node loop-node--source">
-                  <Workflow size={18} />
-                  <strong>project-loop.mjs</strong>
-                  <span>locks and selects due work</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <Network size={18} />
-                  <strong>projects.json</strong>
-                  <span>registry, cadence, permissions</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <RefreshCw size={18} />
-                  <strong>child loops</strong>
-                  <span>repo-health, web-atlas, project checks</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node loop-node--output">
-                  <FileText size={18} />
-                  <strong>state + report</strong>
-                  <span>local memory and next action</span>
-                </div>
-              </div>
-
-              <div className="loop-file-map">
-                <h3>Markdown and state map</h3>
-                <div>
-                  {loopFiles.map((file) => (
-                    <article key={file.path}>
-                      <code>{file.path}</code>
-                      <p>{file.role}</p>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
         </div>
       </section>
     </div>
@@ -506,4 +555,27 @@ function getVisibleQueuedGoals(goals: QueuedGoalSummary[], selectedProjectId: st
     return goals;
   }
   return goals.filter((goal) => (goal.projectId ?? "atlas-planner") === selectedProjectId);
+}
+
+function isClaimableQueuedGoal(goal: QueuedGoalSummary) {
+  return (
+    goal.approvedToRun === true &&
+    (goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running") &&
+    goal.status !== "done" &&
+    goal.status !== "blocked" &&
+    goal.status !== "archived"
+  );
+}
+
+function PlannerNextActionIcon({ kind }: { kind: PlannerNextActionKind }) {
+  if (kind === "review-run") {
+    return <RefreshCw size={18} />;
+  }
+  if (kind === "create-goal") {
+    return <Target size={18} />;
+  }
+  if (kind === "create-ticket") {
+    return <ShieldCheck size={18} />;
+  }
+  return <PlayCircle size={18} />;
 }
