@@ -20,20 +20,18 @@ import type {
 } from "@agent/loop-store";
 import {
   CircleHelp,
-  FileText,
   GitCommitHorizontal,
   ListChecks,
   PlayCircle,
-  Network,
   RefreshCw,
   ShieldCheck,
   Target,
-  Workflow,
   X
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { ActivityDashboard } from "./atlas-planner/activity-dashboard";
+import { AtlasRunFlow } from "./atlas-planner/atlas-run-flow";
 import { GoalComposer } from "./atlas-planner/goal-composer";
 import { KanbanBoard } from "./atlas-planner/kanban-board";
 import { LoopReliabilityPanel } from "./atlas-planner/loop-reliability-panel";
@@ -532,42 +530,9 @@ export function AtlasPlannerOverview({
 
           {showExplainer ? (
             <section className="loop-explainer" aria-label="Loop architecture overview">
-              <div className="loop-explainer__intro">
-                <p>
-                  The controller is the only part that decides what is due. Child loops stay small: they run checks,
-                  write a report, and hand back one next action. The point is repeatable movement without turning the
-                  repo into scheduled chaos.
-                </p>
-              </div>
-
-              <div className="loop-graph" aria-label="Architecture graph">
-                <div className="loop-node loop-node--source">
-                  <Workflow size={18} />
-                  <strong>project-loop.mjs</strong>
-                  <span>locks and selects due work</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <Network size={18} />
-                  <strong>projects.json</strong>
-                  <span>registry, cadence, permissions</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node">
-                  <RefreshCw size={18} />
-                  <strong>child loops</strong>
-                  <span>repo-health, web-atlas, project checks</span>
-                </div>
-                <span className="loop-edge" />
-                <div className="loop-node loop-node--output">
-                  <FileText size={18} />
-                  <strong>state + report</strong>
-                  <span>local memory and next action</span>
-                </div>
-              </div>
-
+              <AtlasRunFlow />
               <div className="loop-file-map">
-                <h3>Markdown and state map</h3>
+                <h3>Files that make the run inspectable</h3>
                 <div>
                   {loopFiles.map((file) => (
                     <article key={file.path}>
