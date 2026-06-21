@@ -84,15 +84,21 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
 
   const result = JSON.parse(stdout);
   const state = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-6/runner-state.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-6/handoff.json"), "utf8"));
+  const contract = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-6/goal-contract.json"), "utf8"));
   const makerPrompt = await readFile(join(root, "loops/project-controller/runs/run-ap-6/maker-prompt.md"), "utf8");
   const checkerPrompt = await readFile(join(root, "loops/project-controller/runs/run-ap-6/checker-prompt.md"), "utf8");
   const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-6/evidence.json"), "utf8"));
+  const events = await readFile(join(root, "loops/project-controller/runs/run-ap-6/events.jsonl"), "utf8");
 
   assert.equal(result.status, "created");
   assert.equal(state.status, "prepared");
   assert.equal(state.stage, "maker-handoff");
+  assert.equal(manifest.schemaVersion, "atlas-handoff.v1");
+  assert.equal(manifest.hashes.goalContract.length, 64);
+  assert.equal(contract.schemaVersion, "atlas-goal-contract.v1");
   assert.equal(state.worktreePath, worktreePath);
-  assert.equal(state.goalContract.safety.allowedPaths, "packages/loop-store/**, scripts/**");
+  assert.match(state.goalContract.safety.allowedPaths, /packages\/loop-store\/\*\*/);
   assert.match(makerPrompt, /Implement one bounded slice/);
   assert.match(makerPrompt, /Complete the durable contract handoff/);
   assert.match(makerPrompt, /Queue preservation: Queue stores structured layers/);
@@ -103,6 +109,7 @@ test("runner creates a worktree and writes maker/checker handoff files", async (
   assert.equal(evidence.status, "awaiting-maker");
   assert.equal(evidence.satisfactionLayers[0].layerId, "queue-preservation");
   assert.deepEqual(evidence.satisfactionLayers[0].proof, []);
+  assert.match(events, /run\.prepared/);
 });
 
 test("runner executes maker and checker commands and records passing evidence", async () => {
@@ -182,6 +189,7 @@ test("runner completes deterministic smoke maker checker proof with verdict arti
   const checkerVerdict = JSON.parse(await readFile(join(handoffDir, "checker-verdict.json"), "utf8"));
   const makerLog = await readFile(join(handoffDir, "maker.log"), "utf8");
   const checkerLog = await readFile(join(handoffDir, "checker.log"), "utf8");
+  const events = await readFile(join(handoffDir, "events.jsonl"), "utf8");
 
   assert.equal(result.status, "satisfied");
   assert.equal(result.stage, "checker-passed");
@@ -196,6 +204,8 @@ test("runner completes deterministic smoke maker checker proof with verdict arti
   );
   assert.equal(evidence.checks.some((check) => check.stage === "repair"), false);
   assert.equal(evidence.events[1].structuredStatus, "passed");
+  assert.equal(evidence.hashes.goalContract.length, 64);
+  assert.equal(evidence.hashes.checkerVerdict.length, 64);
   assert.equal(evidence.satisfactionLayers.every((layer) => layer.status === "satisfied"), true);
   assert.equal(makerResult.schemaVersion, "atlas-smoke-maker-result.v1");
   assert.equal(makerResult.status, "passed");
@@ -203,6 +213,80 @@ test("runner completes deterministic smoke maker checker proof with verdict arti
   assert.equal(checkerVerdict.pass, true);
   assert.match(makerLog, /Smoke maker passed/);
   assert.match(checkerLog, /deterministic Atlas first-loop proof completed/i);
+  assert.match(events, /maker\.started/);
+  assert.match(events, /checker\.finished/);
+});
+
+test("runner blocks maker changes outside allowed paths", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-scope-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-SCOPE",
+      "--branch",
+      "worktree/ap-scope-runner-test",
+      "--run-id",
+      "run-ap-scope",
+      "--worktree-dir",
+      worktreePath,
+      "--goal-contract-json",
+      JSON.stringify(makeGoalContract({ allowedPaths: "allowed/**" })),
+      "--maker-command",
+      'node -e \'require("fs").writeFileSync("outside.txt", "bad\\n")\'',
+      "--checker-command",
+      "node -e 'process.exit(0)'"
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-scope/evidence.json"), "utf8"));
+  const events = await readFile(join(root, "loops/project-controller/runs/run-ap-scope/events.jsonl"), "utf8");
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "maker-scope-blocked");
+  assert.equal(evidence.status, "maker-scope-blocked");
+  assert.equal(evidence.findings[0].summary, "Maker modified files outside the goal contract allowed paths.");
+  assert.deepEqual(evidence.findings[0].files, ["outside.txt"]);
+  assert.match(events, /maker\.scope-blocked/);
+});
+
+test("runner blocks checker worktree mutation in verdict-only mode", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-checker-mutation-");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-CHECKER-MUTATION",
+      "--branch",
+      "worktree/ap-checker-mutation-runner-test",
+      "--run-id",
+      "run-ap-checker-mutation",
+      "--worktree-dir",
+      worktreePath,
+      "--maker-command",
+      "node -e 'process.exit(0)'",
+      "--checker-command",
+      'node -e \'require("fs").writeFileSync("checker-edit.txt", "bad\\n")\''
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-checker-mutation/evidence.json"), "utf8"));
+  const events = await readFile(join(root, "loops/project-controller/runs/run-ap-checker-mutation/events.jsonl"), "utf8");
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-mutated-worktree");
+  assert.equal(evidence.status, "checker-mutated-worktree");
+  assert.equal(evidence.findings[0].summary, "Checker mutated the worktree in verdict-only mode.");
+  assert.deepEqual(evidence.findings[0].files, ["checker-edit.txt"]);
+  assert.match(events, /checker\.mutation-blocked/);
 });
 
 test("runner reads stage-specific command configuration from env", async () => {
@@ -678,7 +762,7 @@ async function createGitFixture(prefix) {
   return { root, worktreePath };
 }
 
-function makeGoalContract() {
+function makeGoalContract(overrides = {}) {
   return {
     statement: "Complete the durable contract handoff.",
     stopCondition: "Stop when runner prompts and evidence contain the contract.",
@@ -713,7 +797,7 @@ function makeGoalContract() {
       maxRepairAttempts: 2,
       tokenBudget: "Stay inside the current window.",
       timeBudget: "One focused run.",
-      allowedPaths: "packages/loop-store/**, scripts/**",
+      allowedPaths: overrides.allowedPaths ?? "packages/loop-store/**, scripts/**, maker-output.txt, repair.log, pr.txt",
       externalActionPolicy: "human-gated"
     }
   };
