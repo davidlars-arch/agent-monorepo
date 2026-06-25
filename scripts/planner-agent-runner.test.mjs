@@ -131,7 +131,7 @@ test("runner executes maker and checker commands and records passing evidence", 
       "--maker-command",
       'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
       "--checker-command",
-      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\''
+      checkerPassCommand()
     ],
     { cwd: root, timeout: 20_000 }
   );
@@ -424,8 +424,8 @@ test("runner blocks checker worktree mutation in verdict-only mode", async () =>
   assert.equal(result.status, "blocked");
   assert.equal(result.stage, "checker-mutated-worktree");
   assert.equal(evidence.status, "checker-mutated-worktree");
-  assert.equal(evidence.findings[0].summary, "Checker mutated the worktree in verdict-only mode.");
-  assert.deepEqual(evidence.findings[0].files, ["checker-edit.txt"]);
+  const mutationFinding = evidence.findings.find((finding) => finding.summary === "Checker mutated the worktree in verdict-only mode.");
+  assert.deepEqual(mutationFinding.files, ["checker-edit.txt"]);
   assert.match(events, /checker\.mutation-blocked/);
 });
 
@@ -457,8 +457,8 @@ test("runner blocks checker mutation of existing maker diff", async () => {
 
   assert.equal(result.status, "blocked");
   assert.equal(result.stage, "checker-mutated-worktree");
-  assert.equal(evidence.findings[0].summary, "Checker mutated the worktree in verdict-only mode.");
-  assert.deepEqual(evidence.findings[0].files, ["maker-output.txt"]);
+  const mutationFinding = evidence.findings.find((finding) => finding.summary === "Checker mutated the worktree in verdict-only mode.");
+  assert.deepEqual(mutationFinding.files, ["maker-output.txt"]);
 });
 
 test("runner blocks repair changes outside allowed paths", async () => {
@@ -521,7 +521,7 @@ test("runner reads stage-specific command configuration from env", async () => {
       env: {
         ...process.env,
         ATLAS_MAKER_COMMAND: 'node -e \'require("fs").writeFileSync("maker-output.txt", "env command\\n")\'',
-        ATLAS_CHECKER_COMMAND: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("env command") || process.exit(2)\''
+        ATLAS_CHECKER_COMMAND: checkerPassCommand({ summary: "env command checker accepted maker output." })
       }
     }
   );
@@ -626,7 +626,7 @@ test("runner runs configured PR command after checker satisfaction", async () =>
       "--maker-command",
       'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
       "--checker-command",
-      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      checkerPassCommand(),
       "--pr-command",
       'node -e \'require("fs").writeFileSync("pr.txt", process.env.ATLAS_BRANCH); console.log("https://example.test/pr/20")\''
     ],
@@ -665,7 +665,7 @@ test("runner blocks when configured PR command fails", async () => {
       "--maker-command",
       'node -e \'require("fs").writeFileSync("maker-output.txt", "done\\n")\'',
       "--checker-command",
-      'node -e \'require("fs").existsSync("maker-output.txt") || process.exit(2)\'',
+      checkerPassCommand(),
       "--pr-command",
       "node -e 'process.exit(5)'"
     ],
@@ -711,7 +711,7 @@ test("runner resumes an existing handoff without recreating the worktree", async
       "--maker-command",
       'node -e \'require("fs").writeFileSync("maker-output.txt", "resumed\\n")\'',
       "--checker-command",
-      'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("resumed") || process.exit(4)\''
+      checkerPassCommand({ summary: "Resume checker accepted maker output." })
     ],
     { cwd: root, timeout: 20_000 }
   );
@@ -755,7 +755,7 @@ test("runner resume uses commands saved in runner state", async () => {
       {
         ...state,
         makerCommand: 'node -e \'require("fs").writeFileSync("maker-output.txt", "state command\\n")\'',
-        checkerCommand: 'node -e \'require("fs").readFileSync("maker-output.txt", "utf8").includes("state command") || process.exit(4)\'',
+        checkerCommand: checkerPassCommand({ summary: "Saved checker accepted maker output." }),
         prCommand: 'node -e \'console.log("state-pr-ready")\''
       },
       null,
@@ -874,13 +874,122 @@ test("runner adapter uses stage env vars and records structured checker findings
   assert.equal(evidence.findings[0].file, "maker-output.txt");
 });
 
+test("runner rejects schema-less checker pass output", async () => {
+  const { root, worktreePath } = await createGitFixture("planner-agent-runner-unversioned-pass-");
+  const agentCommand = [
+    "node -e '",
+    'const fs = require("fs");',
+    'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [], findings: [] })); process.exit(0); }',
+    "process.exit(7);",
+    "'"
+  ].join("");
+
+  const { stdout } = await execFileAsync(
+    "node",
+    [
+      scriptPath,
+      "--ticket",
+      "AP-LEGACY-CHECKER",
+      "--branch",
+      "worktree/ap-legacy-checker-runner-test",
+      "--run-id",
+      "run-ap-legacy-checker",
+      "--worktree-dir",
+      worktreePath,
+      "--agent-command",
+      agentCommand
+    ],
+    { cwd: root, timeout: 20_000 }
+  );
+
+  const result = JSON.parse(stdout);
+  const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs/run-ap-legacy-checker/evidence.json"), "utf8"));
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.stage, "checker-blocked");
+  assert.equal(evidence.events[1].exitCode, 0);
+  assert.equal(evidence.events[1].checkerVerdictValid, false);
+  assert.equal(evidence.events[1].structuredStatus, "passed");
+  assert.match(evidence.findings[0].summary, /atlas-checker-verdict\.v1/);
+});
+
+test("runner rejects incomplete or contradictory checker pass verdicts", async () => {
+  const cases = [
+    {
+      name: "missing-pass",
+      verdict: {
+        schemaVersion: "atlas-checker-verdict.v1",
+        status: "passed",
+        blockingIssues: [],
+        nonBlockingIssues: [],
+        satisfactionLayers: []
+      },
+      expectedValid: false
+    },
+    {
+      name: "false-pass",
+      verdict: {
+        schemaVersion: "atlas-checker-verdict.v1",
+        pass: false,
+        status: "passed",
+        blockingIssues: [],
+        nonBlockingIssues: [],
+        satisfactionLayers: [],
+        summary: "Contradictory checker verdict."
+      },
+      expectedValid: true
+    }
+  ];
+
+  for (const item of cases) {
+    const { root, worktreePath } = await createGitFixture(`planner-agent-runner-${item.name}-`);
+    const agentCommand = [
+      "node -e '",
+      'const fs = require("fs");',
+      'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
+      `if (process.env.ATLAS_STAGE === "checker") { console.log(${JSON.stringify(JSON.stringify(item.verdict))}); process.exit(0); }`,
+      "process.exit(7);",
+      "'"
+    ].join("");
+
+    const runId = `run-ap-${item.name}`;
+    const { stdout } = await execFileAsync(
+      "node",
+      [
+        scriptPath,
+        "--ticket",
+        `AP-${item.name.toUpperCase()}`,
+        "--branch",
+        `worktree/ap-${item.name}-runner-test`,
+        "--run-id",
+        runId,
+        "--worktree-dir",
+        worktreePath,
+        "--agent-command",
+        agentCommand
+      ],
+      { cwd: root, timeout: 20_000 }
+    );
+
+    const result = JSON.parse(stdout);
+    const evidence = JSON.parse(await readFile(join(root, "loops/project-controller/runs", runId, "evidence.json"), "utf8"));
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.stage, "checker-blocked");
+    assert.equal(evidence.events[1].checkerVerdictValid, item.expectedValid);
+    assert.equal(evidence.events[1].structuredStatus, "passed");
+    assert.equal(evidence.status, "checker-blocked");
+  }
+});
+
 test("runner records structured checker satisfaction layer proof", async () => {
   const { root, worktreePath } = await createGitFixture("planner-agent-runner-layer-proof-");
   const agentCommand = [
     "node -e '",
     'const fs = require("fs");',
     'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
-    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }, { layerId: "runner-proof", label: "Runner proof", status: "satisfied", proof: ["Evidence contains layer proof."], missing: [] }], findings: [] })); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ schemaVersion: "atlas-checker-verdict.v1", runId: process.env.ATLAS_RUN_ID, ticketId: process.env.ATLAS_TICKET_ID, pass: true, status: "passed", blockingIssues: [], nonBlockingIssues: [], evidenceReviewed: ["handoff.json", "goal-contract.json", "evidence.json"], recommendedNextAction: "human-review", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "satisfied", proof: ["Queue contains goalContract."], missing: [] }, { layerId: "runner-proof", label: "Runner proof", status: "satisfied", proof: ["Evidence contains layer proof."], missing: [] }], summary: "Checker accepted layer proof." })); process.exit(0); }',
     "process.exit(7);",
     "'"
   ].join("");
@@ -920,7 +1029,7 @@ test("runner blocks when checker layer proof is missing or blocked", async () =>
     "node -e '",
     'const fs = require("fs");',
     'if (process.env.ATLAS_STAGE === "maker") { fs.writeFileSync("maker-output.txt", "agent done\\n"); process.exit(0); }',
-    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ status: "passed", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "blocked", proof: [], missing: ["Queue evidence missing"] }], findings: [] })); process.exit(0); }',
+    'if (process.env.ATLAS_STAGE === "checker") { console.log(JSON.stringify({ schemaVersion: "atlas-checker-verdict.v1", runId: process.env.ATLAS_RUN_ID, ticketId: process.env.ATLAS_TICKET_ID, pass: true, status: "passed", blockingIssues: [], nonBlockingIssues: [], evidenceReviewed: ["handoff.json", "goal-contract.json", "evidence.json"], recommendedNextAction: "human-review", satisfactionLayers: [{ layerId: "queue-preservation", label: "Queue preservation", status: "blocked", proof: [], missing: ["Queue evidence missing"] }], summary: "Checker found missing layer proof." })); process.exit(0); }',
     "process.exit(7);",
     "'"
   ].join("");
@@ -975,6 +1084,26 @@ async function createGitFixture(prefix) {
 async function writeExecutable(path, content) {
   await writeFile(path, content);
   await chmod(path, 0o755);
+}
+
+function checkerPassCommand({ layers = [], summary = "Checker accepted maker output." } = {}) {
+  return [
+    "node -e '",
+    "console.log(JSON.stringify({",
+    'schemaVersion: "atlas-checker-verdict.v1",',
+    "runId: process.env.ATLAS_RUN_ID,",
+    "ticketId: process.env.ATLAS_TICKET_ID,",
+    "pass: true,",
+    'status: "passed",',
+    "blockingIssues: [],",
+    "nonBlockingIssues: [],",
+    'evidenceReviewed: ["handoff.json", "goal-contract.json", "evidence.json"],',
+    'recommendedNextAction: "human-review",',
+    `satisfactionLayers: ${JSON.stringify(layers)},`,
+    `summary: ${JSON.stringify(summary)}`,
+    "}))",
+    "'"
+  ].join("");
 }
 
 function makeGoalContract(overrides = {}) {

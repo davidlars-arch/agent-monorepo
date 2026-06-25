@@ -670,13 +670,25 @@ function resolveStageCommand(stage, plan) {
 }
 
 function isCommandPassed(event) {
+  if (event.stage === "checker") {
+    return (
+      event.exitCode === 0 &&
+      event.checkerVerdictValid === true &&
+      event.structuredStatus === "passed" &&
+      event.structuredPass === true &&
+      !hasBlockerFindings(event)
+    );
+  }
+
   return event.exitCode === 0 && !hasBlockerFindings(event);
 }
 
 function hasBlockerFindings(event) {
   return Boolean(
-    event.structuredStatus === "blocked" ||
+    (event.stage === "checker" && event.checkerVerdictValid !== true) ||
+      event.structuredStatus === "blocked" ||
       event.structuredStatus === "failed" ||
+      event.structuredPass === false ||
       event.structuredFindings?.some((finding) => finding.severity === "blocker") ||
       hasUnsatisfiedLayerProof(event)
   );
@@ -818,17 +830,36 @@ function parseStructuredCheckerOutput(stage, stdout, stderr) {
 
   const parsed = parseJsonBlock(stdout) ?? parseJsonBlock(stderr);
   if (!parsed) {
-    return {};
+    return {
+      checkerVerdictValid: false,
+      structuredSummary: "Checker did not return atlas-checker-verdict.v1 JSON."
+    };
   }
 
   const findings = Array.isArray(parsed) ? parsed : getCheckerVerdictFindings(parsed);
   const structuredFindings = Array.isArray(findings)
     ? findings.map((finding) => normalizeCheckerFinding(finding)).filter(Boolean)
     : [];
+  const checkerVerdictValid =
+    !Array.isArray(parsed) &&
+    parsed &&
+    typeof parsed === "object" &&
+    parsed.schemaVersion === "atlas-checker-verdict.v1" &&
+    typeof parsed.pass === "boolean";
+  const structuredStatus =
+    typeof parsed.status === "string" ? parsed.status : parsed.pass === true ? "passed" : parsed.pass === false ? "blocked" : undefined;
 
   return {
-    structuredStatus: typeof parsed.status === "string" ? parsed.status : parsed.pass === true ? "passed" : parsed.pass === false ? "blocked" : undefined,
-    structuredSummary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+    checkerVerdictValid,
+    checkerVerdictSchemaVersion: !Array.isArray(parsed) && typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : undefined,
+    structuredPass: !Array.isArray(parsed) && typeof parsed.pass === "boolean" ? parsed.pass : undefined,
+    structuredStatus,
+    structuredSummary:
+      typeof parsed.summary === "string"
+        ? parsed.summary
+        : checkerVerdictValid
+          ? undefined
+          : "Checker output must use schemaVersion atlas-checker-verdict.v1 before it can pass a run.",
     structuredFindings,
     structuredSatisfactionLayers: normalizeLayerProof(parsed.satisfactionLayers ?? parsed.layerProof)
   };
@@ -972,7 +1003,7 @@ function appendEvidenceEvent(plan, event) {
     next.satisfactionLayers = mergeLayerEvidence(next.satisfactionLayers ?? evidence.satisfactionLayers ?? [], event.structuredSatisfactionLayers, event);
   }
 
-  if (hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
+  if (event.exitCode === 0 && hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
     next.findings = [
       ...(next.findings ?? evidence.findings ?? []),
       {

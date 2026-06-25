@@ -244,10 +244,17 @@ scripts/atlas-gh-pr-command.mjs
 Expected handoff files include:
 
 ```text
+handoff.json
 runner-state.json
+goal-contract.json
 maker-prompt.md
 checker-prompt.md
 evidence.json
+events.jsonl
+maker-result.json
+checker-verdict.json
+maker.log
+checker.log
 ```
 
 The runner is intentionally split from the controller. The controller decides
@@ -397,16 +404,16 @@ Its stop condition is:
 Stop after evidence proves claim/start/review wiring or records a concrete blocker.
 ```
 
-At the time this README was written, the system had enough machinery to claim a
-run and produce a runner command. The remaining proof point is a completed runner
-handoff with evidence under:
+The runner proof path is covered by committed tests and a sanitized proof summary.
+Live handoff evidence is still written under:
 
 ```text
 loops/project-controller/runs/<run-id>/
 ```
 
-That means the project is at "real control plane with unproven full execution,"
-not "fully autonomous loop runner."
+That directory remains ignored runtime state. The durable review artifact is
+`docs/atlas-openclaw-checker-proof.md`, plus the runner and wrapper regression
+tests.
 
 ## Important Markdown Files
 
@@ -529,4 +536,3 @@ The valuable thing is not that an agent can run forever. The valuable thing is
 that every run has a contract, a scope, a budget, a checker, evidence, and a
 human gate. If those pieces stay visible, loops can become useful engineering
 infrastructure instead of a very expensive way to create mystery code.
-

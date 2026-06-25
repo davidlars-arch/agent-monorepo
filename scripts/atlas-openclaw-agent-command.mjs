@@ -224,7 +224,15 @@ function escapeLiteralNewlinesInJsonStrings(value) {
 
 function toRunnerCheckerPayload(verdict) {
   return {
+    schemaVersion: verdict.schemaVersion,
+    runId: verdict.runId,
+    ticketId: verdict.ticketId,
+    pass: verdict.pass,
     status: verdict.status,
+    blockingIssues: verdict.blockingIssues,
+    nonBlockingIssues: verdict.nonBlockingIssues,
+    evidenceReviewed: verdict.evidenceReviewed,
+    recommendedNextAction: verdict.recommendedNextAction,
     summary: verdict.summary,
     findings: [
       ...verdict.blockingIssues.map((issue) => ({ severity: "blocker", ...issue })),
