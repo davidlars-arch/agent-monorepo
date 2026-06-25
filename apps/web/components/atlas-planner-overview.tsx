@@ -1,259 +1,271 @@
 "use client";
 
 import {
-  getDefaultDateRange,
-  getLoopGoalSummary,
-  getLoopPlannerCommand,
-  getUsageMetrics,
-  type LoopKanbanProject,
-  type PlannerDateFilter,
-  type UsageStatusSnapshot
-} from "@agent/atlas-planner";
-import type {
-  ControllerLockSummary,
-  ControllerMemorySummary,
-  CurrentLoopRunSummary,
-  CurrentRunRecoveryStatus,
-  QueuedGoalSummary,
-  RunnerEvidenceSummary,
-  RunnerStateSummary
-} from "@agent/loop-store";
-import {
-  CircleHelp,
-  GitCommitHorizontal,
+  CheckCircle2,
+  ClipboardCheck,
   ListChecks,
   Maximize2,
   Minimize2,
-  PlayCircle,
+  Play,
+  Plus,
   RefreshCw,
-  ShieldCheck,
+  Sparkles,
   Target,
   X
 } from "lucide-react";
-import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
-import { ActivityDashboard } from "./atlas-planner/activity-dashboard";
-import { AtlasRunFlow } from "./atlas-planner/atlas-run-flow";
-import { GoalComposer } from "./atlas-planner/goal-composer";
-import { KanbanBoard } from "./atlas-planner/kanban-board";
-import { LoopReliabilityPanel } from "./atlas-planner/loop-reliability-panel";
-import { loopSummaries } from "./atlas-planner/overview-data";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getFirstLoopReadiness,
-  getPlannerNextActionState,
-  type PlannerNextActionKind
-} from "./atlas-planner/planner-next-action";
-import { TicketEditor } from "./atlas-planner/ticket-editor";
-import { useAtlasGoals } from "./atlas-planner/use-atlas-goals";
-import { usePlannerTickets } from "./atlas-planner/use-planner-tickets";
+  getKanbanColumns,
+  plannerTicketStorageKey,
+  type KanbanTicket,
+  type LoopKanbanProject,
+  type LoopTicketStatus,
+  type PlannerSubtask
+} from "@agent/atlas-planner";
+import { AtlasRunFlow } from "./atlas-planner/atlas-run-flow";
 
-const selectedBoardStorageKey = "atlas-planner:selected-board:v1";
+const demoEventsStorageKey = "atlas-planner:poc-events:v1";
+const plannerThemeStorageKey = "atlas-planner:poc-theme:v1";
+const defaultGoal =
+  "Build a planner GUI where a goal is refined into testable actions, split into subtasks, and shown moving live across a Kanban board while the loop works.";
 
-function formatRelativeUsageTime(timestamp: string | undefined, now: number) {
-  if (!timestamp) {
-    return "Updated unknown";
-  }
+type POCEvent = {
+  id: string;
+  message: string;
+  at: string;
+};
 
-  const recordedAt = new Date(timestamp).getTime();
-  if (!Number.isFinite(recordedAt)) {
-    return "Updated unknown";
-  }
-
-  const diffSeconds = Math.max(0, Math.floor((now - recordedAt) / 1000));
-  if (diffSeconds < 45) {
-    return "Updated just now";
-  }
-
-  const diffMinutes = Math.round(diffSeconds / 60);
-  if (diffMinutes < 60) {
-    return `Updated ${diffMinutes} min ago`;
-  }
-
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 48) {
-    return `Updated ${diffHours} hr ago`;
-  }
-
-  const diffDays = Math.round(diffHours / 24);
-  return `Updated ${diffDays} d ago`;
-}
+type RunnerStage = "idle" | "refining" | "working" | "reviewing" | "done";
+type PlannerTheme = "classic" | "nebula";
 
 export function AtlasPlannerOverview({
-  usageStatus,
   loopKanban,
-  queuedGoals,
-  currentLoopRun,
-  currentRunnerState,
-  currentRunnerEvidence,
-  controllerLock,
-  currentRunRecovery,
-  controllerMemory,
   currentCommit,
   initialGoalComposerOpen = false,
   showExplainer,
   onToggleExplainer,
   onClose
 }: {
-  usageStatus?: UsageStatusSnapshot | null;
+  usageStatus?: unknown;
   loopKanban: LoopKanbanProject[];
-  queuedGoals?: QueuedGoalSummary[];
-  currentLoopRun?: CurrentLoopRunSummary | null;
-  currentRunnerState?: RunnerStateSummary | null;
-  currentRunnerEvidence?: RunnerEvidenceSummary | null;
-  controllerLock?: ControllerLockSummary | null;
-  currentRunRecovery?: CurrentRunRecoveryStatus | null;
-  controllerMemory?: ControllerMemorySummary | null;
+  queuedGoals?: unknown[];
+  currentLoopRun?: unknown;
+  currentRunnerState?: unknown;
+  currentRunnerEvidence?: unknown;
+  controllerLock?: unknown;
+  currentRunRecovery?: unknown;
+  controllerMemory?: unknown;
   currentCommit: string;
   initialGoalComposerOpen?: boolean;
   showExplainer: boolean;
   onToggleExplainer: () => void;
   onClose: () => void;
 }) {
-  const [latestUsageStatus, setLatestUsageStatus] = useState<UsageStatusSnapshot | null>(usageStatus ?? null);
-  const [usageClock, setUsageClock] = useState(() => Date.now());
-  const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
-  const usageMetrics = latestUsageStatus ? getUsageMetrics(latestUsageStatus) : [];
-  const [isActivityDashboardOpen, setIsActivityDashboardOpen] = useState(false);
-  const [activityDateFilter, setActivityDateFilter] = useState<PlannerDateFilter>("updated");
-  const [activityDateRange, setActivityDateRange] = useState(getDefaultDateRange);
-  const [selectedProjectId, setSelectedProjectId] = useState(() => getDefaultSelectedProjectId(loopKanban));
-  const [hasLoadedStoredBoard, setHasLoadedStoredBoard] = useState(false);
+  const [goal, setGoal] = useState(defaultGoal);
+  const [tickets, setTickets] = useState<KanbanTicket[]>([]);
+  const [events, setEvents] = useState<POCEvent[]>([]);
+  const [runnerStage, setRunnerStage] = useState<RunnerStage>(initialGoalComposerOpen ? "refining" : "idle");
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<LoopTicketStatus | null>(null);
   const [isPanelFullscreen, setIsPanelFullscreen] = useState(false);
-  const activeSelectedProjectId =
-    selectedProjectId === "all" || loopKanban.some((project) => project.id === selectedProjectId)
-      ? selectedProjectId
-      : getDefaultSelectedProjectId(loopKanban);
-  const selectedProject = loopKanban.find((project) => project.id === activeSelectedProjectId);
-  const selectedPlannerProjectId = activeSelectedProjectId === "all" ? undefined : activeSelectedProjectId;
-  const {
-    visiblePlannerTickets,
-    kanbanColumns,
-    editingTicket,
-    isTicketEditorClosing,
-    draggingTicketId,
-    dragOverStatus,
-    plannerImportInputRef,
-    plannerStateMessage,
-    setDragOverStatus,
-    setPlannerStateMessage,
-    addPlannerTicket,
-    openNewTicket,
-    closeTicketEditor,
-    updateEditingTicket,
-    saveEditingTicket,
-    deleteEditingTicket,
-    addSubtask,
-    updateSubtask,
-    removeSubtask,
-    exportPlannerState,
-    importPlannerState,
-    resetPlannerState,
-    handleColumnDragOver,
-    handleColumnDragLeave,
-    handleDrop,
-    handleTicketClick,
-    handleTicketDragStart,
-    handleTicketDragEnd
-  } = usePlannerTickets({
-    loopKanban,
-    selectedProjectId: activeSelectedProjectId,
-    currentCommit,
-    usageStatus: latestUsageStatus,
-    currentLoopRun,
-    currentRunnerState
-  });
-  const {
-    durableQueuedGoals,
-    isGoalComposerOpen,
-    goalDraft,
-    openGoalComposer,
-    closeGoalComposer,
-    updateGoalDraft,
-    updateGoalSafety,
-    addGoalLayer,
-    updateGoalLayer,
-    removeGoalLayer,
-    addVerificationCommand,
-    updateVerificationCommand,
-    removeVerificationCommand,
-    saveGoalDraft,
-    updateQueuedGoalLifecycle
-  } = useAtlasGoals({
-    loopKanban,
-    selectedProjectId: activeSelectedProjectId,
-    queuedGoals,
-    initialGoalComposerOpen,
-    addPlannerTicket,
-    setPlannerStateMessage
-  });
-  const loopPlannerCommand = getLoopPlannerCommand(loopKanban, latestUsageStatus, {
-    preferredProjectId: selectedPlannerProjectId ?? null,
-    strictPreferredProject: Boolean(selectedPlannerProjectId)
-  });
-  const loopGoalSummary = getLoopGoalSummary(loopKanban, selectedPlannerProjectId ?? "atlas-planner");
-  const visibleQueuedGoals = getVisibleQueuedGoals(durableQueuedGoals, activeSelectedProjectId);
-  const boardLabel = activeSelectedProjectId === "all" ? "All repos" : (selectedProject?.label ?? "Unknown repo");
-  const approvedGoalCount = visibleQueuedGoals.filter(isClaimableQueuedGoal).length;
-  const nextAction = getPlannerNextActionState({
-    approvedGoalCount,
-    currentLoopRun,
-    currentRunnerState,
-    visibleTicketCount: visiblePlannerTickets.length
-  });
-  const firstLoopReadiness = getFirstLoopReadiness({
-    approvedGoalCount,
-    currentLoopRun,
-    currentRunnerState,
-    hasUsageStatus: Boolean(latestUsageStatus),
-    visibleTicketCount: visiblePlannerTickets.length
-  });
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<PlannerTheme>("classic");
+  const [hasLoadedLocalState, setHasLoadedLocalState] = useState(false);
+  const runTimersRef = useRef<number[]>([]);
+  const columns = useMemo(() => getKanbanColumns(tickets, null), [tickets]);
+  const activeTicket = tickets.find((ticket) => ticket.id === activeTicketId);
+  const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId) ?? activeTicket ?? tickets[0];
+  const completedCount = tickets.filter((ticket) => ticket.status === "done").length;
+  const isRunning = runnerStage !== "idle" && runnerStage !== "done";
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      return;
-    }
-    if (hasLoadedStoredBoard) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      const storedProjectId = window.localStorage.getItem(selectedBoardStorageKey);
-      if (storedProjectId === "all" || loopKanban.some((project) => project.id === storedProjectId)) {
-        setSelectedProjectId(storedProjectId ?? "all");
+      try {
+        const storedTickets = window.localStorage.getItem(plannerTicketStorageKey);
+        const storedEvents = window.localStorage.getItem(demoEventsStorageKey);
+        if (storedTickets) {
+          setTickets(JSON.parse(storedTickets) as KanbanTicket[]);
+        }
+        if (storedEvents) {
+          setEvents(JSON.parse(storedEvents) as POCEvent[]);
+        }
+        const storedTheme = window.localStorage.getItem(plannerThemeStorageKey);
+        if (storedTheme === "classic" || storedTheme === "nebula") {
+          setTheme(storedTheme);
+        }
+      } catch {
+        setTickets([]);
+        setEvents([]);
+      } finally {
+        setHasLoadedLocalState(true);
       }
-      setHasLoadedStoredBoard(true);
     }, 0);
+
     return () => window.clearTimeout(timeoutId);
-  }, [hasLoadedStoredBoard, loopKanban]);
+  }, []);
 
   useEffect(() => {
+    if (!hasLoadedLocalState || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(plannerTicketStorageKey, JSON.stringify(tickets));
+  }, [hasLoadedLocalState, tickets]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalState || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(demoEventsStorageKey, JSON.stringify(events.slice(0, 20)));
+  }, [events, hasLoadedLocalState]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalState || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(plannerThemeStorageKey, theme);
+  }, [hasLoadedLocalState, theme]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of runTimersRef.current) {
+        window.clearTimeout(timerId);
+      }
+      runTimersRef.current = [];
+    };
+  }, []);
+
+  function refineGoal() {
+    clearRunTimers();
+    const nextTickets = buildGoalTickets(goal, loopKanban, currentCommit);
+    setTickets(nextTickets);
+    setRunnerStage("refining");
+    setActiveTicketId(nextTickets[0]?.id ?? null);
+    setSelectedTicketId(nextTickets[0]?.id ?? null);
+    pushEvent(`Refined goal into ${nextTickets.length} testable action tickets.`);
+  }
+
+  function startRun() {
+    const seedTickets = tickets.length > 0 ? tickets : buildGoalTickets(goal, loopKanban, currentCommit);
+    clearRunTimers();
+    setTickets(seedTickets.map((ticket) => ({ ...ticket, status: "backlog" })));
+    setRunnerStage("working");
+    setActiveTicketId(seedTickets[0]?.id ?? null);
+    setSelectedTicketId(seedTickets[0]?.id ?? null);
+    pushEvent("Started demo loop. Cards will move through In progress, Review, and Done.");
+
+    seedTickets.forEach((ticket, index) => {
+      const offset = index * 3_600;
+      schedule(offset, () => {
+        setRunnerStage("working");
+        setActiveTicketId(ticket.id);
+        moveTicket(ticket.id, "in-progress", 1);
+        pushEvent(`${ticket.id} started.`);
+      });
+      schedule(offset + 1_200, () => {
+        updateTicketSubtasks(ticket.id, 2);
+        pushEvent(`${ticket.id} subtasks updated.`);
+      });
+      schedule(offset + 2_300, () => {
+        setRunnerStage("reviewing");
+        moveTicket(ticket.id, "review", 3);
+        pushEvent(`${ticket.id} moved to review.`);
+      });
+      schedule(offset + 3_300, () => {
+        moveTicket(ticket.id, "done", Number.POSITIVE_INFINITY);
+        pushEvent(`${ticket.id} satisfied with evidence.`);
+      });
+    });
+
+    schedule(seedTickets.length * 3_600 + 250, () => {
+      setRunnerStage("done");
+      setActiveTicketId(null);
+      pushEvent("Loop finished. The goal is now represented as completed, testable slices.");
+    });
+  }
+
+  function resetBoard() {
+    clearRunTimers();
+    setTickets([]);
+    setEvents([]);
+    setRunnerStage("idle");
+    setActiveTicketId(null);
+    setSelectedTicketId(null);
+  }
+
+  function schedule(delay: number, action: () => void) {
     if (typeof window === "undefined") {
       return;
     }
-    if (!hasLoadedStoredBoard) {
-      return;
-    }
-    window.localStorage.setItem(selectedBoardStorageKey, activeSelectedProjectId);
-  }, [activeSelectedProjectId, hasLoadedStoredBoard]);
-
-  async function refreshUsageStatus() {
-    setIsUsageRefreshing(true);
-    try {
-      const response = await fetch("/api/usage-status", { cache: "no-store" });
-      if (!response.ok) {
-        return;
-      }
-
-      const nextUsageStatus = (await response.json()) as UsageStatusSnapshot | null;
-      setLatestUsageStatus(nextUsageStatus);
-      setUsageClock(Date.now());
-    } catch {
-      // Keep the latest known snapshot visible if the local status file is temporarily unavailable.
-    } finally {
-      setIsUsageRefreshing(false);
-    }
+    const id = window.setTimeout(action, delay);
+    runTimersRef.current.push(id);
   }
 
+  function clearRunTimers() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    for (const timerId of runTimersRef.current) {
+      window.clearTimeout(timerId);
+    }
+    runTimersRef.current = [];
+  }
+
+  function pushEvent(message: string) {
+    const now = new Date().toISOString();
+    setEvents((current) => [{ id: `${Date.now()}-${Math.random()}`, message, at: now }, ...current].slice(0, 20));
+  }
+
+  function moveTicket(ticketId: string, status: LoopTicketStatus, doneSubtasks: number) {
+    const now = new Date().toISOString();
+    setTickets((current) =>
+      current.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+        return {
+          ...ticket,
+          status,
+          updatedAt: now,
+          movedAt: now,
+          completedAt: status === "done" ? now : undefined,
+          completedCommit: status === "done" ? currentCommit : undefined,
+          subtasks: completeSubtasks(ticket.subtasks, doneSubtasks)
+        };
+      })
+    );
+  }
+
+  function updateTicketSubtasks(ticketId: string, doneSubtasks: number) {
+    const now = new Date().toISOString();
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              updatedAt: now,
+              subtasks: completeSubtasks(ticket.subtasks, doneSubtasks)
+            }
+          : ticket
+      )
+    );
+  }
+
+  function handleDrop(status: LoopTicketStatus) {
+    if (draggingTicketId) {
+      moveTicket(draggingTicketId, status, 0);
+      pushEvent(`${draggingTicketId} manually moved to ${status}.`);
+    }
+    setDraggingTicketId(null);
+    setDragOverStatus(null);
+  }
 
   return (
     <div
@@ -263,7 +275,7 @@ export function AtlasPlannerOverview({
       aria-labelledby="loop-overview-title"
     >
       <button type="button" className="loop-overlay__scrim" aria-label="Close loop overview" onClick={onClose} />
-      <section className={`loop-panel ${isPanelFullscreen ? "loop-panel--fullscreen" : ""}`}>
+      <section className={`loop-panel atlas-poc atlas-poc--${theme} ${isPanelFullscreen ? "loop-panel--fullscreen" : ""}`}>
         <header className="loop-panel__header">
           <button
             type="button"
@@ -275,27 +287,27 @@ export function AtlasPlannerOverview({
             {isPanelFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
           <div className="loop-panel__title">
-            <p>Agentic workflow orchestration</p>
+            <p>Live goal planner POC</p>
             <h2 id="loop-overview-title">Atlas Planner</h2>
-            <span>
-              Turns approved goals into scoped, verified, review-gated repo changes with durable state and evidence.
-            </span>
+            <span>Set a goal, refine it into testable slices, then watch the loop move cards live.</span>
           </div>
-          <label className="loop-project-selector">
-            <span>Board</span>
-            <select value={activeSelectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
-              <option value="all">All repos</option>
-              {loopKanban.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="loop-panel__actions">
+            <button
+              type="button"
+              className="atlas-poc__theme-toggle"
+              role="switch"
+              aria-checked={theme === "nebula"}
+              aria-label={`Switch to ${theme === "nebula" ? "Classic" : "Nebula"} theme`}
+              onClick={() => setTheme((current) => (current === "nebula" ? "classic" : "nebula"))}
+            >
+              <span className="atlas-poc__theme-toggle-track" aria-hidden="true">
+                <span className="atlas-poc__theme-toggle-thumb" />
+              </span>
+              <span className="atlas-poc__theme-toggle-text">{theme === "nebula" ? "Nebula" : "Classic"}</span>
+            </button>
             <button type="button" className="loop-help-button" onClick={onToggleExplainer}>
-              <CircleHelp size={16} />
-              {showExplainer ? "Planner board" : "How it works"}
+              <ListChecks size={16} />
+              {showExplainer ? "Planner board" : "Flow"}
             </button>
             <button type="button" className="loop-close-button" aria-label="Close loop overview" onClick={onClose}>
               <X size={18} />
@@ -309,290 +321,242 @@ export function AtlasPlannerOverview({
               <AtlasRunFlow />
             </section>
           ) : (
-            <>
-
-              <section className="atlas-planner-purpose" aria-label="Atlas Planner purpose">
-            <div>
-              <p>What this is</p>
-              <strong>Orchestrate approved goals into scoped, verified, review-gated repo changes.</strong>
-              <span>
-                Tickets shape the work backlog. Goals are execution contracts the orchestrator can claim. Current run is
-                the single active workflow with branch, worktree, runner state, checks, evidence, and review.
-              </span>
-            </div>
-            <ol aria-label="Planner workflow">
-              <li>Ticket</li>
-              <li>Goal</li>
-              <li>Queue</li>
-              <li>Current run</li>
-              <li>Evidence</li>
-              <li>Review</li>
-            </ol>
-          </section>
-
-          <section className="atlas-next-action" aria-label="Planner next action">
-            <div className="atlas-next-action__summary">
-              <PlannerNextActionIcon kind={nextAction.kind} />
-              <div>
-                <p>Next safe action</p>
-                <strong>{nextAction.label}</strong>
-                <span>{nextAction.detail}</span>
-              </div>
-            </div>
-            <dl>
-              <div>
-                <dt>Board</dt>
-                <dd>{boardLabel}</dd>
-              </div>
-              <div>
-                <dt>Tickets</dt>
-                <dd>{visiblePlannerTickets.length} visible</dd>
-              </div>
-              <div>
-                <dt>Approved goals</dt>
-                <dd>{approvedGoalCount}</dd>
-              </div>
-              <div>
-                <dt>Run</dt>
-                <dd>{currentLoopRun ? currentLoopRun.stage : "idle"}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="atlas-loop-readiness" aria-label="First loop setup readiness">
-            <div>
-              <p>First loop setup</p>
-              <strong>{firstLoopReadiness.percent}% ready</strong>
-              <span>{firstLoopReadiness.summary}</span>
-            </div>
-            <ol>
-              {firstLoopReadiness.steps.map((step) => (
-                <li key={step.label} className={step.done ? "is-done" : ""}>
-                  <span>{step.done ? "Ready" : "Needed"}</span>
-                  <strong>{step.label}</strong>
-                  <small>{step.detail}</small>
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="loop-usage" aria-label="Latest usage status">
-            <div className="loop-usage__heading">
-              <div>
-                <ListChecks size={16} />
-                <h3>Token runway</h3>
-              </div>
-              <button
-                type="button"
-                className="loop-usage__refresh"
-                onClick={refreshUsageStatus}
-                disabled={isUsageRefreshing}
-                aria-label="Refresh token runway"
-              >
-                <RefreshCw size={14} />
-                <span>{isUsageRefreshing ? "Refreshing" : "Refresh"}</span>
-              </button>
-            </div>
-            {latestUsageStatus ? (
-              <>
-                <div className="usage-meta" aria-label="Usage snapshot metadata">
-                  <div className="usage-snapshot">
-                    <span>Model</span>
-                    <strong>{latestUsageStatus.model}</strong>
+            <div className="atlas-poc__workspace">
+              <section className="atlas-poc__control">
+                <div className="atlas-poc__goal">
+                  <div>
+                    <p>Goal</p>
+                    <h3>Describe what the loop should build</h3>
                   </div>
-                  <div className="usage-snapshot usage-snapshot--date">
-                    <span>Updated</span>
-                    <strong>{formatRelativeUsageTime(latestUsageStatus.recordedAt, usageClock)}</strong>
+                  <textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows={5} />
+                  <div className="atlas-poc__actions">
+                    <button type="button" onClick={refineGoal}>
+                      <Sparkles size={16} />
+                      Refine goal
+                    </button>
+                    <button type="button" onClick={startRun} disabled={isRunning}>
+                      <Play size={16} />
+                      {isRunning ? "Running" : "Start live run"}
+                    </button>
+                    <button type="button" onClick={resetBoard}>
+                      <RefreshCw size={16} />
+                      Reset
+                    </button>
                   </div>
                 </div>
-                <div className="usage-dashboard">
-                  {usageMetrics.map((metric) => (
-                    <article key={metric.label} className={`usage-card usage-card--${metric.tone}`}>
-                      <div className="usage-card__header">
-                        <span className="usage-card__badge" aria-hidden="true">
-                          {metric.label.slice(0, 1)}
-                        </span>
-                        <div>
-                          <span>{metric.label}</span>
-                          <strong>{metric.percentLeft === undefined ? metric.detail : metric.value}</strong>
-                        </div>
+
+                <div className="atlas-poc__status" aria-label="Current loop status">
+                  <article>
+                    <Target size={18} />
+                    <span>Stage</span>
+                    <strong>{getRunnerStageLabel(runnerStage)}</strong>
+                  </article>
+                  <article>
+                    <ClipboardCheck size={18} />
+                    <span>Tickets</span>
+                    <strong>
+                      {completedCount}/{tickets.length}
+                    </strong>
+                  </article>
+                  <article>
+                    <CheckCircle2 size={18} />
+                    <span>Active</span>
+                    <strong>{activeTicket?.id ?? "none"}</strong>
+                  </article>
+                </div>
+
+                <div className="atlas-poc__details">
+                  <div>
+                    <p>Selected ticket</p>
+                    <strong>{selectedTicket ? `${selectedTicket.id}: ${selectedTicket.title}` : "No ticket selected"}</strong>
+                    <span>{selectedTicket?.summary ?? "Refine a goal to create the first testable actions."}</span>
+                  </div>
+                  {selectedTicket ? (
+                    <ol>
+                      {selectedTicket.subtasks.map((subtask) => (
+                        <li key={subtask.id} className={subtask.done ? "is-done" : ""}>
+                          <span>{subtask.done ? "Done" : "Open"}</span>
+                          {subtask.title}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="atlas-poc__board" aria-label="Live Kanban board">
+                <div className="atlas-poc__board-header">
+                  <div>
+                    <p>Kanban board</p>
+                    <h3>Live loop state</h3>
+                  </div>
+                  <button type="button" onClick={refineGoal}>
+                    <Plus size={15} />
+                    Rebuild tickets
+                  </button>
+                </div>
+                <div className="atlas-poc__columns">
+                  {columns.map((column) => (
+                    <article
+                      key={column.id}
+                      className={`atlas-poc__column ${dragOverStatus === column.id ? "is-drop-target" : ""}`}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverStatus(column.id);
+                      }}
+                      onDragLeave={(event) => {
+                        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                          return;
+                        }
+                        setDragOverStatus(null);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        handleDrop(column.id);
+                      }}
+                    >
+                      <div className="atlas-poc__column-heading">
+                        <strong>{column.label}</strong>
+                        <span>{column.tickets.length}</span>
                       </div>
-                      {metric.percentLeft === undefined ? null : (
-                        <div
-                          className="usage-ring"
-                          role="meter"
-                          aria-label={metric.label}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={metric.percentLeft}
-                          style={{ "--usage-percent": `${metric.percentLeft}%` } as CSSProperties}
-                        >
-                          <span>{metric.percentLeft}%</span>
-                        </div>
-                      )}
-                      {metric.percentLeft === undefined ? <p>{metric.value}</p> : null}
-                      <small>{metric.percentLeft === undefined ? "Snapshot from latest status job" : metric.detail}</small>
-                      {metric.percentLeft === undefined ? null : (
-                        <div className="usage-meter" aria-hidden="true">
-                          <span style={{ width: `${metric.percentLeft}%` }} />
-                        </div>
-                      )}
+                      <div className="atlas-poc__cards">
+                        {column.tickets.map((ticket) => (
+                          <button
+                            type="button"
+                            key={ticket.id}
+                            draggable
+                            className={`atlas-poc__card ${ticket.id === activeTicketId ? "is-active" : ""}`}
+                            onClick={() => setSelectedTicketId(ticket.id)}
+                            onDragStart={(event) => {
+                              setDraggingTicketId(ticket.id);
+                              event.dataTransfer.setData("text/plain", ticket.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingTicketId(null);
+                              setDragOverStatus(null);
+                            }}
+                          >
+                            <span>{ticket.id}</span>
+                            <strong>{ticket.title}</strong>
+                            <small>{ticket.summary}</small>
+                            <em>
+                              {ticket.subtasks.filter((subtask) => subtask.done).length}/{ticket.subtasks.length} subtasks
+                            </em>
+                          </button>
+                        ))}
+                        {column.tickets.length === 0 ? <p>No cards</p> : null}
+                      </div>
                     </article>
                   ))}
                 </div>
-              </>
-            ) : (
-              <p>No usage snapshot has been written yet. The scheduled status job will fill this after its first run.</p>
-            )}
-            {latestUsageStatus?.note ? <p className="loop-usage__note">{latestUsageStatus.note}</p> : null}
-          </section>
+              </section>
 
-          <LoopReliabilityPanel
-            loopPlannerCommand={loopPlannerCommand}
-            loopGoalSummary={loopGoalSummary}
-            durableQueuedGoals={visibleQueuedGoals}
-            currentLoopRun={currentLoopRun}
-            currentRunnerState={currentRunnerState}
-            currentRunnerEvidence={currentRunnerEvidence}
-            controllerLock={controllerLock}
-            currentRunRecovery={currentRunRecovery}
-            controllerMemory={controllerMemory}
-            onUpdateQueuedGoalLifecycle={updateQueuedGoalLifecycle}
-          />
-
-          {isActivityDashboardOpen ? (
-            <ActivityDashboard
-              tickets={visiblePlannerTickets}
-              dateFilter={activityDateFilter}
-              dateRange={activityDateRange}
-              onDateFilterChange={setActivityDateFilter}
-              onDateRangeChange={setActivityDateRange}
-              onClose={() => setIsActivityDashboardOpen(false)}
-            />
-          ) : null}
-
-          <KanbanBoard
-            columns={kanbanColumns}
-            selectedProjectLabel={boardLabel}
-            visibleTicketCount={visiblePlannerTickets.length}
-            usageStatus={latestUsageStatus}
-            stateMessage={plannerStateMessage}
-            draggingTicketId={draggingTicketId}
-            dragOverStatus={dragOverStatus}
-            importInputRef={plannerImportInputRef}
-            onOpenActivityDashboard={() => setIsActivityDashboardOpen(true)}
-            onExportPlannerState={exportPlannerState}
-            onImportPlannerState={importPlannerState}
-            onResetPlannerState={resetPlannerState}
-            onOpenGoalComposer={openGoalComposer}
-            onNewTicket={openNewTicket}
-            onColumnDragEnter={setDragOverStatus}
-            onColumnDragOver={handleColumnDragOver}
-            onColumnDragLeave={handleColumnDragLeave}
-            onDrop={handleDrop}
-            onTicketClick={handleTicketClick}
-            onTicketDragStart={handleTicketDragStart}
-            onTicketDragEnd={handleTicketDragEnd}
-          />
-
-          {editingTicket ? (
-            <TicketEditor
-              ticket={editingTicket}
-              isClosing={isTicketEditorClosing}
-              projects={loopKanban}
-              onChange={updateEditingTicket}
-              onSave={saveEditingTicket}
-              onDelete={deleteEditingTicket}
-              onClose={closeTicketEditor}
-              onAddSubtask={addSubtask}
-              onUpdateSubtask={updateSubtask}
-              onRemoveSubtask={removeSubtask}
-            />
-          ) : null}
-
-          {isGoalComposerOpen ? (
-            <GoalComposer
-              draft={goalDraft}
-              onChange={updateGoalDraft}
-              onAddLayer={addGoalLayer}
-              onUpdateLayer={updateGoalLayer}
-              onRemoveLayer={removeGoalLayer}
-              onAddVerificationCommand={addVerificationCommand}
-              onUpdateVerificationCommand={updateVerificationCommand}
-              onRemoveVerificationCommand={removeVerificationCommand}
-              onUpdateSafety={updateGoalSafety}
-              onSave={saveGoalDraft}
-              onClose={closeGoalComposer}
-            />
-          ) : null}
-
-          <section className="loop-summary-grid" aria-label="Loop commit summaries">
-            {loopSummaries.map((loop) => (
-              <article key={loop.id} className={`loop-summary loop-summary--${loop.status}`}>
-                <div className="loop-summary__topline">
-                  <span>{loop.status}</span>
-                  <small>{loop.cadence}</small>
+              <section className="atlas-poc__events" aria-label="Live loop events">
+                <div>
+                  <p>Run log</p>
+                  <strong>Live changes</strong>
                 </div>
-                <h3>{loop.label}</h3>
-                <p>{loop.summary}</p>
-                <dl>
-                  <div>
-                    <dt>
-                      <GitCommitHorizontal size={13} />
-                      Latest commit
-                    </dt>
-                    <dd>{loop.commit}</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <ListChecks size={13} />
-                      Permission
-                    </dt>
-                    <dd>{loop.permission}</dd>
-                  </div>
-                </dl>
-              </article>
-            ))}
-          </section>
-            </>
+                <ol>
+                  {events.length > 0 ? (
+                    events.map((event) => (
+                      <li key={event.id}>
+                        <time>{new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
+                        <span>{event.message}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li>
+                      <time>--:--</time>
+                      <span>Refine a goal or start a run to see planner changes here.</span>
+                    </li>
+                  )}
+                </ol>
+              </section>
+            </div>
           )}
-
         </div>
       </section>
     </div>
   );
 }
 
-function getDefaultSelectedProjectId(projects: LoopKanbanProject[]) {
-  return projects.some((project) => project.id === "atlas-planner") ? "atlas-planner" : (projects[0]?.id ?? "all");
+function buildGoalTickets(goal: string, projects: LoopKanbanProject[], currentCommit: string): KanbanTicket[] {
+  const now = new Date().toISOString();
+  const project = projects.find((candidate) => candidate.id === "atlas-planner") ?? projects[0];
+  const projectId = project?.id ?? "atlas-planner";
+  const projectLabel = project?.label ?? "Atlas Planner";
+  const epic = project?.epics?.find((candidate) => candidate.id === "planner-product") ?? project?.epics?.[0];
+  const normalizedGoal = goal.trim() || defaultGoal;
+  const specs = [
+    {
+      id: "GOAL-1",
+      title: "Refine goal contract",
+      summary: "Turn the rough goal into outcome, scope, stop condition, and acceptance checks.",
+      subtasks: ["Write the outcome in one sentence", "Define stop condition", "List acceptance checks"]
+    },
+    {
+      id: "GOAL-2",
+      title: "Create build subtasks",
+      summary: "Split the goal into small tickets that can be moved, tested, and closed independently.",
+      subtasks: ["Identify UI slices", "Attach testable actions", "Order work by dependency"]
+    },
+    {
+      id: "GOAL-3",
+      title: "Run live Kanban loop",
+      summary: "Move the active ticket through work, review, and done while updating subtask proof.",
+      subtasks: ["Start active ticket", "Update subtask progress", "Move card to review"]
+    },
+    {
+      id: "GOAL-4",
+      title: "Verify visible planner outcome",
+      summary: "Confirm the board shows the completed goal, subtasks, evidence, and latest commit reference.",
+      subtasks: ["Mark checks as satisfied", "Record final event", `Attach commit ${currentCommit}`]
+    }
+  ];
+
+  return specs.map((spec, index) => ({
+    id: spec.id,
+    title: spec.title,
+    status: "backlog",
+    estimate: index === 0 ? 2 : 3,
+    summary: spec.summary,
+    tags: ["goal", "poc", "live-loop"],
+    projectId,
+    projectLabel,
+    epicId: epic?.id ?? "planner-poc",
+    epicLabel: epic?.label ?? "Planner POC",
+    fitLabel: "poc",
+    description: `${normalizedGoal}\n\n${spec.summary}`,
+    subtasks: spec.subtasks.map((title, subtaskIndex) => ({
+      id: `${spec.id}-SUB-${subtaskIndex + 1}`,
+      title,
+      done: false
+    })),
+    createdAt: now,
+    updatedAt: now,
+    movedAt: now
+  }));
 }
 
-function getVisibleQueuedGoals(goals: QueuedGoalSummary[], selectedProjectId: string) {
-  if (selectedProjectId === "all") {
-    return goals;
-  }
-  return goals.filter((goal) => (goal.projectId ?? "atlas-planner") === selectedProjectId);
+function completeSubtasks(subtasks: PlannerSubtask[], doneCount: number) {
+  return subtasks.map((subtask, index) => ({
+    ...subtask,
+    done: index < doneCount
+  }));
 }
 
-function isClaimableQueuedGoal(goal: QueuedGoalSummary) {
-  return (
-    goal.approvedToRun === true &&
-    (goal.lifecycleStatus === "approved" || goal.lifecycleStatus === "running") &&
-    goal.status !== "done" &&
-    goal.status !== "blocked" &&
-    goal.status !== "archived"
-  );
-}
-
-function PlannerNextActionIcon({ kind }: { kind: PlannerNextActionKind }) {
-  if (kind === "review-run") {
-    return <RefreshCw size={18} />;
+function getRunnerStageLabel(stage: RunnerStage) {
+  if (stage === "refining") {
+    return "Refined";
   }
-  if (kind === "create-goal") {
-    return <Target size={18} />;
+  if (stage === "working") {
+    return "Working";
   }
-  if (kind === "create-ticket") {
-    return <ShieldCheck size={18} />;
+  if (stage === "reviewing") {
+    return "Reviewing";
   }
-  return <PlayCircle size={18} />;
+  if (stage === "done") {
+    return "Done";
+  }
+  return "Idle";
 }
