@@ -7,15 +7,20 @@ This branch continues AP-6: Agent worktree runner MVP.
 - `npm run planner:agent-runner -- ...` creates an isolated git worktree for a selected ticket.
 - The runner can execute a maker command, checker command, and optional bounded repair command.
 - The runner can also execute a shared `--agent-command` adapter. The adapter receives stage-specific env vars such as `ATLAS_STAGE`, `ATLAS_PROMPT_PATH`, `ATLAS_HANDOFF_DIR`, `ATLAS_EVIDENCE_PATH`, and `ATLAS_REPAIR_ATTEMPT`.
-- Checker output can be structured JSON. Blocker findings are recorded into `evidence.json` even when the checker process exits `0`.
+- Checker output must be `atlas-checker-verdict.v1` JSON before a checker pass can satisfy a run. Blocker findings are recorded into `evidence.json` even when the checker process exits `0`.
 - Existing handoffs can be resumed with `--resume --handoff-dir ...` so the first command can prepare and later commands can execute without recreating the worktree.
 - The runner writes local handoff files under `loops/project-controller/runs/<run-id>/`:
+  - `handoff.json`
   - `runner-state.json`
+  - `goal-contract.json`
   - `maker-prompt.md`
   - `checker-prompt.md`
   - `evidence.json`
+  - `events.jsonl`
+  - optional `maker-result.json`, `checker-verdict.json`, `maker.log`, `checker.log`, and `diff.patch`
 - `runner-state.json` records the current stage, timeline, repair count, and blocked/satisfied state.
-- `evidence.json` records command checks, outputs, failures, and checker blockers.
+- `evidence.json` records command checks, outputs, failures, checker blockers, layer proof, and artifact hashes.
+- `loops/**/runs/` remains ignored runtime state. Durable review proof belongs in committed docs or sanitized fixtures, not raw local run directories.
 - `npm run loop:projects -- --project atlas-planner --claim-goal` now records the runner branch, worktree, handoff directory, and exact runner command in `current-run.json`.
 - Atlas Planner shows the claimed run's branch, worktree, handoff directory, and runner command in the Current Run panel.
 
@@ -39,8 +44,8 @@ npm run planner:agent-runner -- \
   --ticket AP-DEMO \
   --branch worktree/ap-demo \
   --run-id run-ap-demo \
-  --maker-command 'node -e '"'"'require("fs").writeFileSync("maker-output.txt", "done\n")'"'"'' \
-  --checker-command 'node -e '"'"'require("fs").existsSync("maker-output.txt") || process.exit(2)'"'"''
+  --maker-command 'node scripts/atlas-smoke-maker.mjs' \
+  --checker-command 'node scripts/atlas-smoke-checker.mjs'
 ```
 
 Shared agent adapter demo:
@@ -65,12 +70,16 @@ The command template can use these shell-quoted placeholders:
 - `{runId}`
 - `{repairAttempt}`
 
-Checker agents should print JSON when they block a run:
+Checker agents must print versioned verdict JSON. A checker pass is accepted only when the command exits `0`, `schemaVersion` is `atlas-checker-verdict.v1`, `pass` is `true`, `status` is `passed`, blocker arrays are empty, and required satisfaction layers are satisfied:
 
 ```json
 {
+  "schemaVersion": "atlas-checker-verdict.v1",
+  "runId": "run-ap-demo",
+  "ticketId": "AP-DEMO",
+  "pass": false,
   "status": "blocked",
-  "findings": [
+  "blockingIssues": [
     {
       "severity": "blocker",
       "summary": "The diff is missing verification evidence.",
@@ -78,7 +87,12 @@ Checker agents should print JSON when they block a run:
       "line": 12,
       "recommendation": "Run the focused test and record it in evidence.json."
     }
-  ]
+  ],
+  "nonBlockingIssues": [],
+  "evidenceReviewed": ["handoff.json", "goal-contract.json", "evidence.json"],
+  "recommendedNextAction": "repair-or-human-review",
+  "satisfactionLayers": [],
+  "summary": "Checker blocked the run."
 }
 ```
 

@@ -85,14 +85,7 @@ const verdict = {
 writeFileSync(join(handoffDir, "checker-verdict.json"), `${JSON.stringify(verdict, null, 2)}\n`);
 writeFileSync(join(handoffDir, "checker.log"), `${verdict.summary}\nReviewed: ${reviewedFiles.join(", ")}\n`, { flag: "a" });
 
-console.log(
-  JSON.stringify({
-    status: verdict.status,
-    summary: verdict.summary,
-    findings: blockingIssues,
-    satisfactionLayers
-  })
-);
+console.log(JSON.stringify(verdict));
 
 function requiredEnv(name) {
   const value = process.env[name];

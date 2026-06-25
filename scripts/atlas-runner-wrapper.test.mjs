@@ -40,6 +40,46 @@ exit 0
   );
 });
 
+test("OpenClaw checker wrapper writes structured checker verdict artifacts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "atlas-openclaw-checker-wrapper-"));
+  const bin = join(root, "bin");
+  const handoffDir = join(root, "handoff");
+  await mkdir(bin);
+  await mkdir(handoffDir);
+  await writeExecutable(
+    join(bin, "openclaw"),
+    `#!/bin/sh
+cat <<'JSON'
+{"payloads":[{"text":"ATLAS_CHECKER_JSON_START\\n{\\"schemaVersion\\":\\"atlas-checker-verdict.v1\\",\\"runId\\":\\"run-openclaw-checker\\",\\"ticketId\\":\\"AP-OPENCLAW-CHECKER\\",\\"pass\\":true,\\"status\\":\\"passed\\",\\"blockingIssues\\":[],\\"nonBlockingIssues\\":[],\\"evidenceReviewed\\":[\\"handoff.json\\",\\"goal-contract.json\\",\\"evidence.json\\",\\"maker-result.json\\",\\"maker.log\\"],\\"recommendedNextAction\\":\\"human-review\\",\\"satisfactionLayers\\":[{\\"layerId\\":\\"checker-integration\\",\\"status\\":\\"satisfied\\",\\"proof\\":[\\"OpenClaw produced a structured verdict.\\"],\\"missing\\":[]}],\\"summary\\":\\"OpenClaw checker accepted the deterministic maker output.\\"}\\nATLAS_CHECKER_JSON_END"}]}
+JSON
+exit 0
+`
+  );
+
+  const { stdout } = await execFileAsync("node", [openclawWrapperPath], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}${delimiter}${process.env.PATH}`,
+      ATLAS_STAGE: "checker",
+      ATLAS_RUN_ID: "run-openclaw-checker",
+      ATLAS_TICKET_ID: "AP-OPENCLAW-CHECKER",
+      ATLAS_HANDOFF_DIR: handoffDir,
+      ATLAS_WORKTREE_PATH: root,
+      ATLAS_OPENCLAW_TIMEOUT_SECONDS: "1"
+    }
+  });
+
+  const verdict = JSON.parse(await readFile(join(handoffDir, "checker-verdict.json"), "utf8"));
+  const log = await readFile(join(handoffDir, "checker.log"), "utf8");
+
+  assert.equal(verdict.schemaVersion, "atlas-checker-verdict.v1");
+  assert.equal(verdict.pass, true);
+  assert.equal(verdict.recommendedNextAction, "human-review");
+  assert.match(stdout, /"status":"passed"/);
+  assert.match(log, /OpenClaw checker accepted/);
+});
+
 test("GitHub PR wrapper pushes the runner branch before creating the PR", async () => {
   const root = await mkdtemp(join(tmpdir(), "atlas-gh-pr-wrapper-"));
   const bin = join(root, "bin");

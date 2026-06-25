@@ -670,13 +670,25 @@ function resolveStageCommand(stage, plan) {
 }
 
 function isCommandPassed(event) {
+  if (event.stage === "checker") {
+    return (
+      event.exitCode === 0 &&
+      event.checkerVerdictValid === true &&
+      event.structuredStatus === "passed" &&
+      event.structuredPass === true &&
+      !hasBlockerFindings(event)
+    );
+  }
+
   return event.exitCode === 0 && !hasBlockerFindings(event);
 }
 
 function hasBlockerFindings(event) {
   return Boolean(
-    event.structuredStatus === "blocked" ||
+    (event.stage === "checker" && event.checkerVerdictValid !== true) ||
+      event.structuredStatus === "blocked" ||
       event.structuredStatus === "failed" ||
+      event.structuredPass === false ||
       event.structuredFindings?.some((finding) => finding.severity === "blocker") ||
       hasUnsatisfiedLayerProof(event)
   );
@@ -818,20 +830,50 @@ function parseStructuredCheckerOutput(stage, stdout, stderr) {
 
   const parsed = parseJsonBlock(stdout) ?? parseJsonBlock(stderr);
   if (!parsed) {
-    return {};
+    return {
+      checkerVerdictValid: false,
+      structuredSummary: "Checker did not return atlas-checker-verdict.v1 JSON."
+    };
   }
 
-  const findings = Array.isArray(parsed) ? parsed : parsed.findings;
+  const findings = Array.isArray(parsed) ? parsed : getCheckerVerdictFindings(parsed);
   const structuredFindings = Array.isArray(findings)
     ? findings.map((finding) => normalizeCheckerFinding(finding)).filter(Boolean)
     : [];
+  const checkerVerdictValid =
+    !Array.isArray(parsed) &&
+    parsed &&
+    typeof parsed === "object" &&
+    parsed.schemaVersion === "atlas-checker-verdict.v1" &&
+    typeof parsed.pass === "boolean";
+  const structuredStatus =
+    typeof parsed.status === "string" ? parsed.status : parsed.pass === true ? "passed" : parsed.pass === false ? "blocked" : undefined;
 
   return {
-    structuredStatus: typeof parsed.status === "string" ? parsed.status : undefined,
-    structuredSummary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+    checkerVerdictValid,
+    checkerVerdictSchemaVersion: !Array.isArray(parsed) && typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : undefined,
+    structuredPass: !Array.isArray(parsed) && typeof parsed.pass === "boolean" ? parsed.pass : undefined,
+    structuredStatus,
+    structuredSummary:
+      typeof parsed.summary === "string"
+        ? parsed.summary
+        : checkerVerdictValid
+          ? undefined
+          : "Checker output must use schemaVersion atlas-checker-verdict.v1 before it can pass a run.",
     structuredFindings,
     structuredSatisfactionLayers: normalizeLayerProof(parsed.satisfactionLayers ?? parsed.layerProof)
   };
+}
+
+function getCheckerVerdictFindings(parsed) {
+  if (Array.isArray(parsed.findings)) {
+    return parsed.findings;
+  }
+
+  return [
+    ...(Array.isArray(parsed.blockingIssues) ? parsed.blockingIssues.map((issue) => ({ severity: "blocker", ...issue })) : []),
+    ...(Array.isArray(parsed.nonBlockingIssues) ? parsed.nonBlockingIssues.map((issue) => ({ severity: issue.severity || "warning", ...issue })) : [])
+  ];
 }
 
 function parseJsonBlock(output) {
@@ -961,7 +1003,7 @@ function appendEvidenceEvent(plan, event) {
     next.satisfactionLayers = mergeLayerEvidence(next.satisfactionLayers ?? evidence.satisfactionLayers ?? [], event.structuredSatisfactionLayers, event);
   }
 
-  if (hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
+  if (event.exitCode === 0 && hasBlockerFindings(event) && !event.structuredFindings?.some((finding) => finding.severity === "blocker")) {
     next.findings = [
       ...(next.findings ?? evidence.findings ?? []),
       {
@@ -1271,11 +1313,20 @@ Review the maker diff and verification evidence. Record blocker findings before 
 
 ${contract}
 
-If you find blockers, print structured JSON to stdout so the runner can record it:
+Print structured JSON to stdout so the runner can record it. OpenClaw checker adapters must wrap this object between
+\`ATLAS_CHECKER_JSON_START\` and \`ATLAS_CHECKER_JSON_END\`:
 
 \`\`\`json
 {
+  "schemaVersion": "atlas-checker-verdict.v1",
+  "runId": "${plan.runId}",
+  "ticketId": "${plan.ticketId}",
+  "pass": false,
   "status": "blocked",
+  "blockingIssues": [],
+  "nonBlockingIssues": [],
+  "evidenceReviewed": ["handoff.json", "goal-contract.json", "events.jsonl", "evidence.json", "maker-result.json", "maker.log"],
+  "recommendedNextAction": "repair-or-human-review",
   "satisfactionLayers": [
     {
       "layerId": "goal-contract",
@@ -1296,7 +1347,7 @@ If you find blockers, print structured JSON to stdout so the runner can record i
 }
 \`\`\`
 
-Use \`status: "passed"\` with an empty \`findings\` array when the diff satisfies the goal and evidence requirements.
+Use \`pass: true\`, \`status: "passed"\`, empty blocker arrays, and \`recommendedNextAction: "human-review"\` when the diff satisfies the goal and evidence requirements.
 `;
 }
 
